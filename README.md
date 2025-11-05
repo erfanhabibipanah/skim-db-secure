@@ -1,6 +1,15 @@
 # SKiM-db
 
-This is a repository contains a pre-built [SKiM](https://gitlab.com/SCoRe-Group/SKiM) database.
+This repository contains a C++ implementation of the database components for [SKiM](https://gitlab.com/SCoRe-Group/SKiM) (Short K-mers in Metagenomics), a memory-efficient metagenomic classifier for Oxford Nanopore Technologies (ONT) reads.
 
-This database consists of all archeal, bacterial, and viral genomes from NCBI RefSeq, downloaded on 06/06/2024. The taxonomic identifiers included in this database were downloaded at the same time and may not be up to date with the current taxonomy. It was built using SKiM's default $k$-mer size and sub-sampling paramters ($k=15$, $s=9$, $t=2$).
+## About SKiM
 
+SKiM is originally a Rust-based tool designed for DNA classification in metagenomic datasets. It uses short k-mers (typically k=15 or k=16) with advanced data compression and statistical correction techniques to achieve fast, accurate classification while maintaining low memory consumption.
+
+## Purpose
+
+This repository provides C++ database implementation of the SKiM classification pipeline.
+
+## Related Projects
+
+- [SKiM main repository](https://gitlab.com/SCoRe-Group/SKiM) - The primary Rust implementation of the SKiM classifier
