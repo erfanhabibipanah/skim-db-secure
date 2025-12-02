@@ -6,7 +6,7 @@ namespace skim {
     class skim_db_builder;
 }
 
-#include "skimdb/skimdb_query.h"
 #include "skimdb/skimdb_builder.h"
+#include "skimdb/skimdb_query.h"
 
 #endif // SKIMDB_H
