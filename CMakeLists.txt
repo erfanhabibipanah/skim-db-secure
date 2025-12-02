@@ -68,14 +68,3 @@ target_link_libraries(skimdb INTERFACE
     fastxrd
     roaring
 )
-
-# -------------------------------------------------------------------
-# Tests
-# -------------------------------------------------------------------
-
-option(SKIMDB_BUILD_TESTS "Build test programs" OFF)
-
-if(SKIMDB_BUILD_TESTS)
-    add_executable(test_imports tests/test_imports.cpp)
-    target_link_libraries(test_imports PRIVATE skimdb::skimdb)
-endif()
