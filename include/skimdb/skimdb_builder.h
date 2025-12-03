@@ -16,12 +16,14 @@
 #include "skimdb/skimdb_query.h"
 #include "skimdb/skimdb_util.h"
 
+
 namespace skim {
 
 namespace fs = std::filesystem;
 
 class skim_db_builder {
 public:
+
   static skim_db build(const std::size_t k,
                        const std::size_t s,
                        const std::size_t t,
@@ -77,9 +79,10 @@ public:
     db.data_ = std::move(data);
 
     return db;
-  } // build
+  }
+
 };
 
-} // namespace skim
+}
 
 #endif // SKIMDB_BUILDER_H
