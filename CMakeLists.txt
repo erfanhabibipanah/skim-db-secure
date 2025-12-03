@@ -24,6 +24,7 @@ CPMAddPackage(
     NAME cereal
     GITHUB_REPOSITORY USCiLab/cereal
     VERSION 1.3.2
+    OPTIONS "JUST_INSTALL_CEREAL ON"
 )
 
 CPMAddPackage(
@@ -48,7 +49,6 @@ CPMAddPackage(
     GIT_TAG main
 )
 
-# fastxrd does not declare cxxopts => fix it
 target_link_libraries(fastxrd INTERFACE cxxopts)
 
 # -------------------------------------------------------------------
@@ -68,3 +68,13 @@ target_link_libraries(skimdb INTERFACE
     fastxrd
     roaring
 )
+
+# -------------------------------------------------------------------
+# Tests
+# -------------------------------------------------------------------
+
+option(SKIMDB_BUILD_TESTS "Build test programs" OFF)
+
+if(SKIMDB_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

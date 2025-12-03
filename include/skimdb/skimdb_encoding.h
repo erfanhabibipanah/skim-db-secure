@@ -8,6 +8,7 @@
 
 #include <cereal/types/vector.hpp>
 
+
 namespace skim {
 
 // Block format (16 bits):
