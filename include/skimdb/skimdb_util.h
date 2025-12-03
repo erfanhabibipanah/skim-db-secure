@@ -159,7 +159,7 @@ void populate_bitmap(std::size_t k,
 
     std::size_t base_count = 0;
 
-    for (auto i = 0, end = read.length(); i < end; ++i) {
+    for (std::size_t i = 0, end = read.length(); i < end; ++i) {
       auto base = to_base2(read[i]);
 
       if (base < 0) {
