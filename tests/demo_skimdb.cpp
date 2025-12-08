@@ -12,14 +12,13 @@ namespace fs = std::filesystem;
 
 int main() {
   const fs::path ref_dir = REFERENCE_DIR;
-  const fs::path db_path = ref_dir / "demo_db.skimdb";
-  const fs::path file2labels = ref_dir / "file2labels";
-  const fs::path sequences = ref_dir / "sequences";
+  const fs::path db_path = ref_dir/"demo_db.skimdb";
+  const fs::path file2labels = ref_dir/"file2labels";
+  const fs::path sequences = ref_dir/"sequences";
 
   if (!fs::exists(db_path)) {
     std::print("Building SkimDB...\n");
-    if (!skim::skim_db_builder::build(15, 9, 0, file2labels.string(), sequences.string())
-             .save(db_path.string())) {
+    if (!skim::skim_db_builder::build(file2labels, sequences, 15, 9, 0).save(db_path.string())) {
       std::print("Failed to build SkimDB\n");
       return -1;
     }

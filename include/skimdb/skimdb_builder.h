@@ -23,14 +23,10 @@ namespace fs = std::filesystem;
 
 class skim_db_builder {
 public:
+  static skim_db build(const fs::path& f2l, const fs::path& dir,
+                       const std::size_t k, const std::size_t s, const std::size_t t) {
 
-  static skim_db build(const std::size_t k,
-                       const std::size_t s,
-                       const std::size_t t,
-                       const fs::path& f2t,
-                       const fs::path& dir) {
-
-    auto [file_names, labels] = load_file_to_labels(f2t);
+    auto [file_names, labels] = detail::load_file_to_labels(f2l);
 
     std::vector<roaring::Roaring> bitmaps(file_names.size());
     std::vector<std::size_t> idxs(bitmaps.size());
@@ -38,11 +34,9 @@ public:
     std::iota(idxs.begin(), idxs.end(), 0);
 
     std::for_each(std::execution::par, idxs.begin(), idxs.end(),
-                  [&](std::size_t i) {
-                    populate_bitmap(k, s, t, dir, file_names[i], bitmaps[i]);
-                  });
+                  [&](std::size_t i) { detail::populate_bitmap(dir, file_names[i], bitmaps[i], k, s, t); });
 
-    std::size_t total_kmers = total_kmer_count(k, s, t);
+    std::size_t total_kmers = detail::total_kmer_count(k, s, t);
 
     std::vector<skim::encoding> data(total_kmers);
 
@@ -51,10 +45,10 @@ public:
 
     std::size_t free_idx = 0;
 
-    for (size_t i = 0; i < bitmaps.size(); i++) {
+    for (std::size_t i = 0, end = bitmaps.size(); i < end; i++) {
       roaring::Roaring& bitmap = bitmaps[i];
 
-      for (uint32_t kmer : bitmap) {
+      for (std::uint32_t kmer : bitmap) {
         auto [it, inserted] = kmer_to_index.try_emplace(kmer, free_idx);
         if (inserted) {
           free_idx++;
@@ -80,7 +74,6 @@ public:
 
     return db;
   }
-
 };
 
 }
