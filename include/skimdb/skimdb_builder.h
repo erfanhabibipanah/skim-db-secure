@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <numeric>
+#include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,20 +25,11 @@ namespace fs = std::filesystem;
 class skim_db_builder {
 public:
 
-  static skim_db build_index(const fs::path& dir,
-                             const std::vector<std::string>& files,
+  static skim_db build_index(const std::vector<roaring::Roaring>& bitmaps,
                              const std::vector<std::string>& labels,
                              std::size_t k,
                              std::size_t s,
                              std::size_t t) {
-    std::vector<roaring::Roaring> bitmaps(files.size());
-    std::vector<std::size_t> idxs(bitmaps.size());
-
-    std::iota(idxs.begin(), idxs.end(), 0);
-
-    std::for_each(std::execution::par, idxs.begin(), idxs.end(),
-                  [&](std::size_t i) { detail::populate_bitmap(dir, files[i], bitmaps[i], k, s, t); });
-
     std::size_t total_kmers = detail::total_kmer_count(k, s, t);
 
     std::vector<skim::encoding> data(total_kmers);
@@ -48,7 +40,7 @@ public:
     std::size_t free_idx = 0;
 
     for (std::size_t i = 0, end = bitmaps.size(); i < end; i++) {
-      roaring::Roaring& bitmap = bitmaps[i];
+      auto& bitmap = bitmaps[i];
 
       for (std::uint32_t kmer : bitmap) {
         auto [it, inserted] = kmer_to_index.try_emplace(kmer, free_idx);
@@ -69,11 +61,28 @@ public:
     db.s_ = s;
     db.t_ = t;
 
-    db.labels_ = std::move(labels);
+    db.labels_ = labels;
     db.kmer_to_index_ = std::move(kmer_to_index);
     db.data_ = std::move(data);
 
     return db;
+  }
+
+  static skim_db build_index(const fs::path& dir,
+                             const std::vector<std::string>& files,
+                             const std::vector<std::string>& labels,
+                             std::size_t k,
+                             std::size_t s,
+                             std::size_t t) {
+    std::vector<roaring::Roaring> bitmaps(files.size());
+    auto zipped = std::views::zip(files, bitmaps);
+
+    std::for_each(std::execution::par, zipped.begin(), zipped.end(),
+                  [&](auto&& fb) {
+                    auto& [file, bitmap] = fb;
+                    detail::populate_bitmap(dir, file, bitmap, k, s, t); });
+
+    return build_index(bitmaps, labels, k, s, t);
   }
 
   static skim_db build_index(const fs::path& dir, const fs::path& f2l, std::size_t k, std::size_t s, std::size_t t) {

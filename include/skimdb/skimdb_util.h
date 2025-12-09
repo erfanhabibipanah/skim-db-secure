@@ -9,8 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include <fastxrd/fasta_simple_reader.h>
-#include <fastxrd/fastx_files_reader.h>
+#include <fastxrd/fasta_buffered_reader.h>
 
 #include <roaring.hh>
 
