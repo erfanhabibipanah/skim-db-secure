@@ -4,8 +4,8 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <string>
 #include <sstream>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -138,42 +138,47 @@ inline bool is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t 
   return true;
 }
 
+inline void update_bitmap(const std::string& read, std::size_t k, std::size_t s, std::size_t t,
+                          roaring::Roaring& bitmap) {
+  std::uint32_t kmer = 0;
+  std::uint32_t rev_comp = 0;
+
+  std::size_t base_count = 0;
+  std::uint32_t kmer_mask = (1ULL << (2 * k)) - 1;
+
+  for (std::size_t i = 0, end = read.length(); i < end; ++i) {
+    auto base = char_to_base2(read[i]);
+
+    if (base < 0) {
+      base_count = 0;
+      continue;
+    }
+
+    kmer = (kmer << 2) | base;
+    rev_comp = (rev_comp >> 2) | (static_cast<std::uint32_t>(3 - base) << ((k - 1) * 2));
+    base_count++;
+
+    if (base_count >= k) {
+      std::uint32_t canonical = std::min((kmer & kmer_mask), (rev_comp & kmer_mask));
+      if (is_syncmer(canonical, k, s, t)) {
+        bitmap.add(canonical);
+      }
+    }
+  }
+}
+
 // Opens fasta file and processes canonical syncmers into a roaring bitmap
-inline void populate_bitmap(const fs::path& dir, const std::string& filename, roaring::Roaring& bitmap,
-                            std::size_t k, std::size_t s, std::size_t t) {
-  fs::path full_path = dir/filename;
+inline roaring::Roaring populate_bitmap(const fs::path& dir, const std::string& filename,
+                                        std::size_t k, std::size_t s, std::size_t t) {
+  fs::path full_path = dir / filename;
   fastx::fasta_buffered_reader fbr{full_path};
 
   for (auto seq : fbr.sequences()) {
     std::string read = std::get<1>(seq);
-
-    std::uint32_t kmer = 0;
-    std::uint32_t rev_comp = 0;
-
-    std::uint32_t kmer_mask = (1ULL << (2 * k)) - 1;
-
-    std::size_t base_count = 0;
-
-    for (std::size_t i = 0, end = read.length(); i < end; ++i) {
-      auto base = char_to_base2(read[i]);
-
-      if (base < 0) {
-        base_count = 0;
-        continue;
-      }
-
-      kmer = (kmer << 2) | base;
-      rev_comp = (rev_comp >> 2) | (static_cast<std::uint32_t>(3 - base) << ((k - 1) * 2));
-      base_count++;
-
-      if (base_count >= k) {
-        std::uint32_t canonical = std::min((kmer & kmer_mask), (rev_comp & kmer_mask));
-        if (is_syncmer(canonical, k, s, t)) {
-          bitmap.add(canonical);
-        }
-      }
-    }
+    update_bitmap(read, k, s, t, bitmap);
   }
+
+  return bitmap;
 }
 
 inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t) {
@@ -197,7 +202,7 @@ inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t)
   return count;
 }
 
-}
-}
+} // namespace detail
+} // namespace skim
 
 #endif // SKIMDB_UTIL_H

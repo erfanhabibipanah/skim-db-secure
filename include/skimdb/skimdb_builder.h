@@ -80,7 +80,7 @@ public:
     std::for_each(std::execution::par, zipped.begin(), zipped.end(),
                   [&](auto&& fb) {
                     auto& [file, bitmap] = fb;
-                    detail::populate_bitmap(dir, file, bitmap, k, s, t); });
+                    bitmap = detail::populate_bitmap(dir, file, k, s, t); });
 
     return build_index(bitmaps, labels, k, s, t);
   }
