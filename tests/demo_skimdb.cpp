@@ -18,7 +18,7 @@ int main() {
 
   if (!fs::exists(db_path)) {
     std::print("Building SkimDB...\n");
-    if (!skim::skim_db_builder::build(file2labels, sequences, 15, 9, 0).save(db_path.string())) {
+    if (!skim::skim_db_builder::build_index(sequences, file2labels, 15, 9, 0).save(db_path.string())) {
       std::print("Failed to build SkimDB\n");
       return -1;
     }

@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 
 // Parse file_to_labels file into pair of vectors (file_names, labels)
 // Returns empty on failure, skips ill-formatted lines
-inline auto load_file_to_labels(const fs::path& path) {
+inline auto load_f2l(const fs::path& path) {
   std::vector<std::string> names;
   std::vector<std::string> labels;
 
@@ -143,9 +143,9 @@ inline bool is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t 
 inline void populate_bitmap(const fs::path& dir, const std::string& filename, roaring::Roaring& bitmap,
                             std::size_t k, std::size_t s, std::size_t t) {
   fs::path full_path = dir/filename;
-  fastx::fastx_files_reader<fastx::fasta_simple_reader> ffr{full_path};
+  fastx::fasta_buffered_reader fbr{full_path};
 
-  for (auto seq : ffr.sequences()) {
+  for (auto seq : fbr.sequences()) {
     std::string read = std::get<1>(seq);
 
     std::uint32_t kmer = 0;
