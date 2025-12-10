@@ -7,9 +7,13 @@
 #include <fstream>
 #include <numeric>
 #include <ranges>
+#include <stdio.h>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include <fastxrd/fasta_buffered_reader.h>
+#include <fastxrd/fastx_files_reader.h>
 
 #include <roaring.hh>
 
@@ -24,12 +28,11 @@ namespace fs = std::filesystem;
 
 class skim_db_builder {
 public:
-
-  static skim_db build_index(const std::vector<roaring::Roaring>& bitmaps,
-                             const std::vector<std::string>& labels,
-                             std::size_t k,
-                             std::size_t s,
-                             std::size_t t) {
+  static skim_db build_file_index(const std::vector<roaring::Roaring>& bitmaps,
+                                  const std::vector<std::string>& labels,
+                                  std::size_t k,
+                                  std::size_t s,
+                                  std::size_t t) {
     std::size_t total_kmers = detail::total_kmer_count(k, s, t);
 
     std::vector<skim::encoding> data(total_kmers);
@@ -68,12 +71,12 @@ public:
     return db;
   }
 
-  static skim_db build_index(const fs::path& dir,
-                             const std::vector<std::string>& files,
-                             const std::vector<std::string>& labels,
-                             std::size_t k,
-                             std::size_t s,
-                             std::size_t t) {
+  static skim_db build_file_index(const fs::path& dir,
+                                  const std::vector<std::string>& files,
+                                  const std::vector<std::string>& labels,
+                                  std::size_t k,
+                                  std::size_t s,
+                                  std::size_t t) {
     std::vector<roaring::Roaring> bitmaps(files.size());
     auto zipped = std::views::zip(files, bitmaps);
 
@@ -82,12 +85,32 @@ public:
                     auto& [file, bitmap] = fb;
                     bitmap = detail::populate_bitmap(dir, file, k, s, t); });
 
-    return build_index(bitmaps, labels, k, s, t);
+    return build_file_index(bitmaps, labels, k, s, t);
   }
 
-  static skim_db build_index(const fs::path& dir, const fs::path& f2l, std::size_t k, std::size_t s, std::size_t t) {
+  static skim_db build_file_index(const fs::path& dir, const fs::path& f2l,
+                                  std::size_t k, std::size_t s, std::size_t t) {
     auto [files, labels] = detail::load_f2l(f2l);
-    return build_index(dir, files, labels, k, s, t);
+    return build_file_index(dir, files, labels, k, s, t);
+  }
+
+  static skim_db build_sequence_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t) {
+    fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
+
+    std::vector<roaring::Roaring> bitmaps;
+    std::vector<std::string> labels;
+
+    for (auto seq : ffr.sequences()) {
+      labels.emplace_back(std::move(std::get<0>(seq)));
+      const std::string& read = std::get<1>(seq);
+      roaring::Roaring bitmap;
+      detail::update_bitmap(read, k, s, t, bitmap);
+      bitmaps.emplace_back(bitmap);
+    }
+
+    detail::order_bitmaps(bitmaps, labels);
+
+    return build_file_index(bitmaps, labels, k, s, t);
   }
 };
 

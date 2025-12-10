@@ -173,8 +173,10 @@ inline roaring::Roaring populate_bitmap(const fs::path& dir, const std::string& 
   fs::path full_path = dir / filename;
   fastx::fasta_buffered_reader fbr{full_path};
 
+  roaring::Roaring bitmap;
+
   for (auto seq : fbr.sequences()) {
-    std::string read = std::get<1>(seq);
+    const std::string& read = std::get<1>(seq);
     update_bitmap(read, k, s, t, bitmap);
   }
 
@@ -200,6 +202,16 @@ inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t)
   }
 
   return count;
+}
+
+void order_bitmaps(const std::vector<roaring::Roaring>& bitmaps, const std::vector<std::string>& labels) {
+  std::vector<std::size_t> bitmap_size(bitmaps.size());
+  auto zipped = std::views::zip(bitmaps, bitmap_size);
+
+  std::for_each(zipped.begin(), zipped.end(), [&](auto&& bb) {
+    auto& [bitmap, size] = bb;
+    size = bitmap.cardinality();
+  });
 }
 
 } // namespace detail
