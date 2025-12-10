@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -204,14 +205,17 @@ inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t)
   return count;
 }
 
-void order_bitmaps(const std::vector<roaring::Roaring>& bitmaps, const std::vector<std::string>& labels) {
-  std::vector<std::size_t> bitmap_size(bitmaps.size());
-  auto zipped = std::views::zip(bitmaps, bitmap_size);
+void order_bitmaps(std::vector<roaring::Roaring>& bitmaps, std::vector<std::string>& labels) {
+  std::vector<std::size_t> sizes(bitmaps.size());
+  auto bs_zip = std::views::zip(bitmaps, sizes);
 
-  std::for_each(zipped.begin(), zipped.end(), [&](auto&& bb) {
-    auto& [bitmap, size] = bb;
+  std::for_each(bs_zip.begin(), bs_zip.end(), [&](auto&& bs) {
+    auto& [bitmap, size] = bs;
     size = bitmap.cardinality();
   });
+
+  auto bls_zip = std::views::zip(bitmaps, labels, sizes);
+  std::ranges::sort(bls_zip, std::ranges::greater{}, [](const auto& bls) { return std::get<2>(bls); });
 }
 
 } // namespace detail

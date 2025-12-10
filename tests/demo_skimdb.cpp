@@ -3,6 +3,7 @@
 #include <print>
 
 #include <skimdb/skimdb.h>
+#include <skimdb/skimdb_builder.h>
 
 namespace fs = std::filesystem;
 

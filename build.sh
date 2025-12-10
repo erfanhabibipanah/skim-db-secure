@@ -6,6 +6,7 @@ JOBS=8
 usage() {
   echo "usage: $0 [OPTIONS]"
   echo "options:"
+  echo "  -T        build tools"
   echo "  -t        build tests"
   echo "  -h        display this help"
   echo "  -v        enable verbose mode"
@@ -16,11 +17,8 @@ DIR=$(pwd)/release
 CMAKE_CALL="../"
 
 
-while getopts "thvj:r:" arg; do
+while getopts "Tthvj:r:" arg; do
   case $arg in
-    t)
-      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_TESTS=ON"
-      ;;
     h)
       usage
       exit -1
@@ -34,6 +32,12 @@ while getopts "thvj:r:" arg; do
     r)
       RPATH="$OPTARG"
       CMAKE_CALL="$CMAKE_CALL -DCMAKE_BUILD_RPATH=$RPATH -DCMAKE_INSTALL_RPATH=$RPATH"
+      ;;
+    T)
+      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_TOOLS=ON"
+      ;;
+    t)
+      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_TESTS=ON"
       ;;
   esac
 done

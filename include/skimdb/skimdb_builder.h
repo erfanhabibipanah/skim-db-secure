@@ -18,7 +18,6 @@
 #include <roaring.hh>
 
 #include "skimdb/skimdb_encoding.h"
-#include "skimdb/skimdb_query.h"
 #include "skimdb/skimdb_util.h"
 
 
@@ -28,11 +27,11 @@ namespace fs = std::filesystem;
 
 class skim_db_builder {
 public:
-  static skim_db build_file_index(const std::vector<roaring::Roaring>& bitmaps,
-                                  const std::vector<std::string>& labels,
-                                  std::size_t k,
-                                  std::size_t s,
-                                  std::size_t t) {
+  static skim_db build_index(const std::vector<roaring::Roaring>& bitmaps,
+                             const std::vector<std::string>& labels,
+                             std::size_t k,
+                             std::size_t s,
+                             std::size_t t) {
     std::size_t total_kmers = detail::total_kmer_count(k, s, t);
 
     std::vector<skim::encoding> data(total_kmers);
@@ -65,7 +64,7 @@ public:
     db.t_ = t;
 
     db.labels_ = labels;
-    db.kmer_to_index_ = std::move(kmer_to_index);
+    db.index_ = std::move(kmer_to_index);
     db.data_ = std::move(data);
 
     return db;
@@ -85,7 +84,7 @@ public:
                     auto& [file, bitmap] = fb;
                     bitmap = detail::populate_bitmap(dir, file, k, s, t); });
 
-    return build_file_index(bitmaps, labels, k, s, t);
+    return build_index(bitmaps, labels, k, s, t);
   }
 
   static skim_db build_file_index(const fs::path& dir, const fs::path& f2l,
@@ -110,7 +109,7 @@ public:
 
     detail::order_bitmaps(bitmaps, labels);
 
-    return build_file_index(bitmaps, labels, k, s, t);
+    return build_index(bitmaps, labels, k, s, t);
   }
 };
 
