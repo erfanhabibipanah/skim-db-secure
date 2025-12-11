@@ -1,17 +1,20 @@
 #ifndef SKIMDB_H
 #define SKIMDB_H
 
+#include <expected>
 #include <filesystem>
 #include <fstream>
 #include <generator>
 #include <string>
-#include <unordered_map>
+#include <tuple>
 #include <vector>
 
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/string.hpp>
-#include <cereal/types/unordered_map.hpp>
 #include <cereal/types/vector.hpp>
+
+#include <parallel_hashmap/phmap.h>
+#include <parallel_hashmap/phmap_dump.h>
 
 #include "skimdb/skimdb_encoding.h"
 #include "skimdb/skimdb_util.h"
@@ -22,12 +25,12 @@ namespace skim {
 namespace fs = std::filesystem;
 
 
-class skim_db {
+class skimdb {
 public:
-  skim_db() = default;
+  skimdb() = default;
 
   // given a kmer, returns a generator over annotated labels
-  std::generator<std::string> query(std::string kmer) {
+  auto query(std::string kmer) -> std::generator<const std::string&> {
     if (!detail::is_valid(kmer, k_)) {
       co_return;
     }
@@ -38,9 +41,6 @@ public:
     }
 
     auto kmer_idx = kmer_rec->second;
-    if (kmer_idx >= data_.size()) {
-      co_return;
-    }
 
     for (std::size_t label_idx : data_[kmer_idx].select_idxs()) {
       if (label_idx >= labels_.size()) {
@@ -50,53 +50,54 @@ public:
     }
   }
 
-  // save data to skim_db file
-  bool save(const fs::path& path) {
-    try {
-      std::ofstream os{path, std::ios::binary};
-      if (!os) {
-        return false;
-      }
-      cereal::BinaryOutputArchive archive{os};
-      archive(*this);  // Uses serialize() internally
-    } catch (...) {
-      return false;
+  auto parameters() const { return std::make_tuple(k_, s_, t_); }
+
+  auto load(const fs::path& path) -> std::expected<void, std::string> {
+    std::ifstream is{path, std::ios::binary};
+    if (!is) {
+      return std::unexpected{"could not open file"};
     }
 
-    return true;
-  }
-
-  // load data from skim_db file
-  bool load(const fs::path& path) {
     try {
-      std::ifstream is{path, std::ios::binary};
-      if (!is) {
-        return false;
-      }
-
       cereal::BinaryInputArchive archive(is);
       archive(*this);
     } catch (...) {
-      return false;
+      return std::unexpected{"deserialization failed"};
     }
 
-    return true;
+    return {};
   }
 
-  template<class Archive>
+  auto save(const fs::path& path) -> std::expected<void, std::string> {
+    std::ofstream os{path, std::ios::binary};
+    if (!os) {
+      return std::unexpected{"could not create file"};
+    }
+
+    try {
+      cereal::BinaryOutputArchive archive{os};
+      archive(*this);  // Uses serialize() internally
+    } catch (...) {
+      return std::unexpected{"serialization failed"};
+    }
+
+    return {};
+  }
+
+  template <class Archive>
   void serialize(Archive& archive) {
     archive(k_, s_, t_, labels_, index_, data_);
   }
 
 private:
-  friend class skim_db_builder;
+  friend class builder;
 
   std::size_t k_;
   std::size_t s_;
   std::size_t t_;
 
   std::vector<std::string> labels_;
-  std::unordered_map<std::uint32_t, std::size_t> index_;
+  phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index_;
   std::vector<skim::encoding> data_;
 };
 

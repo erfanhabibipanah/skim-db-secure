@@ -7,7 +7,6 @@ usage() {
   echo "usage: $0 [OPTIONS]"
   echo "options:"
   echo "  -T        build tools"
-  echo "  -t        build tests"
   echo "  -h        display this help"
   echo "  -v        enable verbose mode"
   echo "  -j <JOBS> set number of make jobs to build with     (default: $JOBS)"
@@ -17,7 +16,7 @@ DIR=$(pwd)/release
 CMAKE_CALL="../"
 
 
-while getopts "Tthvj:r:" arg; do
+while getopts "Thvj:r:" arg; do
   case $arg in
     h)
       usage
@@ -35,9 +34,6 @@ while getopts "Tthvj:r:" arg; do
       ;;
     T)
       CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_TOOLS=ON"
-      ;;
-    t)
-      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_TESTS=ON"
       ;;
   esac
 done
@@ -60,3 +56,4 @@ echo "cmake call: $CMAKE_CALL"
 cd build/
 cmake $CMAKE_CALL -DCMAKE_INSTALL_PREFIX=$DIR
 make -j $JOBS $VERBOSE
+make install

@@ -10,7 +10,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # -------------------------------------------------------------------
-# Dependencies via CPM
+# Dependencies
 # -------------------------------------------------------------------
 
 file(DOWNLOAD
@@ -32,15 +32,7 @@ CPMAddPackage(
     GITHUB_REPOSITORY RoaringBitmap/CRoaring
     GIT_TAG v2.0.4
     OPTIONS "ENABLE_ROARING_TESTS OFF"
-)
-
-CPMAddPackage(
-    NAME cxxopts
-    GITHUB_REPOSITORY jarro2783/cxxopts
-    VERSION 3.1.1
-    OPTIONS
-      "CXXOPTS_BUILD_EXAMPLES OFF"
-      "CXXOPTS_BUILD_TESTS OFF"
+    EXCLUDE_FROM_ALL YES
 )
 
 CPMAddPackage(
@@ -49,7 +41,14 @@ CPMAddPackage(
     GIT_TAG main
 )
 
-target_link_libraries(fastxrd INTERFACE cxxopts)
+CPMAddPackage(
+    NAME phmap
+    GITHUB_REPOSITORY greg7mdp/parallel-hashmap
+    VERSION 2.0.0
+)
+
+# required for par execution policy
+find_package(TBB REQUIRED)
 
 # -------------------------------------------------------------------
 # Library target
@@ -65,26 +64,23 @@ target_include_directories(skimdb INTERFACE
 
 target_link_libraries(skimdb INTERFACE
     cereal
-    fastxrd
     roaring
+    fastxrd
+    phmap
+    tbb
+)
+
+install(
+    DIRECTORY include/
+    DESTINATION include
 )
 
 # -------------------------------------------------------------------
 # Tools
 # -------------------------------------------------------------------
 
-option(SKIMDB_BUILD_TOOLS "Build tools programs" OFF)
+option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
 
-if(SKIMDB_BUILD_TESTS)
+if(SKIMDB_BUILD_TOOLS)
     add_subdirectory(tools)
-endif()
-
-# -------------------------------------------------------------------
-# Tests
-# -------------------------------------------------------------------
-
-option(SKIMDB_BUILD_TESTS "Build test programs" OFF)
-
-if(SKIMDB_BUILD_TESTS)
-    add_subdirectory(tests)
 endif()

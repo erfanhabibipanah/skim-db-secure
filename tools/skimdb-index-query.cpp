@@ -1,0 +1,79 @@
+#include <filesystem>
+#include <iostream>
+#include <string>
+
+#include <cxxopts.hpp>
+
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+
+#include <skimdb/skimdb.h>
+
+namespace fs = std::filesystem;
+
+
+auto main(int argc, char* argv[]) -> int {
+  std::string in = "";
+
+  try {
+    cxxopts::Options options(argv[0]);
+
+    options.add_options()
+      ("i,input", "input file or directory FASTA format", cxxopts::value<std::string>(in))
+      ("h,help", "print this help");
+
+    auto opt_res = options.parse(argc, argv);
+
+    if ((opt_res.unmatched().size() != 0) || opt_res.count("help")) {
+      std::cout << options.help() << std::endl;
+      return 0;
+    }
+  } catch (const cxxopts::exceptions::exception& e) {
+    std::cerr << e.what() << std::endl;
+    return -1;
+  }
+
+  auto log = spdlog::stdout_color_mt("skimdb-index-query");
+
+  if (in.empty()) {
+    log->error("input not specified!");
+    return -1;
+  }
+
+  fs::path dir{in};
+
+  if (!fs::exists(dir)) {
+    log->error("path {} does not exist!", dir.string());
+    return -1;
+  }
+
+  log->info("loading index from {}...", in);
+
+  skim::skimdb db;
+  auto res = db.load(dir);
+
+  if (!res) {
+    log->error("could not save {}, error: {}!", in, res.error());
+    return -1;
+  }
+
+  auto [k, s, t] = db.parameters();
+
+  log->info("index loaded, k={}, s={}, t={}", k, s, t);
+  log->info("ready for queries...");
+
+  std::string q = "";
+
+  std::cout << ">";
+  while (std::cin >> q && std::cin && !std::cin.eof()) {
+    for (const auto& l : db.query(q)) {
+      std::cout << "  " << l << std::endl;
+    }
+    std::cout << ">";
+  }
+  std::cout << "\n";
+
+  log->info("done!");
+
+  return 0;
+}

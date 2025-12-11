@@ -16,6 +16,10 @@
 
 
 namespace skim {
+
+// max k-mer size handled by skimdb
+inline constexpr std::size_t g_kmer_limit = 16;
+
 namespace detail {
 
 namespace fs = std::filesystem;
@@ -89,8 +93,8 @@ inline int char_to_base2(char c) {
 }
 
 inline std::uint32_t kmer_to_uint32(const std::string& kmer) {
-  if (kmer.length() > 16) {
-    return 0; // k-mers longer than 16 not supported
+  if (kmer.length() > g_kmer_limit) {
+    return 0;
   }
 
   std::uint32_t result = 0;
@@ -122,7 +126,7 @@ inline bool is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t 
     return true;
   }
 
-  std::uint32_t smer_mask = (1ULL << (2 * s)) - 1;
+  std::uint32_t smer_mask = (1U << (2 * s)) - 1;
   std::size_t num_smers = k - s + 1;
 
   std::size_t tmer_shift = 2 * (k - s - t);
