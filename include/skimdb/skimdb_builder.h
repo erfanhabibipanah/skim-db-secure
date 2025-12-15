@@ -31,7 +31,7 @@ public:
                           std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     std::size_t total_kmers = detail::total_kmer_count(k, s, t);
 
-    std::vector<skim::encoding> data(total_kmers);
+    std::vector<detail::encoding> data(total_kmers);
 
     phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
     index.reserve(total_kmers);
@@ -52,7 +52,7 @@ public:
       }
     }
 
-    std::for_each(std::execution::par, data.begin(), data.end(), [](encoding& rec) { rec.attempt_compress(); });
+    std::for_each(std::execution::par, data.begin(), data.end(), [](detail::encoding& rec) { rec.attempt_compress(); });
 
     skimdb db;
 

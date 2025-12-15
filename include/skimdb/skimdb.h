@@ -98,7 +98,7 @@ private:
 
   std::vector<std::string> labels_;
   phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index_;
-  std::vector<skim::encoding> data_;
+  std::vector<detail::encoding> data_;
 };
 
 }
