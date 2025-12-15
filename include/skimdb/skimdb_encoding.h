@@ -89,7 +89,8 @@ public:
       block_encoding type = get_block_encoding(block);
 
       if (type == block_encoding::uncompressed) {
-        // cannot compress previously compressed blocks
+        // encoding was previously compressed
+        // return having done nothing
         return;
       }
 
@@ -179,12 +180,12 @@ public:
 
   template <class Archive>
   void serialize(Archive& archive) {
-    archive(blocks_, next_seq_);
+    archive(blocks_);
   }
 
 private:
   std::vector<std::uint16_t> blocks_;
-  std::size_t next_seq_;
+  std::size_t next_seq_ = 0;
 };
 
 } // namespace detail
