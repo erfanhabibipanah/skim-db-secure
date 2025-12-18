@@ -15,12 +15,15 @@
 #include <vector>
 
 #include "detail/skimdb_definitions.h"
+#include "detail/skimdb_logger.h"
 
 
 namespace skim {
 namespace solver {
 
-auto order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) -> void {
+inline auto order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) -> void {
+  LogFun lf{"order_bitmaps"};
+
   std::vector<std::size_t> sizes(bitmaps.size());
   auto bs_zip = std::views::zip(bitmaps, sizes);
 

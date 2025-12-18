@@ -168,7 +168,7 @@ inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s,
     }
   }
 
-  //bitmap.runOptimize();
+  bitmap.runOptimize();
 
   return tot_added;
 }

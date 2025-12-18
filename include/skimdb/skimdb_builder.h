@@ -28,9 +28,8 @@ public:
 
   static auto build_index(const std::vector<bitmap_t>& bitmaps, const std::vector<std::string>& labels,
                           std::size_t k, std::size_t s, std::size_t t) -> skimdb {
-    g_log->info("build_index start...");
-
-    g_log->info("creating kmer index, k={}, s={}, t={}...", k, s, t);
+    LogFun lf{"build_index"};
+    g_log->info("creating kmer dictionary, k={}, s={}, t={}...", k, s, t);
 
     // TODO: can we optimize this shit: counting k-mers is quite expensive...
     std::size_t total_kmers = detail::total_kmer_count(k, s, t);
@@ -58,7 +57,7 @@ public:
       }
     }
 
-    g_log->info("kmer index done!");
+    g_log->info("kmer dictionary done!");
 
     g_log->info("compressing kmers...");
     std::for_each(std::execution::par, data.begin(), data.end(), [](detail::encoding& rec) { rec.attempt_compress(); });
@@ -73,8 +72,6 @@ public:
     db.labels_ = labels;
     db.index_ = std::move(index);
     db.data_ = std::move(data);
-
-    g_log->info("build_index done!");
 
     return db;
   }
@@ -99,7 +96,7 @@ public:
   }
 
   static auto build_sequence_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t) -> skimdb {
-    g_log->info("build_sequence_index start...");
+    LogFun lf{"build_sequence_index"};
 
     fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
 
@@ -121,11 +118,9 @@ public:
 
     g_log->info("{} kmers extracted from {} sequences", kmer_count, labels.size());
 
-    auto res = build_index(bitmaps, labels, k, s, t);
+    solver::order_bitmaps(bitmaps, labels);
 
-    g_log->info("build_sequence_index done!");
-
-    return res;
+    return build_index(bitmaps, labels, k, s, t);
   }
 };
 
