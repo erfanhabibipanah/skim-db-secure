@@ -8,6 +8,7 @@
  *  See accompanying LICENSE
  */
 
+#include "skimdb/detail/skimdb_logger.h"
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -55,6 +56,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   auto log = spdlog::stdout_color_mt("skimdb-index-create");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   if (in.empty()) {
     log->error("input not specified!");

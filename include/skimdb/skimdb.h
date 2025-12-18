@@ -2,8 +2,6 @@
 #define SKIMDB_H
 
 #include <expected>
-#include <filesystem>
-#include <fstream>
 #include <generator>
 #include <string>
 #include <tuple>
@@ -16,8 +14,8 @@
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/phmap_dump.h>
 
-#include "skimdb/skimdb_encoding.h"
-#include "skimdb/skimdb_util.h"
+#include "detail/skimdb_encoding.h"
+#include "detail/skimdb_util.h"
 
 
 namespace skim {
@@ -92,15 +90,15 @@ public:
 private:
   friend class builder;
 
-  std::size_t k_;
-  std::size_t s_;
-  std::size_t t_;
+  std::size_t k_{0};
+  std::size_t s_{0};
+  std::size_t t_{0};
 
   std::vector<std::string> labels_;
   phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index_;
   std::vector<detail::encoding> data_;
 };
 
-}
+} // namespace skim
 
 #endif // SKIMDB_H

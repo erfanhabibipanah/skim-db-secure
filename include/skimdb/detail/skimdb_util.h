@@ -4,22 +4,16 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <functional>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include <fastxrd/fasta_buffered_reader.h>
 
-#include <roaring.hh>
+#include "skimdb_definitions.h"
 
 
 namespace skim {
-
-// max k-mer size handled by skimdb
-inline constexpr std::size_t g_kmer_limit = 16;
-
 namespace detail {
 
 namespace fs = std::filesystem;
@@ -143,13 +137,15 @@ inline bool is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t 
   return true;
 }
 
-inline void update_bitmap(const std::string& read, std::size_t k, std::size_t s, std::size_t t,
-                          roaring::Roaring& bitmap) {
+inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s, std::size_t t,
+                          bitmap_t& bitmap) -> std::uint32_t {
   std::uint32_t kmer = 0;
   std::uint32_t rev_comp = 0;
 
   std::size_t base_count = 0;
   std::uint32_t kmer_mask = (1ULL << (2 * k)) - 1;
+
+  std::uint32_t tot_added = 0;
 
   for (std::size_t i = 0, end = read.length(); i < end; ++i) {
     auto base = char_to_base2(read[i]);
@@ -167,18 +163,23 @@ inline void update_bitmap(const std::string& read, std::size_t k, std::size_t s,
       std::uint32_t canonical = std::min((kmer & kmer_mask), (rev_comp & kmer_mask));
       if (is_syncmer(canonical, k, s, t)) {
         bitmap.add(canonical);
+        tot_added++;
       }
     }
   }
+
+  //bitmap.runOptimize();
+
+  return tot_added;
 }
 
 // Opens fasta file and processes canonical syncmers into a roaring bitmap
-inline roaring::Roaring populate_bitmap(const fs::path& dir, const std::string& filename,
-                                        std::size_t k, std::size_t s, std::size_t t) {
+inline bitmap_t populate_bitmap(const fs::path& dir, const std::string& filename,
+                                std::size_t k, std::size_t s, std::size_t t) {
   fs::path full_path = dir / filename;
   fastx::fasta_buffered_reader fbr{full_path};
 
-  roaring::Roaring bitmap;
+  bitmap_t bitmap;
 
   for (auto seq : fbr.sequences()) {
     const std::string& read = std::get<1>(seq);
@@ -207,19 +208,6 @@ inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t)
   }
 
   return count;
-}
-
-void order_bitmaps(std::vector<roaring::Roaring>& bitmaps, std::vector<std::string>& labels) {
-  std::vector<std::size_t> sizes(bitmaps.size());
-  auto bs_zip = std::views::zip(bitmaps, sizes);
-
-  std::for_each(bs_zip.begin(), bs_zip.end(), [&](auto&& bs) {
-    auto& [bitmap, size] = bs;
-    size = bitmap.cardinality();
-  });
-
-  auto bls_zip = std::views::zip(bitmaps, labels, sizes);
-  std::ranges::sort(bls_zip, std::ranges::greater{}, [](const auto& bls) { return std::get<2>(bls); });
 }
 
 } // namespace detail

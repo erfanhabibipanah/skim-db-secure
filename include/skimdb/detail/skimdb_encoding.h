@@ -1,4 +1,3 @@
-
 #ifndef SKIMDB_ENCODING_H
 #define SKIMDB_ENCODING_H
 
@@ -8,8 +7,8 @@
 
 #include <cereal/types/vector.hpp>
 
-namespace skim {
 
+namespace skim {
 namespace detail {
 
 // Block format (16 bits):
@@ -28,9 +27,14 @@ inline constexpr std::uint16_t g_max_run      = 0x3FFF;       // Max 14-bit coun
 
 enum class block_encoding { uncompressed, zero_run, one_run };
 
-inline block_encoding get_block_encoding(std::uint16_t block) {
-  if (block & g_uncompressed_flag) { return block_encoding::uncompressed; }
-  if (block & g_run_of_ones_flag) { return block_encoding::one_run; }
+
+inline auto get_block_encoding(std::uint16_t block) -> block_encoding {
+  if (block & g_uncompressed_flag) {
+    return block_encoding::uncompressed;
+  }
+  if (block & g_run_of_ones_flag) {
+    return block_encoding::one_run;
+  }
   return block_encoding::zero_run;
 }
 
@@ -38,7 +42,7 @@ class encoding {
 public:
   encoding() = default;
 
-  void push(std::size_t idx) {
+  auto push(std::size_t idx) -> void {
     if (idx < next_seq_) { return; }
 
     if (idx == next_seq_) {
@@ -59,6 +63,7 @@ public:
     }
 
     std::size_t gap = idx - next_seq_;
+
     while (gap > 0) {
       if (!blocks_.empty() && get_block_encoding(blocks_.back()) == block_encoding::zero_run) {
         std::uint16_t cur = blocks_.back() & g_count_mask;
@@ -81,7 +86,7 @@ public:
     next_seq_ = idx + 1;
   }
 
-  void attempt_compress() {
+  auto attempt_compress() -> void {
     std::vector<std::uint16_t> compressed;
 
     for (std::size_t i = 0; i < blocks_.size(); ++i) {
@@ -95,7 +100,7 @@ public:
       }
 
       std::uint16_t count = block & g_count_mask;
-      if (count < 15 && i + 1 < blocks_.size()) {
+      if ((count < 15) && (i + 1 < blocks_.size())) {
         std::uint16_t literal = 1 << 15;
         std::size_t inserted = count;
 
@@ -104,6 +109,7 @@ public:
         }
 
         std::size_t j = i + 1;
+
         while (inserted < 15) {
           if (j >= blocks_.size()) {
             compressed.push_back(literal);
@@ -185,7 +191,7 @@ public:
 
 private:
   std::vector<std::uint16_t> blocks_;
-  std::size_t next_seq_ = 0;
+  std::size_t next_seq_{0};
 };
 
 } // namespace detail
