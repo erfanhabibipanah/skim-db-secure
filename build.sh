@@ -53,7 +53,10 @@ fi
 echo "Building $PROJECT..."
 echo "cmake call: $CMAKE_CALL"
 
+# seems to be required by macOS
+export CMAKE_POLICY_VERSION_MINIMUM=3.5
+
 cd build/
-cmake $CMAKE_CALL -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_INSTALL_PREFIX=$DIR
+cmake $CMAKE_CALL -DCMAKE_INSTALL_PREFIX=$DIR
 make -j $JOBS $VERBOSE
 make install

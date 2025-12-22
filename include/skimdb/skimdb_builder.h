@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include <fastxrd/fasta_buffered_reader.h>
+#include <fastxrd/fasta_simple_reader.h>
 #include <fastxrd/fastx_files_reader.h>
 
 #include "detail/skimdb_encoding.h"
@@ -31,15 +31,17 @@ public:
     LogFun lf{"build_index"};
     g_log->info("creating kmer dictionary, k={}, s={}, t={}...", k, s, t);
 
-    // TODO: can we optimize this shit: counting k-mers is quite expensive...
-    std::size_t total_kmers = detail::total_kmer_count(k, s, t);
+    std::size_t total_kmers = detail::estimated_kmer_count(k, s, t);
 
-    g_log->info("found {} total kmers", total_kmers);
-
-    std::vector<detail::encoding> data(total_kmers);
+    g_log->info("estimated {} total kmers", total_kmers);
 
     phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
-    index.reserve(total_kmers);
+    std::vector<detail::encoding> data;
+
+    // out estimate is probably off hence we divide
+    // this still should give good amortization
+    // without overblowing memory
+    data.reserve(total_kmers >> 2);
 
     std::size_t free_idx = 0;
 
@@ -53,6 +55,10 @@ public:
         }
 
         std::size_t idx = it->second;
+
+        if (idx >= data.size()) {
+          data.resize(idx + 1);
+        }
         data[idx].push(i);
       }
     }
@@ -98,7 +104,7 @@ public:
   static auto build_sequence_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_sequence_index"};
 
-    fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
+    fastx::fastx_files_reader<fastx::fasta_simple_reader> ffr{dir};
 
     std::vector<bitmap_t> bitmaps;
     std::vector<std::string> labels;

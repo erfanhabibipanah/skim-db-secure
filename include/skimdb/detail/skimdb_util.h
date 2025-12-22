@@ -8,8 +8,9 @@
 #include <utility>
 #include <vector>
 
-#include <fastxrd/fasta_buffered_reader.h>
+#include <fastxrd/fasta_simple_reader.h>
 
+#include "skimdb/detail/skimdb_logger.h"
 #include "skimdb_definitions.h"
 
 
@@ -43,7 +44,7 @@ inline auto load_f2l(const fs::path& path) {
   return std::make_pair(names, labels);
 }
 
-inline bool is_valid(const std::string& kmer, std::size_t k) {
+inline auto is_valid(const std::string& kmer, std::size_t k) -> bool {
   if (kmer.length() != k) {
     return false;
   }
@@ -67,7 +68,7 @@ inline bool is_valid(const std::string& kmer, std::size_t k) {
   return true;
 }
 
-inline int char_to_base2(char c) {
+inline auto char_to_base2(char c) -> int {
   switch (c) {
   case 'A':
   case 'a':
@@ -86,7 +87,7 @@ inline int char_to_base2(char c) {
   }
 }
 
-inline std::uint32_t kmer_to_uint32(const std::string& kmer) {
+inline auto kmer_to_uint32(const std::string& kmer) -> std::uint32_t {
   if (kmer.length() > g_kmer_limit) {
     return 0;
   }
@@ -104,7 +105,7 @@ inline std::uint32_t kmer_to_uint32(const std::string& kmer) {
   return result;
 }
 
-inline std::uint32_t reverse_complement(std::uint32_t kmer, std::size_t k) {
+inline auto reverse_complement(std::uint32_t kmer, std::size_t k) -> std::uint32_t {
   std::uint32_t rev_comp = 0;
 
   for (std::size_t i = 0; i < k; ++i) {
@@ -115,7 +116,7 @@ inline std::uint32_t reverse_complement(std::uint32_t kmer, std::size_t k) {
   return rev_comp;
 }
 
-inline bool is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t t) {
+inline auto is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t t) -> bool {
   if (s == 0 || s >= k) {
     return true;
   }
@@ -177,7 +178,7 @@ inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s,
 inline bitmap_t populate_bitmap(const fs::path& dir, const std::string& filename,
                                 std::size_t k, std::size_t s, std::size_t t) {
   fs::path full_path = dir / filename;
-  fastx::fasta_buffered_reader fbr{full_path};
+  fastx::fasta_simple_reader fbr{full_path};
 
   bitmap_t bitmap;
 
@@ -190,6 +191,7 @@ inline bitmap_t populate_bitmap(const fs::path& dir, const std::string& filename
 }
 
 inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t) {
+  LogFun lf{"total_kmer_count", spdlog::level::debug};
   std::uint64_t num_kmers = 1ULL << (2 * k);
 
   if (s == 0 || s >= k) {
@@ -208,6 +210,18 @@ inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t)
   }
 
   return count;
+}
+
+inline std::size_t estimated_kmer_count(std::size_t k, std::size_t s, std::size_t t) {
+  std::uint64_t num_kmers = 1ULL << (2 * k);
+
+  if (s == 0 || s >= k) {
+    std::uint64_t num_palindromes = (1ULL << (2 * (k >> 1))) * ((k + 1) % 2);
+    return static_cast<std::size_t>((num_kmers + num_palindromes) / 2);
+  }
+
+  // we use compressiom factor from the Syncmer paper
+  return num_kmers / (k - s + 1);
 }
 
 } // namespace detail

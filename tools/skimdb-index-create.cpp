@@ -8,7 +8,6 @@
  *  See accompanying LICENSE
  */
 
-#include "skimdb/detail/skimdb_logger.h"
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -16,6 +15,7 @@
 #include <cxxopts.hpp>
 
 #include <spdlog/spdlog.h>
+#include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <skimdb/skimdb.h>
@@ -31,7 +31,7 @@ auto main(int argc, char* argv[]) -> int {
 
   int k = 15;
   int s = 9;
-  int t = 0;
+  int t = 2;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -39,9 +39,9 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "input file or directory FASTA format", cxxopts::value<std::string>(in))
       ("o,output", "database file name", cxxopts::value<std::string>(out))
-      ("k", "k-mer size", cxxopts::value<int>(k)->default_value("15"))
-      ("s", "syncmer s size", cxxopts::value<int>(s)->default_value("9"))
-      ("t", "syncmer t parameter", cxxopts::value<int>(t)->default_value("0"))
+      ("k", "k-mer size", cxxopts::value<int>(k)->default_value(std::to_string(k)))
+      ("s", "syncmer s size", cxxopts::value<int>(s)->default_value(std::to_string(s)))
+      ("t", "syncmer t parameter", cxxopts::value<int>(t)->default_value(std::to_string(t)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -55,6 +55,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-index-create");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 

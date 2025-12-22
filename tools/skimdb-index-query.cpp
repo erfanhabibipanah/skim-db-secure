@@ -5,6 +5,7 @@
 #include <cxxopts.hpp>
 
 #include <spdlog/spdlog.h>
+#include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <skimdb/skimdb.h>
@@ -33,6 +34,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-index-query");
 
   if (in.empty()) {
