@@ -61,7 +61,7 @@ auto main(int argc, char* argv[]) -> int {
 
   auto [k, s, t] = db.parameters();
 
-  log->info("index loaded, k={}, s={}, t={}", k, s, t);
+  log->info("index loaded, [k={}, s={}, t={}]", k, s, t);
   log->info("ready for queries...");
 
   std::string q = "";

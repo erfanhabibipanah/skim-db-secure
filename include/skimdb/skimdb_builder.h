@@ -29,11 +29,11 @@ public:
   static auto build_index(const std::vector<bitmap_t>& bitmaps, const std::vector<std::string>& labels,
                           std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_index"};
-    g_log->info("creating kmer dictionary, k={}, s={}, t={}...", k, s, t);
+    g_log->info("creating kmer dictionary with [k={}, s={}, t={}]...", k, s, t);
 
     std::size_t total_kmers = detail::estimated_kmer_count(k, s, t);
 
-    g_log->info("estimated {} total kmers", total_kmers);
+    g_log->info("estimating {} total kmers", total_kmers);
 
     phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
     std::vector<detail::encoding> data;
@@ -110,7 +110,7 @@ public:
     std::vector<std::string> labels;
 
     g_log->info("extracting kmers from {}", dir.string());
-    g_log->info("using k={}, s={}, t={}...", k, s, t);
+    g_log->info("using [k={}, s={}, t={}]...", k, s, t);
 
     std::uint64_t kmer_count = 0;
 

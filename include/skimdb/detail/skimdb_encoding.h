@@ -25,18 +25,12 @@ inline constexpr std::uint16_t g_count_mask   = 0x3FFF;       // 14 bits for cou
 inline constexpr std::uint16_t g_max_literal  = 0x7FFF;       // Max 15-bit value
 inline constexpr std::uint16_t g_max_run      = 0x3FFF;       // Max 14-bit count
 
-enum class block_encoding { uncompressed, zero_run, one_run };
+inline constexpr std::uint16_t g_encoding_uncompressed = 2;
+inline constexpr std::uint16_t g_encoding_one_run      = 1;
+inline constexpr std::uint16_t g_encoding_zero_run     = 0;
 
 
-inline auto get_block_encoding(std::uint16_t block) -> block_encoding {
-  if (block & g_uncompressed_flag) {
-    return block_encoding::uncompressed;
-  }
-  if (block & g_run_of_ones_flag) {
-    return block_encoding::one_run;
-  }
-  return block_encoding::zero_run;
-}
+inline auto get_block_encoding(std::uint16_t block) -> std::uint16_t { return ((block >> 14) & ~(block >> 15)); }
 
 class encoding {
 public:
@@ -46,7 +40,7 @@ public:
     if (idx < next_seq_) { return; }
 
     if (idx == next_seq_) {
-      if (!blocks_.empty() && get_block_encoding(blocks_.back()) == block_encoding::one_run) {
+      if (!blocks_.empty() && get_block_encoding(blocks_.back()) == g_encoding_one_run) {
         std::uint16_t cur = blocks_.back() & g_count_mask;
         if (cur < g_max_run) {
           ++cur;
@@ -65,7 +59,7 @@ public:
     std::size_t gap = idx - next_seq_;
 
     while (gap > 0) {
-      if (!blocks_.empty() && get_block_encoding(blocks_.back()) == block_encoding::zero_run) {
+      if (!blocks_.empty() && get_block_encoding(blocks_.back()) == g_encoding_zero_run) {
         std::uint16_t cur = blocks_.back() & g_count_mask;
         std::size_t space = static_cast<std::size_t>(g_max_run - cur);
         if (space > 0) {
@@ -89,23 +83,18 @@ public:
   auto attempt_compress() -> void {
     std::vector<std::uint16_t> compressed;
 
-    for (std::size_t i = 0; i < blocks_.size(); ++i) {
+    for (std::size_t i = 0, end = blocks_.size(); i < end; ++i) {
       std::uint16_t block = blocks_[i];
-      block_encoding type = get_block_encoding(block);
-
-      if (type == block_encoding::uncompressed) {
-        // encoding was previously compressed
-        // return having done nothing
-        return;
-      }
+      std::uint16_t type = get_block_encoding(block);
 
       std::uint16_t count = block & g_count_mask;
+
       if ((count < 15) && (i + 1 < blocks_.size())) {
         std::uint16_t literal = 1 << 15;
         std::size_t inserted = count;
 
         for (std::size_t bit = 0; bit < count; ++bit) {
-          literal |= (type == block_encoding::one_run) ? (1u << (14 - bit)) : 0;
+          literal |= (type == g_encoding_one_run) ? (1u << (14 - bit)) : 0;
         }
 
         std::size_t j = i + 1;
@@ -118,12 +107,12 @@ public:
           }
 
           std::uint16_t next_block = blocks_[j];
-          block_encoding next_type = get_block_encoding(next_block);
+          std::uint16_t next_type = get_block_encoding(next_block);
           std::uint16_t next_count = next_block & g_count_mask;
 
           if (inserted + next_count < 16) {
             for (std::size_t bit = 0; bit < next_count; ++bit) {
-              literal |= (next_type == block_encoding::one_run) ? (1u << (14 - (inserted + bit))) : 0;
+              literal |= (next_type == g_encoding_one_run) ? (1u << (14 - (inserted + bit))) : 0;
             }
 
             inserted += next_count;
@@ -138,14 +127,14 @@ public:
           } else {
             std::size_t can_take = 15 - inserted;
             for (std::size_t bit = 0; bit < can_take; ++bit) {
-              literal |= (next_type == block_encoding::one_run) ? (1u << (14 - (inserted + bit))) : 0;
+              literal |= (next_type == g_encoding_one_run) ? (1u << (14 - (inserted + bit))) : 0;
             }
 
             compressed.push_back(literal);
 
             std::uint16_t remaining = static_cast<std::uint16_t>(next_count - can_take);
 
-            blocks_[j] = static_cast<std::uint16_t>((next_type == block_encoding::one_run ? g_run_of_ones_flag : g_run_of_zeros_flag) | remaining);
+            blocks_[j] = static_cast<std::uint16_t>((next_type == g_encoding_one_run ? g_run_of_ones_flag : g_run_of_zeros_flag) | remaining);
             inserted += can_take;
             i = j - 1;
           }
@@ -162,7 +151,7 @@ public:
     std::size_t pos = 0;
     for (auto block : blocks_) {
       switch (get_block_encoding(block)) {
-        case block_encoding::uncompressed: {
+        case g_encoding_uncompressed: {
           std::uint16_t val = block & g_literal_mask;
           for (int bit = 0; bit < 15; ++bit) {
             if (val & (1u << (14 - bit))) { co_yield pos + bit; }
@@ -170,11 +159,11 @@ public:
           pos += 15;
           break;
         }
-        case block_encoding::zero_run: {
+        case g_encoding_zero_run: {
           pos += static_cast<std::size_t>(block & g_count_mask);
           break;
         }
-        case block_encoding::one_run: {
+        case g_encoding_one_run: {
           std::size_t num_ones = static_cast<std::size_t>(block & g_count_mask);
           for (std::size_t i = 0; i < num_ones; ++i) { co_yield pos + i; }
           pos += num_ones;
