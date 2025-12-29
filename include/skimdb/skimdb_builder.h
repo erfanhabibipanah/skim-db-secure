@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include <fastxrd/fasta_simple_reader.h>
+#include <fastxrd/fasta_buffered_reader.h>
 #include <fastxrd/fastx_files_reader.h>
 
 #include "detail/skimdb_encoding.h"
@@ -104,7 +104,7 @@ public:
   static auto build_sequence_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_sequence_index"};
 
-    fastx::fastx_files_reader<fastx::fasta_simple_reader> ffr{dir};
+    fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
 
     std::vector<bitmap_t> bitmaps;
     std::vector<std::string> labels;
