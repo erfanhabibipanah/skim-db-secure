@@ -94,7 +94,7 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("indexing {}...", in);
 
-  auto db = skim::builder::build_sequence_index(dir, k, s, t);
+  auto db = skim::builder::build_dir_index(dir, k, s, t);
 
   log->info("index ready!");
   log->info("saving index to {}...", out);
