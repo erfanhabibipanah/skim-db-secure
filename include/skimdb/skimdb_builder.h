@@ -27,7 +27,7 @@ class builder {
 public:
   [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps, const std::vector<std::string>& labels,
                                         std::size_t k, std::size_t s, std::size_t t) -> skimdb {
-    LogFun lf{"build_index"};
+    LogFun lf{"build_index(...)"};
 
     g_log->info("packing kmers into data with (k={}, s={}, t={})...", k, s, t);
 
@@ -84,6 +84,8 @@ public:
                                              const std::vector<std::string>& files,
                                              const std::vector<std::string>& labels,
                                              std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+    LogFun lf{"build_file_index(dir, files, ...)"};
+
     std::vector<bitmap_t> bitmaps(files.size());
     auto zipped = std::views::zip(files, bitmaps);
 
@@ -97,26 +99,25 @@ public:
 
   [[nodiscard]] static auto build_file_index(const fs::path& dir, const fs::path& f2l,
                                              std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+    LogFun lf{"build_file_index(dir, f2l, ...)"};
     auto [files, labels] = detail::load_f2l(f2l);
     return build_file_index(dir, files, labels, k, s, t);
   }
 
-  [[nodiscard]] static auto build_sequence_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t)
+  template <std::ranges::input_range Range>
+  [[nodiscard]] static auto build_range_index(Range&& range, std::size_t k, std::size_t s, std::size_t t)
       -> skimdb {
-    LogFun lf{"build_sequence_index"};
-
-    fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
+    LogFun lf{"build_range_index(...)"};
 
     std::vector<bitmap_t> bitmaps;
     std::vector<std::string> labels;
 
-    g_log->info("extracting kmers from {}", dir.string());
-    g_log->info("using (k={}, s={}, t={})...", k, s, t);
+    g_log->info("extracting kmers with (k={}, s={}, t={})...", k, s, t);
 
     std::uint64_t kmer_count = 0;
     std::uint32_t d = 0;
 
-    for (auto seq : ffr.sequences()) {
+    for (auto&& seq : range) {
       labels.emplace_back(std::move(std::get<0>(seq)));
       const std::string& read = std::get<1>(seq);
       bitmap_t bitmap;
@@ -132,6 +133,13 @@ public:
     solver::greedy_order_bitmaps(bitmaps, labels);
 
     return build_index(bitmaps, labels, k, s, t);
+  }
+
+  [[nodiscard]] static auto build_dir_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t)
+      -> skimdb {
+    LogFun lf{"build_dir_index(...)"};
+    fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
+    return build_range_index(ffr.sequences(), k, s, t);
   }
 };
 

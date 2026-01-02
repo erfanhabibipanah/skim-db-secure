@@ -32,13 +32,13 @@ class LogFun {
 public:
   explicit LogFun(std::string&& name, spdlog::level::level_enum level = spdlog::level::info)
       : name_{std::move(name)}, level_{level} {
-    g_log->log(level_, "RUNNING: {}(...)", name_);
+    g_log->log(level_, "RUNNING: {}", name_);
     tp_ = steady_clock::now();
   }
 
   ~LogFun() {
     auto t = duration<double>(steady_clock::now() - tp_);
-    g_log->log(level_, "DONE: {}(...) in {}", name_, as_time(t.count()));
+    g_log->log(level_, "DONE: {} in {}", name_, as_time(t.count()));
   }
 
 private:
