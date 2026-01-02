@@ -36,7 +36,7 @@ class encoding {
 public:
   encoding() = default;
 
-  auto push(std::size_t idx) -> void {
+  void push(std::size_t idx) {
     if (idx < next_seq_) { return; }
 
     if (idx == next_seq_) {
@@ -80,7 +80,7 @@ public:
     next_seq_ = idx + 1;
   }
 
-  auto attempt_compress() -> void {
+  void attempt_compress() {
     std::vector<std::uint16_t> compressed;
 
     for (std::size_t i = 0, end = blocks_.size(); i < end; ++i) {

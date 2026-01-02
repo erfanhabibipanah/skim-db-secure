@@ -3,6 +3,7 @@
 
 #include <roaring.hh>
 
+
 namespace skim {
 
 // default bitmap type for intermediate data handling

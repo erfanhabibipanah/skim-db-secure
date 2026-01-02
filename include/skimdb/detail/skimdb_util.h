@@ -10,7 +10,7 @@
 
 #include <fastxrd/fasta_simple_reader.h>
 
-#include "skimdb/detail/skimdb_logger.h"
+#include "skimdb_logger.h"
 #include "skimdb_definitions.h"
 
 
@@ -138,8 +138,7 @@ inline auto is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t 
   return true;
 }
 
-inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s, std::size_t t,
-                          bitmap_t& bitmap) -> std::uint32_t {
+inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s, std::size_t t, bitmap_t& bitmap) {
   std::uint32_t kmer = 0;
   std::uint32_t rev_comp = 0;
 
@@ -147,6 +146,7 @@ inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s,
   std::uint32_t kmer_mask = (1ULL << (2 * k)) - 1;
 
   std::uint32_t tot_added = 0;
+  std::uint32_t last_added = 0;
 
   for (std::size_t i = 0, end = read.length(); i < end; ++i) {
     auto base = char_to_base2(read[i]);
@@ -164,6 +164,7 @@ inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s,
       std::uint32_t canonical = std::min((kmer & kmer_mask), (rev_comp & kmer_mask));
       if (is_syncmer(canonical, k, s, t)) {
         bitmap.add(canonical);
+        last_added = canonical;
         tot_added++;
       }
     }
@@ -171,12 +172,12 @@ inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s,
 
   bitmap.runOptimize();
 
-  return tot_added;
+  return std::make_tuple(tot_added, last_added);
 }
 
 // Opens fasta file and processes canonical syncmers into a roaring bitmap
-inline bitmap_t populate_bitmap(const fs::path& dir, const std::string& filename,
-                                std::size_t k, std::size_t s, std::size_t t) {
+inline auto populate_bitmap(const fs::path& dir, const std::string& filename,
+                            std::size_t k, std::size_t s, std::size_t t) -> bitmap_t {
   fs::path full_path = dir / filename;
   fastx::fasta_simple_reader fbr{full_path};
 
@@ -190,7 +191,7 @@ inline bitmap_t populate_bitmap(const fs::path& dir, const std::string& filename
   return bitmap;
 }
 
-inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t) {
+inline auto total_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std::size_t {
   LogFun lf{"total_kmer_count", spdlog::level::debug};
   std::uint64_t num_kmers = 1ULL << (2 * k);
 
@@ -212,7 +213,7 @@ inline std::size_t total_kmer_count(std::size_t k, std::size_t s, std::size_t t)
   return count;
 }
 
-inline std::size_t estimated_kmer_count(std::size_t k, std::size_t s, std::size_t t) {
+inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std::size_t {
   std::uint64_t num_kmers = 1ULL << (2 * k);
 
   if (s == 0 || s >= k) {
@@ -220,7 +221,7 @@ inline std::size_t estimated_kmer_count(std::size_t k, std::size_t s, std::size_
     return static_cast<std::size_t>((num_kmers + num_palindromes) / 2);
   }
 
-  // we use compressiom factor from the Syncmer paper
+  // we use compressiom factor from the syncmer paper
   return num_kmers / (k - s + 1);
 }
 

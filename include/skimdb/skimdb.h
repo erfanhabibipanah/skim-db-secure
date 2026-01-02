@@ -2,6 +2,7 @@
 #define SKIMDB_H
 
 #include <expected>
+#include <filesystem>
 #include <generator>
 #include <string>
 #include <tuple>
@@ -22,13 +23,14 @@ namespace skim {
 
 namespace fs = std::filesystem;
 
-
 class skimdb {
 public:
   skimdb() = default;
 
+  auto parameters() const { return std::make_tuple(k_, s_, t_); }
+
   // given a kmer, returns a generator over annotated labels
-  auto query(std::string kmer) -> std::generator<const std::string&> {
+  [[nodiscard]] auto query(const std::string& kmer) -> std::generator<const std::string&> {
     if (!detail::is_valid(kmer, k_)) {
       co_return;
     }
@@ -48,8 +50,6 @@ public:
     }
   }
 
-  auto parameters() const { return std::make_tuple(k_, s_, t_); }
-
   auto load(const fs::path& path) -> std::expected<void, std::string> {
     std::ifstream is{path, std::ios::binary};
     if (!is) {
@@ -66,7 +66,7 @@ public:
     return {};
   }
 
-  auto save(const fs::path& path) -> std::expected<void, std::string> {
+  auto save(const fs::path& path) -> std::expected<std::uintmax_t, std::string> {
     std::ofstream os{path, std::ios::binary};
     if (!os) {
       return std::unexpected{"could not create file"};
@@ -74,12 +74,14 @@ public:
 
     try {
       cereal::BinaryOutputArchive archive{os};
-      archive(*this);  // Uses serialize() internally
+      archive(*this); // Uses serialize() internally
     } catch (...) {
       return std::unexpected{"serialization failed"};
     }
 
-    return {};
+    os.close();
+
+    return fs::file_size(path);
   }
 
   template <class Archive>
@@ -94,8 +96,9 @@ private:
   std::size_t s_{0};
   std::size_t t_{0};
 
-  std::vector<std::string> labels_;
   phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index_;
+
+  std::vector<std::string> labels_;
   std::vector<detail::encoding> data_;
 };
 

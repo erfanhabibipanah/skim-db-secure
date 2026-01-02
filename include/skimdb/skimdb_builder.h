@@ -6,12 +6,12 @@
 #include <filesystem>
 #include <ranges>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include <fastxrd/fasta_buffered_reader.h>
 #include <fastxrd/fastx_files_reader.h>
 
+#include "detail/skimdb_definitions.h"
 #include "detail/skimdb_encoding.h"
 #include "detail/skimdb_logger.h"
 #include "detail/skimdb_util.h"
@@ -25,20 +25,27 @@ namespace fs = std::filesystem;
 
 class builder {
 public:
-
-  static auto build_index(const std::vector<bitmap_t>& bitmaps, const std::vector<std::string>& labels,
-                          std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+  [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps, const std::vector<std::string>& labels,
+                                        std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_index"};
-    g_log->info("creating kmer dictionary with [k={}, s={}, t={}]...", k, s, t);
+
+    g_log->info("packing kmers into data with (k={}, s={}, t={})...", k, s, t);
 
     std::size_t total_kmers = detail::estimated_kmer_count(k, s, t);
+    g_log->info("estimated {} total kmers", total_kmers);
 
-    g_log->info("estimating {} total kmers", total_kmers);
+    skimdb db;
 
-    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
-    std::vector<detail::encoding> data;
+    db.k_ = k;
+    db.s_ = s;
+    db.t_ = t;
 
-    // out estimate is probably off hence we divide
+    auto& index = db.index_;
+    auto& data = db.data_;
+
+    db.labels_ = labels;
+
+    // our estimate is probably off hence we divide
     // this still should give good amortization
     // without overblowing memory
     data.reserve(total_kmers >> 2);
@@ -63,27 +70,20 @@ public:
       }
     }
 
-    g_log->info("kmer dictionary done!");
+    g_log->info("kmers packing done!");
+    g_log->info("compressing data...");
 
-    g_log->info("compressing kmers...");
     std::for_each(std::execution::par, data.begin(), data.end(), [](detail::encoding& rec) { rec.attempt_compress(); });
+
     g_log->info("compression done!");
-
-    skimdb db;
-
-    db.k_ = k;
-    db.s_ = s;
-    db.t_ = t;
-
-    db.labels_ = labels;
-    db.index_ = std::move(index);
-    db.data_ = std::move(data);
 
     return db;
   }
 
-  static auto build_file_index(const fs::path& dir, const std::vector<std::string>& files,
-                               const std::vector<std::string>& labels, std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+  [[nodiscard]] static auto build_file_index(const fs::path& dir,
+                                             const std::vector<std::string>& files,
+                                             const std::vector<std::string>& labels,
+                                             std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     std::vector<bitmap_t> bitmaps(files.size());
     auto zipped = std::views::zip(files, bitmaps);
 
@@ -95,13 +95,14 @@ public:
     return build_index(bitmaps, labels, k, s, t);
   }
 
-  static auto build_file_index(const fs::path& dir, const fs::path& f2l,
-                               std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+  [[nodiscard]] static auto build_file_index(const fs::path& dir, const fs::path& f2l,
+                                             std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     auto [files, labels] = detail::load_f2l(f2l);
     return build_file_index(dir, files, labels, k, s, t);
   }
 
-  static auto build_sequence_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+  [[nodiscard]] static auto build_sequence_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t)
+      -> skimdb {
     LogFun lf{"build_sequence_index"};
 
     fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
@@ -110,21 +111,25 @@ public:
     std::vector<std::string> labels;
 
     g_log->info("extracting kmers from {}", dir.string());
-    g_log->info("using [k={}, s={}, t={}]...", k, s, t);
+    g_log->info("using (k={}, s={}, t={})...", k, s, t);
 
     std::uint64_t kmer_count = 0;
+    std::uint32_t d = 0;
 
     for (auto seq : ffr.sequences()) {
       labels.emplace_back(std::move(std::get<0>(seq)));
       const std::string& read = std::get<1>(seq);
       bitmap_t bitmap;
-      kmer_count += detail::update_bitmap(read, k, s, t, bitmap);
-      bitmaps.emplace_back(bitmap);
+      auto [count, last] = detail::update_bitmap(read, k, s, t, bitmap);
+      kmer_count += count;
+      d = std::max(d, last);
+      bitmaps.emplace_back(std::move(bitmap));
     }
 
     g_log->info("{} kmers extracted from {} sequences", kmer_count, labels.size());
+    g_log->info("largest kmer: {}", d);
 
-    solver::order_bitmaps(bitmaps, labels);
+    solver::greedy_order_bitmaps(bitmaps, labels);
 
     return build_index(bitmaps, labels, k, s, t);
   }

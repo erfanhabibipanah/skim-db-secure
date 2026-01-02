@@ -13,6 +13,7 @@
 #include <string>
 
 #include <cxxopts.hpp>
+#include <fmt_extra.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
@@ -103,6 +104,8 @@ auto main(int argc, char* argv[]) -> int {
   if (!res) {
     log->error("could not save {}, error: {}!", out, res.error());
     return -1;
+  } else {
+    log->info("index saved, size: {}B ({})", res.value(), as_fsize{res.value()});
   }
 
   log->info("done!");

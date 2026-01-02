@@ -36,15 +36,21 @@ CPMAddPackage(
 )
 
 CPMAddPackage(
+    NAME phmap
+    GITHUB_REPOSITORY greg7mdp/parallel-hashmap
+    VERSION 2.0.0
+)
+
+CPMAddPackage(
     NAME fastxrd
     GIT_REPOSITORY git@gitlab.com:SCoRe-Group/fastxrd.git
     GIT_TAG main
 )
 
 CPMAddPackage(
-    NAME phmap
-    GITHUB_REPOSITORY greg7mdp/parallel-hashmap
-    VERSION 2.0.0
+    NAME fmtextra
+    GIT_REPOSITORY git@gitlab.com:jzola/fmtextra.git
+    GIT_TAG main
 )
 
 # required for par execution policy
@@ -66,6 +72,7 @@ target_link_libraries(skimdb INTERFACE
     cereal
     roaring
     fastxrd
+    fmtextra
     phmap
     tbb
 )

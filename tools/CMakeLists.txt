@@ -10,8 +10,14 @@ CPMAddPackage(
       "CXXOPTS_BUILD_TESTS OFF"
 )
 
+CPMAddPackage(
+    NAME fmtextra
+    GIT_REPOSITORY git@gitlab.com:jzola/fmtextra.git
+    GIT_TAG main
+)
+
 add_executable(skimdb-index-create skimdb-index-create.cpp)
-target_link_libraries(skimdb-index-create PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog)
+target_link_libraries(skimdb-index-create PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra)
 
 add_executable(skimdb-index-query skimdb-index-query.cpp)
 target_link_libraries(skimdb-index-query PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog)
