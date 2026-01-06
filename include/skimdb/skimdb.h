@@ -30,19 +30,22 @@ public:
   auto parameters() const { return std::make_tuple(k_, s_, t_); }
 
   // given a kmer, returns a generator over annotated labels
-  [[nodiscard]] auto query(const std::string& kmer) -> std::generator<const std::string&> {
-    if (!detail::is_valid(kmer, k_)) {
+  [[nodiscard]] auto query(const std::string& s) -> std::generator<const std::string&> {
+    if (!detail::is_valid(s, k_)) {
       co_return;
     }
 
-    auto kmer_rec = index_.find(detail::kmer_to_uint32(kmer));
+    auto kmer = detail::kmer_to_uint32(s);
+    auto canonical = std::min(kmer, detail::reverse_complement(kmer, k_));
+
+    auto kmer_rec = index_.find(canonical);
     if (kmer_rec == index_.end()) {
       co_return;
     }
 
     auto kmer_idx = kmer_rec->second;
 
-    for (std::size_t label_idx : data_[kmer_idx].select_idxs()) {
+    for (auto label_idx : data_[kmer_idx].select_idxs()) {
       if (label_idx >= labels_.size()) {
         break;
       }

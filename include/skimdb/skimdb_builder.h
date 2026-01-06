@@ -71,7 +71,7 @@ public:
     }
 
     g_log->info("kmers packing done!");
-    g_log->info("compressing data...");
+    g_log->info("compressing data with {} kmers...", data.size());
 
     std::for_each(std::execution::par, data.begin(), data.end(), [](detail::encoding& rec) { rec.attempt_compress(); });
 
