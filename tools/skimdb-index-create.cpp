@@ -82,8 +82,8 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  if (s < 3) {
-    log->error("incorrect s, must be s > 2");
+  if (s < 0) {
+    log->error("incorrect s, must be s >= 0");
     return -1;
   }
 

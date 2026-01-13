@@ -37,7 +37,7 @@ inline void greedy_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std
   std::ranges::sort(bls_zip, std::ranges::greater{}, [](const auto& bls) { return std::get<2>(bls); });
 
   // selected somewhat arbitrarily
-  constexpr int w = 16;
+  int w = std::min(16, static_cast<int>(0.25 * bitmaps.size()));
 
   for (std::size_t i = 0, end = bitmaps.size() - w - 1; i < end; ++i) {
     auto& B = bitmaps[i];

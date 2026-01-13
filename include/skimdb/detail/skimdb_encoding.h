@@ -147,7 +147,7 @@ public:
     blocks_ = std::move(compressed);
   }
 
-  auto select_idxs() -> std::generator<std::size_t> {
+  auto select_idxs() const -> std::generator<std::size_t> {
     std::size_t pos = 0;
     for (auto block : blocks_) {
       switch (get_block_encoding(block)) {

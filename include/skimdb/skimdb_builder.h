@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <execution>
+#include <expected>
 #include <filesystem>
 #include <ranges>
 #include <string>
@@ -25,7 +26,9 @@ namespace fs = std::filesystem;
 
 class builder {
 public:
-  [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps, const std::vector<std::string>& labels,
+  // labels become owned by the resulting skimdb index, hence move semantics
+  // bitmaps are always post-processed so passing by const reference
+  [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps, std::vector<std::string> labels,
                                         std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_index(...)"};
 
@@ -43,7 +46,7 @@ public:
     auto& index = db.index_;
     auto& data = db.data_;
 
-    db.labels_ = labels;
+    db.labels_ = std::move(labels);
 
     // our estimate is probably off hence we divide
     // this still should give good amortization
@@ -82,7 +85,7 @@ public:
 
   [[nodiscard]] static auto build_file_index(const fs::path& dir,
                                              const std::vector<std::string>& files,
-                                             const std::vector<std::string>& labels,
+                                             std::vector<std::string> labels,
                                              std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_file_index(dir, files, ...)"};
 
@@ -94,14 +97,14 @@ public:
       bitmap = detail::populate_bitmap(dir, file, k, s, t);
     });
 
-    return build_index(bitmaps, labels, k, s, t);
+    return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
   [[nodiscard]] static auto build_file_index(const fs::path& dir, const fs::path& f2l,
                                              std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_file_index(dir, f2l, ...)"};
     auto [files, labels] = detail::load_f2l(f2l);
-    return build_file_index(dir, files, labels, k, s, t);
+    return build_file_index(dir, files, std::move(labels), k, s, t);
   }
 
   template <std::ranges::input_range Range>
@@ -132,7 +135,7 @@ public:
 
     solver::greedy_order_bitmaps(bitmaps, labels);
 
-    return build_index(bitmaps, labels, k, s, t);
+    return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
   [[nodiscard]] static auto build_dir_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t)
@@ -140,6 +143,33 @@ public:
     LogFun lf{"build_dir_index(...)"};
     fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
     return build_range_index(ffr.sequences(), k, s, t);
+  }
+
+  // merges indexes with a disjoint set of labels
+  template <std::ranges::input_range Range>
+  [[nodiscard]] static auto merge_disjoint_indexes(Range&& range, std::size_t k, std::size_t s, std::size_t t) -> std::expected<skimdb, std::string> {
+    LogFun lf{"merge_disjoint_indexes(...)"};
+
+    std::vector<bitmap_t> bitmaps;
+    std::vector<std::string> labels;
+
+    auto offset = 0;
+
+    for (const skimdb& db : range) {
+      if (db.parameters() != std::tuple{k, s, t}) {
+        return std::unexpected("parameter mismatch");
+      }
+      labels.insert(labels.end(), db.labels_.begin(), db.labels_.end());
+      bitmaps.resize(labels.size());
+      for (const auto& [kmer, pos] : db.index_) {
+        for (auto l : db.traverse_kmer(pos)) {
+          bitmaps[l + offset].add(kmer);
+        }
+      }
+      offset = labels.size();
+    }
+
+    return build_index(bitmaps, labels, k, s, t);
   }
 };
 

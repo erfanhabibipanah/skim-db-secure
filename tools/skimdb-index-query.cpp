@@ -36,6 +36,7 @@ auto main(int argc, char* argv[]) -> int {
 
   spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-index-query");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   if (in.empty()) {
     log->error("input not specified!");
