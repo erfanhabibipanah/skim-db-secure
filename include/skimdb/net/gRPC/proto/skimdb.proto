@@ -1,0 +1,25 @@
+// skimdb.proto
+syntax = "proto3";
+
+package skim;
+
+message ParametersRequest { }
+
+message ParametersReply {
+  uint64 k = 1;
+  uint64 s = 2;
+  uint64 t = 3;
+}
+
+message QueryRequest {
+  string query = 1;
+}
+
+message Label {
+  string value = 1;
+}
+
+service SkimDB {
+  rpc GetParameters(ParametersRequest) returns (ParametersReply);
+  rpc Query(QueryRequest) returns (stream Label);
+}

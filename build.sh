@@ -7,16 +7,17 @@ usage() {
   echo "usage: $0 [OPTIONS]"
   echo "options:"
   echo "  -T        build tools"
+  echo "  -g        build gRPC support"
   echo "  -h        display this help"
   echo "  -v        enable verbose mode"
-  echo "  -j <JOBS> set number of make jobs to build with     (default: $JOBS)"
+  echo "  -j <JOBS> set number of make jobs to build with (default: $JOBS)"
 }
 
 DIR=$(pwd)/release
 CMAKE_CALL="../"
 
 
-while getopts "Thvj:r:" arg; do
+while getopts "Tghvj:r:" arg; do
   case $arg in
     h)
       usage
@@ -35,6 +36,8 @@ while getopts "Thvj:r:" arg; do
     T)
       CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_TOOLS=ON"
       ;;
+    g)
+      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_GRPC=ON"
   esac
 done
 

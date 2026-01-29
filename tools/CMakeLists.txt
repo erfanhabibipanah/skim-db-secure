@@ -26,3 +26,16 @@ install(TARGETS
         skimdb-index-create
         skimdb-index-query
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+if(SKIMDB_BUILD_GRPC)
+    add_executable(skimdb-index-serve-rpc skimdb-index-serve-rpc.cpp)
+    target_link_libraries(skimdb-index-serve-rpc PRIVATE skimdb skimdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra)
+
+    add_executable(skimdb-index-query-rpc skimdb-index-query-rpc.cpp)
+    target_link_libraries(skimdb-index-query-rpc PRIVATE skimdb skimdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra)
+
+    install(TARGETS
+        skimdb-index-serve-rpc
+        skimdb-index-query-rpc
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()

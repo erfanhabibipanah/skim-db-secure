@@ -91,3 +91,11 @@ option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
 if(SKIMDB_BUILD_TOOLS)
     add_subdirectory(tools)
 endif()
+
+# gRPC
+
+option(SKIMDB_BUILD_TOOLS "Build gRPC client/server" OFF)
+
+if(SKIMDB_BUILD_GRPC)
+    add_subdirectory(include/skimdb/net/gRPC)
+endif()
