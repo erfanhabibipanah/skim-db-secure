@@ -1,5 +1,5 @@
 find_package(Protobuf REQUIRED)
-find_package(gRPC REQUIRED)
+find_package(gRPCCompat REQUIRED)
 
 set(PROTO_FILE ${CMAKE_CURRENT_SOURCE_DIR}/proto/skimdb.proto)
 
