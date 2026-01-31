@@ -81,6 +81,16 @@ public:
     return fs::file_size(path);
   }
 
+  struct skimdb_parts {
+    std::vector<detail::encoding> data;
+    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
+    std::vector<std::string> labels;
+  };
+
+  auto take_parts() && -> skimdb_parts {
+    return { std::move(data_), std::move(index_), std::move(labels_) };
+  }
+
   template <class Archive>
   void serialize(Archive& archive) {
     archive(k_, s_, t_, labels_, index_, data_);

@@ -36,6 +36,9 @@ class encoding {
 public:
   encoding() = default;
 
+  explicit encoding(std::vector<std::uint16_t> blocks)
+    : blocks_{std::move(blocks)} {}
+
   void push(std::size_t idx) {
     if (idx < next_seq_) { return; }
 
@@ -171,6 +174,14 @@ public:
         }
       }
     }
+  }
+
+  auto length() const -> std::size_t {
+    return blocks_.size();
+  }
+
+  auto get(std::size_t i) const -> std::uint16_t {
+    return blocks_[i];
   }
 
   template <class Archive>
