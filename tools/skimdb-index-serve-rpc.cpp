@@ -1,7 +1,7 @@
 /***
  *  $Id$
  **
- *  File: skimdb-index-query.cpp
+ *  File: skimdb-index-serve.cpp
  *  Author: Jaroslaw Zola <jaroslaw.zola@hush.com>
  *
  *  Copyright (c) 2026 SCoRe Group http://www.score-group.org/
@@ -19,18 +19,21 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 
 #include <skimdb/skimdb.h>
+#include <skimdb/net/gRPC/skimdb_service.h>
 
 namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
   std::string in{};
+  std::string addr{"0.0.0.0:50051"};
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "input database file", cxxopts::value<std::string>(in))
+      ("i,input", "database to serve", cxxopts::value<std::string>(in))
+      ("s,server", "serve on network:port", cxxopts::value<std::string>(addr)->default_value(addr))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -45,11 +48,11 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-index-query");
+  auto log = spdlog::stdout_color_mt("skimdb-index-serve-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   if (in.empty()) {
-    log->error("input not specified!");
+    log->error("input database not specified!");
     return -1;
   }
 
@@ -73,18 +76,23 @@ auto main(int argc, char* argv[]) -> int {
   auto [k, s, t] = db.parameters();
 
   log->info("index loaded, [k={}, s={}, t={}]", k, s, t);
-  log->info("ready for queries...");
 
-  std::string q = "";
+  skim::rpc::SkimDBService service(std::move(db));
+  grpc::ServerBuilder builder;
 
-  std::cout << ">";
-  while (std::cin >> q && std::cin && !std::cin.eof()) {
-    for (const auto& l : db.query(q)) {
-      std::cout << "  " << l << std::endl;
-    }
-    std::cout << ">";
+  builder.AddListeningPort(addr, grpc::InsecureServerCredentials());
+  builder.RegisterService(&service);
+
+  auto server = builder.BuildAndStart();
+
+  if (!server) {
+    log->error("could not create service on {}!", addr);
+    return -1;
   }
-  std::cout << "\n";
+
+  log->info("listening for queries on {}...", addr);
+
+  server->Wait();
 
   log->info("done!");
 

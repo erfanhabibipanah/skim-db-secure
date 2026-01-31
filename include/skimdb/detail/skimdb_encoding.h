@@ -32,7 +32,7 @@ inline constexpr std::uint16_t g_encoding_zero_run     = 0;
 
 inline auto get_block_encoding(std::uint16_t block) -> std::uint16_t { return ((block >> 14) & ~(block >> 15)); }
 
-class encoding {
+class encoding final {
 public:
   encoding() = default;
 
@@ -184,7 +184,15 @@ public:
     return blocks_[i];
   }
 
-  template <class Archive>
+  auto length() const -> std::size_t {
+    return blocks_.size();
+  }
+
+  auto get(std::size_t i) const -> std::uint16_t {
+    return blocks_[i];
+  }
+
+  template <typename Archive>
   void serialize(Archive& archive) {
     archive(blocks_);
   }

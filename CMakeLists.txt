@@ -9,6 +9,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
+
 # -------------------------------------------------------------------
 # Dependencies
 # -------------------------------------------------------------------
@@ -30,7 +32,7 @@ CPMAddPackage(
 CPMAddPackage(
     NAME roaring
     GITHUB_REPOSITORY RoaringBitmap/CRoaring
-    GIT_TAG v2.0.4
+    GIT_TAG v4.5.1
     OPTIONS "ENABLE_ROARING_TESTS OFF"
     EXCLUDE_FROM_ALL YES
 )
@@ -43,13 +45,13 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME fastxrd
-    GIT_REPOSITORY git@gitlab.com:SCoRe-Group/fastxrd.git
+    GIT_REPOSITORY https://gitlab.com/SCoRe-Group/fastxrd.git
     GIT_TAG main
 )
 
 CPMAddPackage(
     NAME fmtextra
-    GIT_REPOSITORY git@gitlab.com:jzola/fmtextra.git
+    GIT_REPOSITORY https://gitlab.com/jzola/fmtextra.git
     GIT_TAG main
 )
 
@@ -90,4 +92,12 @@ option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
 
 if(SKIMDB_BUILD_TOOLS)
     add_subdirectory(tools)
+endif()
+
+# gRPC
+
+option(SKIMDB_BUILD_TOOLS "Build gRPC client/server" OFF)
+
+if(SKIMDB_BUILD_GRPC)
+    add_subdirectory(include/skimdb/net/gRPC)
 endif()

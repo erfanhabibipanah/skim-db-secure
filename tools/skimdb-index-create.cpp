@@ -38,7 +38,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "input file or directory FASTA format", cxxopts::value<std::string>(in))
+      ("i,input", "input file or directory, FASTA format", cxxopts::value<std::string>(in))
       ("o,output", "database file name", cxxopts::value<std::string>(out))
       ("k", "k-mer size", cxxopts::value<int>(k)->default_value(std::to_string(k)))
       ("s", "syncmer s size", cxxopts::value<int>(s)->default_value(std::to_string(s)))

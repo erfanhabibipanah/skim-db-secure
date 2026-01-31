@@ -1,7 +1,7 @@
 #ifndef SKIMDB_DEFINITIONS_H
 #define SKIMDB_DEFINITIONS_H
 
-#include <roaring.hh>
+#include <roaring/roaring.hh>
 
 
 namespace skim {

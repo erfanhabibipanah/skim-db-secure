@@ -28,7 +28,7 @@ using namespace std::chrono;
 
 inline auto g_log = std::make_shared<spdlog::logger>("null", std::make_shared<spdlog::sinks::null_sink_mt>());
 
-class LogFun {
+class LogFun final {
 public:
   explicit LogFun(std::string&& name, spdlog::level::level_enum level = spdlog::level::info)
       : name_{std::move(name)}, level_{level} {

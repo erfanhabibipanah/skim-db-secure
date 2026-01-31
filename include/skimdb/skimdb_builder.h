@@ -24,7 +24,7 @@ namespace skim {
 
 namespace fs = std::filesystem;
 
-class builder {
+class builder final {
 public:
   // labels become owned by the resulting skimdb index, hence move semantics
   // bitmaps are always post-processed so passing by const reference
@@ -157,7 +157,7 @@ public:
 
     for (const skimdb& db : range) {
       if (db.parameters() != std::tuple{k, s, t}) {
-        return std::unexpected("parameter mismatch");
+        return std::unexpected{"parameter mismatch"};
       }
       labels.insert(labels.end(), db.labels_.begin(), db.labels_.end());
       bitmaps.resize(labels.size());

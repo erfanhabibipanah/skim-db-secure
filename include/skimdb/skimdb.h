@@ -1,6 +1,7 @@
 #ifndef SKIMDB_H
 #define SKIMDB_H
 
+#include <cstddef>
 #include <expected>
 #include <filesystem>
 #include <generator>
@@ -23,11 +24,13 @@ namespace skim {
 
 namespace fs = std::filesystem;
 
-class skimdb {
+class skimdb final {
 public:
+  using parameters_type = std::tuple<std::size_t, std::size_t, std::size_t>;
+
   skimdb() = default;
 
-  auto parameters() const { return std::make_tuple(k_, s_, t_); }
+  auto parameters() const -> parameters_type { return parameters_type{k_, s_, t_}; }
 
 
   // given a kmer, returns a generator over annotated labels
@@ -91,7 +94,7 @@ public:
     return { std::move(data_), std::move(index_), std::move(labels_) };
   }
 
-  template <class Archive>
+  template <typename Archive>
   void serialize(Archive& archive) {
     archive(k_, s_, t_, labels_, index_, data_);
   }
