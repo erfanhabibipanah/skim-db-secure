@@ -24,13 +24,13 @@
 
 
 auto main(int argc, char* argv[]) -> int {
-  std::string addr{};
+  std::string addr{"127.0.0.1:50051"};
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value("127.0.0.1:50051"))
+      ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);

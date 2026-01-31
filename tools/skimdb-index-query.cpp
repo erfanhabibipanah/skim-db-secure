@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
-  std::string in = "";
+  std::string in{};
 
   try {
     cxxopts::Options options(argv[0]);

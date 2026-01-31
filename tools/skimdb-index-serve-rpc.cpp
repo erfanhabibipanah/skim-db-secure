@@ -26,14 +26,14 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in{};
-  std::string addr{};
+  std::string addr{"0.0.0.0:50051"};
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
       ("i,input", "database to serve", cxxopts::value<std::string>(in))
-      ("s,server", "serve on network:port", cxxopts::value<std::string>(addr)->default_value("0.0.0.0:50051"))
+      ("s,server", "serve on network:port", cxxopts::value<std::string>(addr)->default_value(addr))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);

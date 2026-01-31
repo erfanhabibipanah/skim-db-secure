@@ -22,9 +22,13 @@ target_link_libraries(skimdb-index-create PRIVATE skimdb cxxopts::cxxopts spdlog
 add_executable(skimdb-index-query skimdb-index-query.cpp)
 target_link_libraries(skimdb-index-query PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog)
 
+add_executable(skimdb-kmer-generate skimdb-kmer-generate.cpp)
+target_link_libraries(skimdb-kmer-generate PRIVATE cxxopts::cxxopts spdlog::spdlog)
+
 install(TARGETS
         skimdb-index-create
         skimdb-index-query
+        skimdb-kmer-generate
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
 if(SKIMDB_BUILD_GRPC)
