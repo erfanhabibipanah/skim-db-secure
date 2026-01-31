@@ -32,7 +32,7 @@ CPMAddPackage(
 CPMAddPackage(
     NAME roaring
     GITHUB_REPOSITORY RoaringBitmap/CRoaring
-    GIT_TAG v2.0.4
+    GIT_TAG v4.5.1
     OPTIONS "ENABLE_ROARING_TESTS OFF"
     EXCLUDE_FROM_ALL YES
 )
@@ -45,13 +45,13 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME fastxrd
-    GIT_REPOSITORY git@gitlab.com:SCoRe-Group/fastxrd.git
+    GIT_REPOSITORY https://gitlab.com/SCoRe-Group/fastxrd.git
     GIT_TAG main
 )
 
 CPMAddPackage(
     NAME fmtextra
-    GIT_REPOSITORY git@gitlab.com:jzola/fmtextra.git
+    GIT_REPOSITORY https://gitlab.com/jzola/fmtextra.git
     GIT_TAG main
 )
 

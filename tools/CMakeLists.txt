@@ -4,7 +4,7 @@ message(STATUS "Found spdlog ${spdlog_VERSION} at ${spdlog_DIR}")
 CPMAddPackage(
     NAME cxxopts
     GITHUB_REPOSITORY jarro2783/cxxopts
-    VERSION 3.1.1
+    VERSION 3.3.1
     OPTIONS
       "CXXOPTS_BUILD_EXAMPLES OFF"
       "CXXOPTS_BUILD_TESTS OFF"
@@ -12,7 +12,7 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME fmtextra
-    GIT_REPOSITORY git@gitlab.com:jzola/fmtextra.git
+    GIT_REPOSITORY https://gitlab.com/jzola/fmtextra.git
     GIT_TAG main
 )
 
