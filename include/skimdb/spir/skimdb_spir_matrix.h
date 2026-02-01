@@ -10,10 +10,7 @@
 #include <tuple>
 #include <vector>
 
-#ifndef DGPP_UNIFORM_REJECTION_HPP
-#define DGPP_UNIFORM_REJECTION_HPP
 #include <dgpp/uniform_rejection.hpp>
-#endif
 
 #include "skimdb/detail/skimdb_encoding.h"
 
