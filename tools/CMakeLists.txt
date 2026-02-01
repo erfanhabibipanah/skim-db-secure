@@ -46,7 +46,7 @@ endif()
 
 if(SKIMDB_BUILD_SPIR)
     add_executable(skimdb-spir-local skimdb-spir-local.cpp)
-    target_link_libraries(skimdb-spir-local PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog)
+    target_link_libraries(skimdb-spir-local PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra)
 
     install(TARGETS
         skimdb-spir-local

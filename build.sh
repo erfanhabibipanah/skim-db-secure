@@ -42,6 +42,7 @@ while getopts "Tgshvj:r:" arg; do
       ;;
     s)
       CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_SPIR=ON"
+      ;;
   esac
 done
 
