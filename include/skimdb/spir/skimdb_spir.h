@@ -173,7 +173,7 @@ public:
 
     spir_matrix query = std::move(*res);
     query.add(e);
-    query.set(col_idx, delta);
+    query.set(col_idx, query.get(col_idx) + delta);
 
     return query_state{row_idx, std::move(s), std::move(query)};
   }
@@ -188,7 +188,7 @@ public:
       return std::unexpected{"dimension mismatch"};
     }
 
-    if (query.i_row > a_rows || params_.rle_blocks > a_rows - query.i_row) {
+    if (query.i_row >= a_rows || params_.rle_blocks > a_rows - query.i_row) {
       return std::unexpected{"invalid row range"};
     }
 
