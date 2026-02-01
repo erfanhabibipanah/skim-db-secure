@@ -12,7 +12,11 @@
 
 #include <dgpp/uniform_rejection.hpp>
 
+#include <fastxrd/fasta_buffered_reader.h>
+#include <fastxrd/fastx_files_reader.h>
+
 #include "skimdb/detail/skimdb_encoding.h"
+#include "skimdb/detail/skimdb_logger.h"
 
 
 namespace skim {
@@ -189,6 +193,7 @@ auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint64_t log_q
 // TODO: parallelize
 auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log_q)
     -> std::expected<spir_matrix, std::string> {
+  LogFun lf{"mat_vec(skimdb_matrix...)"};
   auto [m_rows, m_cols] = mat.dimensions();
   auto [v_rows, v_cols] = vec.dimensions();
 
@@ -196,7 +201,7 @@ auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log
     return std::unexpected{"matrix/vector dimension mismatch"};
   }
 
-  spir_matrix out{m_rows, 1, log_q};
+  spir_matrix out{m_rows, log_q};
   for (std::uint64_t i = 0; i < m_rows; ++i) {
     std::uint64_t sum = 0;
     for (std::uint64_t j = 0; j < m_cols; ++j) {
@@ -233,9 +238,9 @@ auto mat_mul(const spir_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t l
   return out;
 };
 
-// TODO: parallelize
 auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t log_q)
     -> std::expected<spir_matrix, std::string> {
+  LogFun lf{"mat_mul(skimdb_matrix...)"};
   auto [a_rows, a_cols] = mat_a.dimensions();
   auto [b_rows, b_cols] = mat_b.dimensions();
 
@@ -244,15 +249,21 @@ auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t
   }
 
   spir_matrix out{a_rows, b_cols, log_q};
-  for (std::uint64_t i = 0; i < a_rows; ++i) {
-    for (std::uint64_t j = 0; j < b_cols; ++j) {
-      std::uint64_t sum = 0;
-      for (std::uint64_t k = 0; k < a_cols; ++k) {
-        sum += mat_a.get(i, k) * mat_b.get(k, j);
-      }
-      out.set(i, j, sum);
-    }
-  }
+  auto cols = std::views::iota(std::uint64_t{0}, b_cols);
+  std::for_each(std::execution::par, cols.begin(), cols.end(),
+                [&](std::uint64_t j) {
+                  std::vector<std::uint64_t> acc(a_rows, 0);
+                  for (std::uint64_t k = 0; k < a_cols; ++k) {
+                      const std::uint64_t bkj = mat_b.get(k, j);
+                      for (std::uint64_t i = 0; i < a_rows; ++i) {
+                          acc[i] += mat_a.get(i, k) * bkj;
+                      }
+                  }
+
+                  for (std::uint64_t i = 0; i < a_rows; ++i) {
+                      out.set(i, j, acc[i]);
+                  }
+                });
 
   return out;
 };

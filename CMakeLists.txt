@@ -30,6 +30,12 @@ CPMAddPackage(
 )
 
 CPMAddPackage(
+    NAME dgpp
+    GIT_REPOSITORY https://gitlab.com/SCoRe-Group/dgpp.git
+    GIT_TAG main
+)
+
+CPMAddPackage(
     NAME roaring
     GITHUB_REPOSITORY RoaringBitmap/CRoaring
     GIT_TAG v4.5.1
@@ -72,6 +78,7 @@ target_include_directories(skimdb INTERFACE
 
 target_link_libraries(skimdb INTERFACE
     cereal
+    dgpp
     roaring
     fastxrd
     fmtextra
@@ -96,8 +103,16 @@ endif()
 
 # gRPC
 
-option(SKIMDB_BUILD_TOOLS "Build gRPC client/server" OFF)
+option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)
 
 if(SKIMDB_BUILD_GRPC)
     add_subdirectory(include/skimdb/net/gRPC)
+endif()
+
+# SPIR
+
+option(SKIMDB_BUILD_SPIR "Build SPIR implementation" OFF)
+
+if (SKIMDB_BUILD_SPIR)
+    add_subdirectory(include/skimdb/spir/net/gRPC)
 endif()

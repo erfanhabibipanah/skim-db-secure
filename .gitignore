@@ -2,3 +2,4 @@
 build/
 release/
 tests/test.skimdb
+local/
