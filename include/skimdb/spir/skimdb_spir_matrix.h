@@ -1,15 +1,19 @@
 #ifndef SKIMDB_SPIR_MATRIX_H
 #define SKIMDB_SPIR_MATRIX_H
 
-#include <concepts>
 #include <cstdint>
+#include <execution>
 #include <expected>
 #include <random>
+#include <ranges>
 #include <string>
 #include <tuple>
 #include <vector>
 
+#ifndef DGPP_UNIFORM_REJECTION_HPP
+#define DGPP_UNIFORM_REJECTION_HPP
 #include <dgpp/uniform_rejection.hpp>
+#endif
 
 #include "skimdb/detail/skimdb_encoding.h"
 
@@ -17,17 +21,7 @@
 namespace skim {
 namespace spir {
 
-template <class M>
-concept MatrixLike =
-  requires(const M& m, std::uint64_t i, std::uint64_t j) {
-    { m.get(i, j) } -> std::same_as<std::uint64_t>;
-    { m.dimensions() } -> std::same_as<std::tuple<std::uint64_t, std::uint64_t>>;
-  };
-
-// implements matrices (and vectors) with modulus
-// TODO: optimize storage later
-//  - use bit-packing to store entries with log_mod less than 64 in a single uint64_t
-//  - e.g., for 32-bit modulus, pack 2 entries per uint64_t
+// implements matrices (and vectors) with modular arithmetic
 class spir_matrix {
 public:
   explicit spir_matrix(std::uint64_t rows,
@@ -63,68 +57,66 @@ public:
     return std::make_tuple(r_, c_);
   }
 
-  // TODO : parallelize
   void fill_random(std::mt19937_64& rng) {
     for (auto& val : data_) {
       val = rng() & mask_;
     }
   }
 
-  // TODO : parallelize
   void fill_random(std::mt19937_64& rng, dgpp::uniform_rejection& dist) {
     for (auto& val : data_) {
       val = dist(rng) & mask_;
     }
   }
 
-  // TODO : parallelize
   auto add(const spir_matrix& mat) -> std::expected<void, std::string> {
     auto [rows, cols] = mat.dimensions();
     if (rows != r_ || cols != c_) {
       return std::unexpected{"matrix dimension mismatch"};
     }
 
-    for (std::uint64_t i = 0; i < r_; ++i) {
-      for (std::uint64_t j = 0; j < c_; ++j) {
-        set(i, j, get(i, j) + mat.get(i, j));
-      }
-    }
+    auto* dst = data_.data();
+    const auto* src = mat.data_.data();
+    const std::size_t n = data_.size();
+    std::for_each(std::execution::par, dst, dst + n,
+                [&](std::uint64_t& v) {
+                  const std::size_t k = static_cast<std::size_t>(&v - dst);
+                  v = (v + src[k]) & mask_;
+                });
 
     return {};
   }
 
-  // TODO : parallelize
   auto sub(const spir_matrix& mat) -> std::expected<void, std::string> {
     auto [rows, cols] = mat.dimensions();
     if (rows != r_ || cols != c_) {
       return std::unexpected{"matrix dimension mismatch"};
     }
 
-    for (std::uint64_t i = 0; i < r_; ++i) {
-      for (std::uint64_t j = 0; j < c_; ++j) {
-        set(i, j, get(i, j) - mat.get(i, j));
-      }
-    }
+    auto* dst = data_.data();
+    const auto* src = mat.data_.data();
+    const std::size_t n = data_.size();
+    std::for_each(std::execution::par, dst, dst + n,
+                [&](std::uint64_t& v) {
+                  const std::size_t k = static_cast<std::size_t>(&v - dst);
+                  v = (v - src[k]) & mask_;
+                });
 
     return {};
   }
 
-  // TODO : parallelize
   void add_scalar(std::uint64_t scalar) {
-    for (std::uint64_t i = 0; i < r_; ++i) {
-      for (std::uint64_t j = 0; j < c_; ++j) {
-        set(i, j, get(i, j) + scalar);
-      }
-    }
+    std::for_each(std::execution::par, data_.begin(), data_.end(),
+                [&](std::uint64_t& v) {
+                  v = (v + scalar) & mask_;
+                });
   }
 
-  // TODO : parallelize
   void mult_scalar(std::uint64_t scalar) {
-    for (std::uint64_t i = 0; i < r_; ++i) {
-      for (std::uint64_t j = 0; j < c_; ++j) {
-        set(i, j, get(i, j) * scalar);
-      }
-    }
+    std::for_each(std::execution::par, data_.begin(), data_.end(),
+                [&](std::uint64_t& v) {
+                  v = (v * scalar) & mask_;
+                });
   }
 
 private:
@@ -134,11 +126,11 @@ private:
   std::vector<std::uint64_t> data_;   // row-major flat storage
 };
 
-// wrapper around skimdb::detail::encoding to provide matrix-like access
+// wrapper around skim::detail::encoding to provide matrix-like access
 // TODO: will want to improve this later to account for access patterns
 class skimdb_matrix {
 public:
-  explicit skimdb_matrix(std::vector<skimdb::detail::encoding>&& data, 
+  explicit skimdb_matrix(std::vector<skim::detail::encoding>&& data, 
                           std::uint64_t log_p,
                           std::uint64_t rle_blocks,
                           std::uint64_t sqrt_N)
@@ -168,15 +160,37 @@ public:
   }
 
 private:
-  std::vector<skimdb::detail::encoding> data_;
+  std::vector<skim::detail::encoding> data_;
   std::uint64_t log_p_;       // log of plaintext modulus
   std::uint64_t rle_blocks_;  // blocks needed per RLE encoding
   std::uint64_t sqrt_N_;      // matrix side length (blocks of data)
 };
 
+auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint64_t log_q)
+    -> std::expected<spir_matrix, std::string> {
+  auto [m_rows, m_cols] = mat.dimensions();
+  auto [v_rows, v_cols] = vec.dimensions();
+
+  if (m_cols != v_rows || v_cols != 1) {
+    return std::unexpected{"matrix/vector dimension mismatch"};
+  }
+
+  spir_matrix out{m_rows, 1, log_q};
+  auto range = std::views::iota(std::uint64_t{0}, m_rows);
+  std::for_each(std::execution::par, range.begin(), range.end(),
+                [&](std::uint64_t i) {
+                  std::uint64_t sum = 0;
+                  for (std::uint64_t j = 0; j < m_cols; ++j) {
+                    sum += mat.get(i, j) * vec.get(j);
+                  }
+                  out.set(i, sum);
+                });
+
+  return out;
+}
+
 // TODO: parallelize
-template <MatrixLike M>
-auto mat_vec(const M& mat, const spir_matrix& vec, std::uint64_t log_q)
+auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log_q)
     -> std::expected<spir_matrix, std::string> {
   auto [m_rows, m_cols] = mat.dimensions();
   auto [v_rows, v_cols] = vec.dimensions();
@@ -197,9 +211,33 @@ auto mat_vec(const M& mat, const spir_matrix& vec, std::uint64_t log_q)
   return out;
 }
 
+auto mat_mul(const spir_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t log_q)
+    -> std::expected<spir_matrix, std::string> {
+  auto [a_rows, a_cols] = mat_a.dimensions();
+  auto [b_rows, b_cols] = mat_b.dimensions();
+
+  if (a_cols != b_rows) {
+    return std::unexpected{"matrix dimension mismatch"};
+  }
+
+  spir_matrix out{a_rows, b_cols, log_q};
+  auto range = std::views::iota(std::uint64_t{0}, a_rows);
+  std::for_each(std::execution::par, range.begin(), range.end(),
+                [&](std::uint64_t i) {
+                  for (std::uint64_t j = 0; j < b_cols; ++j) {
+                    std::uint64_t sum = 0;
+                    for (std::uint64_t k = 0; k < a_cols; ++k) {
+                      sum += mat_a.get(i, k) * mat_b.get(k, j);
+                    }
+                    out.set(i, j, sum);
+                  }
+                });
+
+  return out;
+};
+
 // TODO: parallelize
-template <MatrixLike M>
-auto mat_mul(const M& mat_a, const spir_matrix& mat_b, std::uint64_t log_q)
+auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t log_q)
     -> std::expected<spir_matrix, std::string> {
   auto [a_rows, a_cols] = mat_a.dimensions();
   auto [b_rows, b_cols] = mat_b.dimensions();
@@ -222,7 +260,6 @@ auto mat_mul(const M& mat_a, const spir_matrix& mat_b, std::uint64_t log_q)
   return out;
 };
 
-// TODO: parallelize
 auto vec_mul(const spir_matrix& vec_a, const spir_matrix& vec_b)
   -> std::expected<std::uint64_t, std::string> {
   auto [a_rows, a_cols] = vec_a.dimensions();

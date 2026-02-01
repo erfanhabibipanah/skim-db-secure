@@ -184,14 +184,6 @@ public:
     return blocks_[i];
   }
 
-  auto length() const -> std::size_t {
-    return blocks_.size();
-  }
-
-  auto get(std::size_t i) const -> std::uint16_t {
-    return blocks_[i];
-  }
-
   template <typename Archive>
   void serialize(Archive& archive) {
     archive(blocks_);

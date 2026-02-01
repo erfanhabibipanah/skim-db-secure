@@ -9,13 +9,20 @@
 #include <tuple>
 #include <vector>
 
+#ifndef DGPP_UNIFORM_REJECTION_HPP
+#define DGPP_UNIFORM_REJECTION_HPP
 #include <dgpp/uniform_rejection.hpp>
+#endif
+
+#include <fastxrd/fasta_buffered_reader.h>
+#include <fastxrd/fastx_files_reader.h>
 
 #include <parallel_hashmap/phmap.h>
 
-#include "skimdb/skimdb.h"
-#include "skimdb/detail/skimdb_util.h"
 #include "skimdb/detail/skimdb_encoding.h"
+#include "skimdb/detail/skimdb_logger.h"
+#include "skimdb/detail/skimdb_util.h"
+#include "skimdb/skimdb.h"
 #include "skimdb_spir_matrix.h"
 #include "skimdb_spir_params.h"
 #include "skimdb_spir_random.h"
@@ -62,6 +69,7 @@ private:
 
 [[nodiscard]] auto setup_server(skimdb&& db, std::uint64_t log_p, std::uint64_t log_q, std::uint64_t n, double sigma)
     -> std::expected<spir_server_state, std::string> {
+  LogFun lf{"setup_server(...)"};
   if (log_p != 8 && log_p != 16) { return std::unexpected{"unsupported plaintext modulus"}; }
   if (log_q > 64) { return std::unexpected{"unsupported ciphertext modulus"}; }
   if (n == 0) { return std::unexpected{"invalid LWE dimension"}; }
@@ -76,6 +84,8 @@ private:
     max_rle = std::max(max_rle, entry.length());
   }
 
+  g_log->info("skimdb contains {} kmers, max RLE length {}", kmers, max_rle);
+
   if (kmers == 0 || max_rle == 0) { return std::unexpected{"empty skimdb index"}; }
   
   // determine spir matrix dimension sqrt(N)
@@ -84,6 +94,8 @@ private:
   double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
   std::uint64_t rles_per_side = static_cast<std::uint64_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
   std::uint64_t sqrt_N = rles_per_side * rle_blocks;
+
+  g_log->info("SPIR matrix dimension sqrt(N) = {}", sqrt_N);
 
   // generate matrix A
   std::uint64_t mat_seed = new_seed();
@@ -118,7 +130,7 @@ public:
       hint_c_{std::move(hint_c)},
       config_{std::move(config)},
       metadata_{std::move(metadata)},
-      params_{std::move(params)}
+      params_{std::move(params)},
       mat_a_{params_.sqrt_N, params_.n, params_.log_q} {
         // populate matrix A
         std::mt19937_64 rng{params_.mat_seed};
@@ -146,10 +158,10 @@ public:
     spir_matrix s{params_.n, params_.log_q};
     s.fill_random(rng);
     
-    std::mt19937_64 rng{new_seed()};
+    std::mt19937_64 erng{new_seed()};
     dgpp::uniform_rejection dist{params_.sigma};
     spir_matrix e{params_.sqrt_N, 1, params_.log_q};
-    e.fill_random(rng, dist);
+    e.fill_random(erng, dist);
 
     std::uint64_t delta = 1ull << (params_.log_q - params_.log_p);
     
@@ -211,7 +223,7 @@ public:
     switch (params_.log_p) {
       case 8: {
         for (std::uint64_t i = 0; i < params_.rle_blocks / 2; ++i) {
-          std::uint16_t byte_pair |= static_cast<std::uint16_t>(mat.get(i * 2)) << 8;
+          std::uint16_t byte_pair = static_cast<std::uint16_t>(mat.get(i * 2)) << 8;
           byte_pair |= static_cast<std::uint16_t>(mat.get(i * 2 + 1));
           rle.push_back(byte_pair);
         }
@@ -235,11 +247,12 @@ public:
   }
 
 private:
-  spir_matrix mat_a_;         // matrix A
-  spir_matrix hint_c_;        // hint matrix from server
   db_config config_;          // skimdb index parameters
   db_metadata metadata_;      // skimdb metadata (kmer index, labels)
   spir_params params_;        // SPIR parameters
+
+  spir_matrix mat_a_;         // matrix A
+  spir_matrix hint_c_;        // hint matrix from server
 };
 
 } // namespace spir
