@@ -8,6 +8,7 @@ usage() {
   echo "options:"
   echo "  -T        build tools"
   echo "  -g        build gRPC support"
+  echo "  -s        build SPIR support"
   echo "  -h        display this help"
   echo "  -v        enable verbose mode"
   echo "  -j <JOBS> set number of make jobs to build with (default: $JOBS)"
@@ -17,7 +18,7 @@ DIR=$(pwd)/release
 CMAKE_CALL="../"
 
 
-while getopts "Tghvj:r:" arg; do
+while getopts "Tgshvj:r:" arg; do
   case $arg in
     h)
       usage
@@ -38,6 +39,9 @@ while getopts "Tghvj:r:" arg; do
       ;;
     g)
       CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_GRPC=ON"
+      ;;
+    s)
+      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_SPIR=ON"
   esac
 done
 

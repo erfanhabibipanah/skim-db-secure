@@ -9,10 +9,7 @@
 #include <tuple>
 #include <vector>
 
-#ifndef DGPP_UNIFORM_REJECTION_HPP
-#define DGPP_UNIFORM_REJECTION_HPP
 #include <dgpp/uniform_rejection.hpp>
-#endif
 
 #include <fastxrd/fasta_buffered_reader.h>
 #include <fastxrd/fastx_files_reader.h>
@@ -84,8 +81,6 @@ private:
     max_rle = std::max(max_rle, entry.length());
   }
 
-  g_log->info("skimdb contains {} kmers, max RLE length {}", kmers, max_rle);
-
   if (kmers == 0 || max_rle == 0) { return std::unexpected{"empty skimdb index"}; }
   
   // determine spir matrix dimension sqrt(N)
@@ -95,6 +90,7 @@ private:
   std::uint64_t rles_per_side = static_cast<std::uint64_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
   std::uint64_t sqrt_N = rles_per_side * rle_blocks;
 
+  g_log->info("skimdb contains {} kmers, blocks per RLE {}", kmers, rle_blocks);
   g_log->info("SPIR matrix dimension sqrt(N) = {}", sqrt_N);
 
   // generate matrix A

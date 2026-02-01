@@ -43,3 +43,12 @@ if(SKIMDB_BUILD_GRPC)
         skimdb-index-query-rpc
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
+
+if(SKIMDB_BUILD_SPIR)
+    add_executable(skimdb-spir-local skimdb-spir-local.cpp)
+    target_link_libraries(skimdb-spir-local PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog)
+
+    install(TARGETS
+        skimdb-spir-local
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
