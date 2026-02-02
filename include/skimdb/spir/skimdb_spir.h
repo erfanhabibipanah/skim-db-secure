@@ -122,12 +122,8 @@ private:
   // compute hint_c = D * A
   auto hint_c = mat_mul(db_mat, mat_a, log_q);
 
-  if (!hint_c) {
-    return std::unexpected{hint_c.error()};
-  }
-
   return spir_server_state{std::move(db_mat),
-                           std::move(*hint_c),
+                           std::move(hint_c),
                            std::move(config),
                            std::move(metadata),
                            std::move(parameters)};
@@ -183,13 +179,10 @@ public:
     std::uint64_t delta = 1ull << (parameters_.log_q - parameters_.log_p);
 
     // compute encrypted query vector
-    auto res = mat_mul(mat_a_, s, parameters_.log_q);
+    auto res = mat_vec(mat_a_, s, parameters_.log_q);
 
-    if (!res) {
-      return std::unexpected{res.error()};
-    }
+    spir_matrix query = std::move(res);
 
-    spir_matrix query = std::move(*res);
     query.add(e);
     query.set(col_idx, query.get(col_idx) + delta);
 

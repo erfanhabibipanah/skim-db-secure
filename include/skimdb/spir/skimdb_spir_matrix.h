@@ -58,41 +58,47 @@ public:
   }
 
 
-  auto add(const spir_matrix& mat) -> spir_matrix& {
-    auto* dst = data_.data();
-    const auto* src = mat.data_.data();
-
-    const std::size_t n = data_.size();
-
-    std::for_each(std::execution::par, dst, dst + n, [&](std::uint64_t& v) {
-      const std::size_t k = static_cast<std::size_t>(&v - dst);
-      v = (v + src[k]) & mask_;
-    });
-
-    return *this;
-  }
-
   auto sub(const spir_matrix& mat) -> spir_matrix& {
     auto* dst = data_.data();
     const auto* src = mat.data_.data();
 
-    const std::size_t n = data_.size();
+    for (std::size_t i = 0, n = data_.size(); i < n; ++i) {
+      dst[i] = (dst[i] - src[i]) & mask_;
+    }
 
-    std::for_each(std::execution::par, dst, dst + n, [&](std::uint64_t& v) {
-      const std::size_t k = static_cast<std::size_t>(&v - dst);
-      v = (v - src[k]) & mask_;
-    });
+    return *this;
+  }
+
+
+  auto add(const spir_matrix& mat) -> spir_matrix& {
+    auto* dst = data_.data();
+    const auto* src = mat.data_.data();
+
+    for (std::size_t i = 0, n = data_.size(); i < n; ++i) {
+      dst[i] = (dst[i] + src[i]) & mask_;
+    }
 
     return *this;
   }
 
   auto add(std::uint64_t scalar) -> spir_matrix& {
-    std::for_each(std::execution::par, data_.begin(), data_.end(), [&](std::uint64_t& v) { v = (v + scalar) & mask_; });
+    auto* dst = data_.data();
+
+    for (std::size_t i = 0, n = data_.size(); i < n; ++i) {
+      dst[i] = (dst[i] + scalar) & mask_;
+    }
+
     return *this;
   }
 
+
   auto mul(std::uint64_t scalar) -> spir_matrix& {
-    std::for_each(std::execution::par, data_.begin(), data_.end(), [&](std::uint64_t& v) { v = (v * scalar) & mask_; });
+    auto* dst = data_.data();
+
+    for (std::size_t i = 0, n = data_.size(); i < n; ++i) {
+      dst[i] = (dst[i] * scalar) & mask_;
+    }
+
     return *this;
   }
 
@@ -145,41 +151,14 @@ private:
 };
 
 
-auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint64_t log_q)
-    -> std::expected<spir_matrix, std::string> {
+inline auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint64_t log_q) -> spir_matrix {
+  LogFun lf{"mat_vec(spir_matrix, ...)"};
+
   auto [m_rows, m_cols] = mat.dimensions();
   auto [v_rows, v_cols] = vec.dimensions();
-
-  if (m_cols != v_rows || v_cols != 1) {
-    return std::unexpected{"matrix/vector dimension mismatch"};
-  }
 
   spir_matrix out{m_rows, 1, log_q};
-  auto range = std::views::iota(std::uint64_t{0}, m_rows);
-  std::for_each(std::execution::par, range.begin(), range.end(),
-                [&](std::uint64_t i) {
-                  std::uint64_t sum = 0;
-                  for (std::uint64_t j = 0; j < m_cols; ++j) {
-                    sum += mat.get(i, j) * vec.get(j);
-                  }
-                  out.set(i, sum);
-                });
 
-  return out;
-}
-
-// TODO: parallelize
-auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log_q)
-    -> std::expected<spir_matrix, std::string> {
-  LogFun lf{"mat_vec(skimdb_matrix...)"};
-  auto [m_rows, m_cols] = mat.dimensions();
-  auto [v_rows, v_cols] = vec.dimensions();
-
-  if (m_cols != v_rows || v_cols != 1) {
-    return std::unexpected{"matrix/vector dimension mismatch"};
-  }
-
-  spir_matrix out{m_rows, log_q};
   for (std::uint64_t i = 0; i < m_rows; ++i) {
     std::uint64_t sum = 0;
     for (std::uint64_t j = 0; j < m_cols; ++j) {
@@ -191,69 +170,55 @@ auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log
   return out;
 }
 
-auto mat_mul(const spir_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t log_q)
-    -> std::expected<spir_matrix, std::string> {
+inline auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log_q) -> spir_matrix {
+  LogFun lf{"mat_vec(skimdb_matrix, ...)"};
+
+  auto [m_rows, m_cols] = mat.dimensions();
+  auto [v_rows, v_cols] = vec.dimensions();
+
+  spir_matrix out{m_rows, log_q};
+
+  for (std::uint64_t i = 0; i < m_rows; ++i) {
+    std::uint64_t sum = 0;
+    for (std::uint64_t j = 0; j < m_cols; ++j) {
+      sum += mat.get(i, j) * vec.get(j);
+    }
+    out.set(i, sum);
+  }
+
+  return out;
+}
+
+
+inline auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t log_q) -> spir_matrix {
+  LogFun lf{"mat_mul(skimdb_matrix, ...)"};
+
   auto [a_rows, a_cols] = mat_a.dimensions();
   auto [b_rows, b_cols] = mat_b.dimensions();
 
-  if (a_cols != b_rows) {
-    return std::unexpected{"matrix dimension mismatch"};
+  spir_matrix out{a_rows, b_cols, log_q};
+
+  for (std::uint64_t j = 0; j < b_cols; ++j) {
+    std::vector<std::uint64_t> acc(a_rows, 0);
+    for (std::uint64_t k = 0; k < a_cols; ++k) {
+      const std::uint64_t bkj = mat_b.get(k, j);
+      for (std::uint64_t i = 0; i < a_rows; ++i) {
+        acc[i] += mat_a.get(i, k) * bkj;
+      }
+    }
+
+    for (std::uint64_t i = 0; i < a_rows; ++i) {
+      out.set(i, j, acc[i]);
+    }
   }
 
-  spir_matrix out{a_rows, b_cols, log_q};
-  auto range = std::views::iota(std::uint64_t{0}, a_rows);
-  std::for_each(std::execution::par, range.begin(), range.end(),
-                [&](std::uint64_t i) {
-                  for (std::uint64_t j = 0; j < b_cols; ++j) {
-                    std::uint64_t sum = 0;
-                    for (std::uint64_t k = 0; k < a_cols; ++k) {
-                      sum += mat_a.get(i, k) * mat_b.get(k, j);
-                    }
-                    out.set(i, j, sum);
-                  }
-                });
-
   return out;
-};
+}
 
-auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t log_q)
-    -> std::expected<spir_matrix, std::string> {
-  LogFun lf{"mat_mul(skimdb_matrix...)"};
-  auto [a_rows, a_cols] = mat_a.dimensions();
-  auto [b_rows, b_cols] = mat_b.dimensions();
 
-  if (a_cols != b_rows) {
-    return std::unexpected{"matrix dimension mismatch"};
-  }
-
-  spir_matrix out{a_rows, b_cols, log_q};
-  auto cols = std::views::iota(std::uint64_t{0}, b_cols);
-  std::for_each(std::execution::par, cols.begin(), cols.end(),
-                [&](std::uint64_t j) {
-                  std::vector<std::uint64_t> acc(a_rows, 0);
-                  for (std::uint64_t k = 0; k < a_cols; ++k) {
-                      const std::uint64_t bkj = mat_b.get(k, j);
-                      for (std::uint64_t i = 0; i < a_rows; ++i) {
-                          acc[i] += mat_a.get(i, k) * bkj;
-                      }
-                  }
-
-                  for (std::uint64_t i = 0; i < a_rows; ++i) {
-                      out.set(i, j, acc[i]);
-                  }
-                });
-
-  return out;
-};
-
-auto vec_mul(const spir_matrix& vec_a, const spir_matrix& vec_b)
-  -> std::expected<std::uint64_t, std::string> {
+inline auto vec_mul(const spir_matrix& vec_a, const spir_matrix& vec_b) -> std::uint64_t {
   auto [a_rows, a_cols] = vec_a.dimensions();
   auto [b_rows, b_cols] = vec_b.dimensions();
-
-  if (a_cols != 1 || b_cols != 1 || a_rows != b_rows) {
-    return std::unexpected{"vector dimension mismatch"};
-  }
 
   std::uint64_t sum = 0;
   for (std::uint64_t i = 0; i < a_rows; ++i) {
