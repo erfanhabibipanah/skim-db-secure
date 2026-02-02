@@ -16,6 +16,7 @@
 #include <parallel_hashmap/phmap.h>
 #include <parallel_hashmap/phmap_dump.h>
 
+#include "detail/skimdb_definitions.h"
 #include "detail/skimdb_encoding.h"
 #include "detail/skimdb_util.h"
 
@@ -26,11 +27,19 @@ namespace fs = std::filesystem;
 
 class skimdb final {
 public:
-  using parameters_type = std::tuple<std::size_t, std::size_t, std::size_t>;
+  using parameters_type = skimdb_parameters;
 
   skimdb() = default;
 
   auto parameters() const -> parameters_type { return parameters_type{k_, s_, t_}; }
+
+  struct skimdb_parts {
+    std::vector<detail::encoding> data;
+    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
+    std::vector<std::string> labels;
+  };
+
+  auto take_parts() && -> skimdb_parts { return {std::move(data_), std::move(index_), std::move(labels_)}; }
 
 
   // given a kmer, returns a generator over annotated labels
@@ -41,7 +50,7 @@ public:
       co_return;
     }
 
-    for (auto label_idx : traverse_kmer(pos.value())) {
+    for (auto label_idx : m_traverse_kmer_(pos.value())) {
       if (label_idx >= labels_.size()) {
         break;
       }
@@ -74,7 +83,7 @@ public:
 
     try {
       cereal::BinaryOutputArchive archive{os};
-      archive(*this); // Uses serialize() internally
+      archive(*this);
     } catch (...) {
       return std::unexpected{"serialization failed"};
     }
@@ -82,16 +91,6 @@ public:
     os.close();
 
     return fs::file_size(path);
-  }
-
-  struct skimdb_parts {
-    std::vector<detail::encoding> data;
-    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
-    std::vector<std::string> labels;
-  };
-
-  auto take_parts() && -> skimdb_parts {
-    return { std::move(data_), std::move(index_), std::move(labels_) };
   }
 
   template <typename Archive>
@@ -119,7 +118,7 @@ private:
     return it->second;
   }
 
-  [[nodiscard]] auto traverse_kmer(std::size_t kmer_pos) const -> std::generator<std::size_t> {
+  [[nodiscard]] auto m_traverse_kmer_(std::size_t kmer_pos) const -> std::generator<std::size_t> {
     for (auto label_idx : data_[kmer_pos].select_idxs()) {
       co_yield label_idx;
     }

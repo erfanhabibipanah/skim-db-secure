@@ -151,6 +151,7 @@ private:
 };
 
 
+// client side, prepare query
 inline auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint64_t log_q) -> spir_matrix {
   LogFun lf{"mat_vec(spir_matrix, ...)"};
 
@@ -170,6 +171,7 @@ inline auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint64_
   return out;
 }
 
+// server side, prepare response
 inline auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log_q) -> spir_matrix {
   LogFun lf{"mat_vec(skimdb_matrix, ...)"};
 
@@ -189,7 +191,7 @@ inline auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint6
   return out;
 }
 
-
+// minor: used in server setup (large matrices)
 inline auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::uint64_t log_q) -> spir_matrix {
   LogFun lf{"mat_mul(skimdb_matrix, ...)"};
 
@@ -215,7 +217,7 @@ inline auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::u
   return out;
 }
 
-
+// client side, answer recovery
 inline auto vec_mul(const spir_matrix& vec_a, const spir_matrix& vec_b) -> std::uint64_t {
   auto [a_rows, a_cols] = vec_a.dimensions();
   auto [b_rows, b_cols] = vec_b.dimensions();

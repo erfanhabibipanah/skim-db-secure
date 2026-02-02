@@ -156,16 +156,19 @@ public:
     auto offset = 0;
 
     for (const skimdb& db : range) {
-      if (db.parameters() != std::tuple{k, s, t}) {
+      if (db.parameters() != skimdb_parameters{k, s, t}) {
         return std::unexpected{"parameter mismatch"};
       }
+
       labels.insert(labels.end(), db.labels_.begin(), db.labels_.end());
       bitmaps.resize(labels.size());
+
       for (const auto& [kmer, pos] : db.index_) {
-        for (auto l : db.traverse_kmer(pos)) {
+        for (auto l : db.m_traverse_kmer_(pos)) {
           bitmaps[l + offset].add(kmer);
         }
       }
+
       offset = labels.size();
     }
 

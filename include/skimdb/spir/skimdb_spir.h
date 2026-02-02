@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <expected>
 #include <generator>
+#include <random>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -16,56 +17,61 @@
 
 #include <parallel_hashmap/phmap.h>
 
+#include "skimdb/detail/skimdb_definitions.h"
 #include "skimdb/detail/skimdb_encoding.h"
 #include "skimdb/detail/skimdb_logger.h"
 #include "skimdb/detail/skimdb_util.h"
 #include "skimdb/skimdb.h"
 
 #include "skimdb_spir_matrix.h"
-#include "skimdb_spir_parameters.h"
+#include "skimdb_spir_definitions.h"
 #include "skimdb_spir_random.h"
+
 
 namespace skim {
 namespace spir {
 
 class spir_server_state {
 public:
-  explicit spir_server_state(skimdb_matrix&& db_mat,
-                             spir_matrix&& hint_c,
-                             db_config&& config,
-                             db_metadata&& metadata,
-                             spir_parameters&& parameters)
-    : db_mat_{std::move(db_mat)},
-      hint_c_{std::move(hint_c)},
-      config_{std::move(config)},
+  explicit spir_server_state(skimdb_matrix&& DB,
+                             skimdb_metadata&& metadata,
+                             skimdb_parameters&& skim_config,
+                             spirdb_parameters&& spir_config,
+                             spir_matrix&& hint_c)
+    : DB_{std::move(DB)},
       metadata_{std::move(metadata)},
-      parameters_{std::move(parameters)} {}
+      skim_config_{std::move(skim_config)},
+      spir_config_{std::move(spir_config)},
+      hint_c_{std::move(hint_c)} {}
 
-  [[nodiscard]] auto get_hint_c() const -> const spir_matrix& { return hint_c_; }
-  [[nodiscard]] auto get_config() const -> const db_config& { return config_; }
-  [[nodiscard]] auto get_metadata() const -> const db_metadata& { return metadata_; }
-  [[nodiscard]] auto get_parameters() const -> const spir_parameters& { return parameters_; }
+  [[nodiscard]] auto skim_parameters() const -> const skimdb_parameters& { return skim_config_; }
+  [[nodiscard]] auto skim_metadata() const -> const skimdb_metadata& { return metadata_; }
+
+  [[nodiscard]] auto spir_parameters() const -> const spirdb_parameters& { return spir_config_; }
+  [[nodiscard]] auto hint_c() const -> const spir_matrix& { return hint_c_; }
 
   [[nodiscard]] auto answer(const spir_matrix& query_vec) const -> std::expected<spir_matrix, std::string> {
     auto [q_rows, q_cols] = query_vec.dimensions();
 
-    if (q_rows != parameters_.sqrt_N || q_cols != 1) {
+    if (q_rows != spir_config_.sqrt_N || q_cols != 1) {
       return std::unexpected{"invalid query vector dimensions"};
     }
 
-    return mat_vec(db_mat_, query_vec, parameters_.log_q);
+    return mat_vec(DB_, query_vec, spir_config_.log_q);
   }
 
 private:
-  skimdb_matrix db_mat_; // matrix representation of rle encodings
-  spir_matrix hint_c_;   // precomputed D*A matrix for query processing
+  skimdb_matrix DB_;              // matrix representation of rle encodings
+  skimdb_metadata metadata_;      // skimdb metadata (kmer index, labels)
+  skimdb_parameters skim_config_; // skimdb index parameters
 
-  db_config config_;          // skimdb index parameters
-  db_metadata metadata_;      // skimdb metadata (kmer index, labels)
-  spir_parameters parameters_;        // SPIR parameters
+  spirdb_parameters spir_config_; // SPIR parameters
+  spir_matrix hint_c_;            // precomputed D*A matrix for query processing
 };
 
-[[nodiscard]] auto make_server(skimdb&& db, std::uint64_t log_p, std::uint64_t log_q, std::uint64_t n, double sigma)
+
+[[nodiscard]] auto make_server(skimdb&& db, unsigned int log_p, unsigned int log_q, std::size_t n, double sigma,
+                               std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server(...)"};
 
@@ -106,113 +112,110 @@ private:
   g_log->info("skimdb contains {} kmers, blocks per RLE {}", kmers, rle_blocks);
   g_log->info("SPIR matrix dimension sqrt(N) = {}", sqrt_N);
 
-  // TODO: work on how seed is provided
   // generate matrix A
-  std::uint64_t mat_seed{new_seed()};
-  std::mt19937_64 rng{mat_seed};
+  spir_common_rng rng{seed};
 
-  spir_matrix mat_a{sqrt_N, n, log_q};
-  mat_a.fill(rng);
+  spir_matrix A{sqrt_N, n, log_q};
+  A.fill(rng);
 
-  db_config config{k, s, t};
-  spir_parameters parameters{n, sigma, rle_blocks, sqrt_N, log_p, log_q, mat_seed};
-  skimdb_matrix db_mat{std::move(db_parts.data), log_p, rle_blocks, sqrt_N};
-  db_metadata metadata{std::move(db_parts.index), std::move(db_parts.labels)};
+  skimdb_parameters skim_conf{k, s, t};
+  spirdb_parameters spir_conf{n, sigma, rle_blocks, sqrt_N, log_p, log_q, seed};
 
-  // compute hint_c = D * A
-  auto hint_c = mat_mul(db_mat, mat_a, log_q);
+  skimdb_matrix DB{std::move(db_parts.data), log_p, rle_blocks, sqrt_N};
+  skimdb_metadata metadata{std::move(db_parts.index), std::move(db_parts.labels)};
 
-  return spir_server_state{std::move(db_mat),
-                           std::move(hint_c),
-                           std::move(config),
+  // compute hint_c = DB * A
+  auto hint_c = mat_mul(DB, A, log_q);
+
+  return spir_server_state{std::move(DB),
                            std::move(metadata),
-                           std::move(parameters)};
+                           std::move(skim_conf),
+                           std::move(spir_conf),
+                           std::move(hint_c)};
 }
 
 class spir_client_state {
 public:
-  explicit spir_client_state(spir_matrix hint_c, db_config config, db_metadata metadata, spir_parameters parameters)
-      : hint_c_{std::move(hint_c)},
-        config_{std::move(config)},
-        metadata_{std::move(metadata)},
-        parameters_{std::move(parameters)},
-        mat_a_{parameters_.sqrt_N, parameters_.n, parameters_.log_q} {
-    // populate matrix A
-    std::mt19937_64 rng{parameters_.mat_seed};
-    mat_a_.fill(rng);
+  explicit spir_client_state(skimdb_parameters skim_config, skimdb_metadata skim_metadata,
+                             spirdb_parameters spir_config, spir_matrix hint_c)
+      : skim_config_{std::move(skim_config)}, skim_metadata_{std::move(skim_metadata)},
+        spir_config_{std::move(spir_config)}, A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
+        hint_c_{std::move(hint_c)} {
+    spir_common_rng rng{spir_config_.seed};
+    A_.fill(rng);
   }
 
 
-  [[nodiscard]] auto prepare_query(const std::string& str) -> std::expected<query_state, std::string> {
-    if (!detail::is_valid(str, config_.k)) {
+  [[nodiscard]] auto prepare_query(const std::string& str) -> std::expected<spirdb_query_state, std::string> {
+    if (!detail::is_valid(str, skim_config_.k)) {
       return std::unexpected{"invalid kmer"};
     }
 
     auto kmer = detail::kmer_to_uint32(str);
-    auto kmer_idx = std::min(kmer, detail::reverse_complement(kmer, config_.k));
+    auto kmer_idx = std::min(kmer, detail::reverse_complement(kmer, skim_config_.k));
 
-    auto it = metadata_.index.find(kmer_idx);
+    auto it = skim_metadata_.index.find(kmer_idx);
 
     // TODO: is this correct way to reporting that kmer is missing?
-    if (it == metadata_.index.end()) {
+    if (it == skim_metadata_.index.end()) {
       return std::unexpected{"kmer not found in index"};
     }
 
-    std::uint64_t target_rle = static_cast<std::uint64_t>(it->second) * parameters_.rle_blocks;
+    std::uint64_t target_rle = static_cast<std::uint64_t>(it->second) * spir_config_.rle_blocks;
 
-    std::uint64_t col_idx = target_rle / parameters_.sqrt_N;
-    std::uint64_t row_idx = target_rle % parameters_.sqrt_N;
+    std::uint64_t col_idx = target_rle / spir_config_.sqrt_N;
+    std::uint64_t row_idx = target_rle % spir_config_.sqrt_N;
 
     std::mt19937_64 rng{new_seed()};
-    spir_matrix s{parameters_.n, parameters_.log_q};
+    spir_matrix s{spir_config_.n, spir_config_.log_q};
 
     s.fill(rng);
 
     // TODO: is this correct, do we need a new generator here?
     std::mt19937_64 erng{new_seed()};
-    dgpp::uniform_rejection dist{parameters_.sigma};
+    dgpp::uniform_rejection dist{spir_config_.sigma};
 
-    spir_matrix e{parameters_.sqrt_N, 1, parameters_.log_q};
+    spir_matrix e{spir_config_.sqrt_N, 1, spir_config_.log_q};
 
     e.fill(erng, dist);
 
-    std::uint64_t delta = 1ull << (parameters_.log_q - parameters_.log_p);
+    std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
 
     // compute encrypted query vector
-    auto res = mat_vec(mat_a_, s, parameters_.log_q);
+    auto res = mat_vec(A_, s, spir_config_.log_q);
 
     spir_matrix query = std::move(res);
 
     query.add(e);
     query.set(col_idx, query.get(col_idx) + delta);
 
-    return query_state{row_idx, std::move(s), std::move(query)};
+    return spirdb_query_state{row_idx, std::move(s), std::move(query)};
   }
 
 
-  [[nodiscard]] auto recover(const spir_matrix& ans, const query_state& query)
+  [[nodiscard]] auto recover(const spir_matrix& ans, const spirdb_query_state& query)
       -> std::expected<spir_matrix, std::string> {
     auto [a_rows, a_cols] = ans.dimensions();
     auto [h_rows, h_cols] = hint_c_.dimensions();
-    auto [s_rows, s_cols] = query.secret_vec.dimensions();
+    auto [s_rows, s_cols] = query.s_vec.dimensions();
 
     if (a_rows != h_rows || s_rows != h_cols || s_cols != 1 || a_cols != 1) {
       return std::unexpected{"dimension mismatch"};
     }
 
-    if (query.i_row >= a_rows || parameters_.rle_blocks > a_rows - query.i_row) {
+    if (query.i_row >= a_rows || spir_config_.rle_blocks > a_rows - query.i_row) {
       return std::unexpected{"invalid row range"};
     }
 
-    spir_matrix out{parameters_.rle_blocks, parameters_.log_p};
-    std::uint64_t shift = parameters_.log_q - parameters_.log_p;
+    spir_matrix out{spir_config_.rle_blocks, spir_config_.log_p};
+    std::uint64_t shift = spir_config_.log_q - spir_config_.log_p;
     std::uint64_t half_delta = (shift == 0) ? 0ull : (1ull << (shift - 1));
-    std::uint64_t q_mask = (parameters_.log_q >= 64) ? ~0ull : ((1ull << parameters_.log_q) - 1);
+    std::uint64_t q_mask = (spir_config_.log_q >= 64) ? ~0ull : ((1ull << spir_config_.log_q) - 1);
 
-    for (std::uint64_t i = 0; i < parameters_.rle_blocks; ++i) {
+    for (std::uint64_t i = 0; i < spir_config_.rle_blocks; ++i) {
       std::uint64_t sum = 0;
       for (std::uint64_t j = 0; j < h_cols; ++j) {
-        sum += hint_c_.get(i + query.i_row, j) * query.secret_vec.get(j);
+        sum += hint_c_.get(i + query.i_row, j) * query.s_vec.get(j);
         sum &= q_mask;
       }
 
@@ -225,18 +228,18 @@ public:
     return out;
   }
 
-  [[nodiscard]] auto result(spir_matrix mat) -> std::generator<const std::string&> {
+  [[nodiscard]] auto result(const spir_matrix& mat) -> std::generator<const std::string&> {
     auto [rows, _] = mat.dimensions();
 
-    if (rows != parameters_.rle_blocks) {
+    if (rows != spir_config_.rle_blocks) {
       co_return;
     }
 
     std::vector<std::uint16_t> rle;
 
-    switch (parameters_.log_p) {
+    switch (spir_config_.log_p) {
     case 8: {
-      for (std::uint64_t i = 0; i < parameters_.rle_blocks / 2; ++i) {
+      for (std::uint64_t i = 0; i < spir_config_.rle_blocks / 2; ++i) {
         std::uint16_t byte_pair = static_cast<std::uint16_t>(mat.get(i * 2)) << 8;
         byte_pair |= static_cast<std::uint16_t>(mat.get(i * 2 + 1));
         rle.push_back(byte_pair);
@@ -244,7 +247,7 @@ public:
       break;
     }
     case 16: {
-      for (std::uint64_t i = 0; i < parameters_.rle_blocks; ++i) {
+      for (std::uint64_t i = 0; i < spir_config_.rle_blocks; ++i) {
         rle.push_back(static_cast<std::uint16_t>(mat.get(i)));
       }
       break;
@@ -256,19 +259,20 @@ public:
     detail::encoding enc{std::move(rle)};
 
     for (auto idx : enc.select_idxs()) {
-      if (idx >= metadata_.labels.size()) {
+      if (idx >= skim_metadata_.labels.size()) {
         break;
       }
-      co_yield metadata_.labels[idx];
+      co_yield skim_metadata_.labels[idx];
     }
   }
 
 private:
-  db_config config_;           // skimdb index parameters
-  db_metadata metadata_;       // skimdb metadata (kmer index, labels)
-  spir_parameters parameters_; // SPIR parameters
+  skimdb_parameters skim_config_; // skimdb index parameters
+  skimdb_metadata skim_metadata_; // skimdb metadata (kmer index, labels)
 
-  spir_matrix mat_a_;  // matrix A
+  spirdb_parameters spir_config_; // SPIR parameters
+
+  spir_matrix A_;      // matrix A
   spir_matrix hint_c_; // hint matrix from server
 };
 

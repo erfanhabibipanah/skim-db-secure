@@ -1,10 +1,8 @@
-
 #include <filesystem>
 #include <iostream>
 #include <string>
 
 #include <cxxopts.hpp>
-#include <fmt_extra.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
@@ -19,12 +17,20 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
+  unsigned int logp = 16;
+  unsigned int logq = 64;
+  std::size_t n = 1000;
+  double sigma = 6.4;
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "path to database file", cxxopts::value<std::string>(in))
+      ("i,input", "input database file", cxxopts::value<std::string>(in))
+      ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
+      ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
+      ("n", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
+      ("s,sigma", "variance of error distribution", cxxopts::value<double>(sigma)->default_value(std::to_string(sigma)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -39,7 +45,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-spir-local");
+  auto log = spdlog::stdout_color_mt("skimdb-spir-query");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   if (in.empty()) {
@@ -64,9 +70,9 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  log->info("building server state...");
+  log->info("building spir server state...");
 
-  auto setup = skim::spir::make_server(std::move(db), 16, 64, 1000, 6.4);
+  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma);
 
   if (!setup) {
     log->error("could not setup server state: {}", setup.error());
@@ -75,14 +81,12 @@ auto main(int argc, char* argv[]) -> int {
 
   auto server_state = setup.value();
 
+
   log->info("creating client...");
 
-  skim::spir::spir_client_state client_state{
-    server_state.get_hint_c(),
-    server_state.get_config(),
-    server_state.get_metadata(),
-    server_state.get_parameters()
-  };
+  skim::spir::spir_client_state client_state{server_state.skim_parameters(), server_state.skim_metadata(),
+                                             server_state.spir_parameters(), server_state.hint_c()};
+
 
   log->info("creating query for kmer AACGGTCCTAAGGTA...");
 
@@ -96,7 +100,7 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("submitting query...");
 
-  auto answer = server_state.answer(query_state.enc_vec);
+  auto answer = server_state.answer(query_state.qu_vec);
 
   if (!answer) {
     log->error("could not get answer: {}", answer.error());

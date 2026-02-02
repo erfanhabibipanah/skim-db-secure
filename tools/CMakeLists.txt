@@ -45,10 +45,10 @@ if(SKIMDB_BUILD_GRPC)
 endif()
 
 if(SKIMDB_BUILD_SPIR)
-    add_executable(skimdb-spir-local skimdb-spir-local.cpp)
-    target_link_libraries(skimdb-spir-local PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra)
+    add_executable(skimdb-spir-query skimdb-spir-query.cpp)
+    target_link_libraries(skimdb-spir-query PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra)
 
     install(TARGETS
-        skimdb-spir-local
+        skimdb-spir-query
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
