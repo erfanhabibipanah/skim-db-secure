@@ -31,103 +31,87 @@ public:
   explicit spir_matrix(std::uint64_t n, std::uint64_t log_mod) : spir_matrix(n, 1, log_mod) {}
 
 
-  inline void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) {
-    data_[i * c_ + j] = x & mask_;
-  }
+  inline void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
 
-  inline void set(std::uint64_t i, std::uint64_t x) {
-    data_[i] = x & mask_;
-  }
+  inline void set(std::uint64_t i, std::uint64_t x) { data_[i] = x & mask_; }
 
-  inline auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t {
-    return data_[i * c_ + j];
-  }
+  inline auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
 
-  inline auto get(std::uint64_t i) const -> std::uint64_t {
-    return data_[i];
-  }
+  inline auto get(std::uint64_t i) const -> std::uint64_t { return data_[i]; }
 
-  auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> {
-    return std::make_tuple(r_, c_);
-  }
 
-  void fill_random(std::mt19937_64& rng) {
+  auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(r_, c_); }
+
+
+  template <typename URBG>
+  void fill(URBG&& rng) {
     for (auto& val : data_) {
       val = rng() & mask_;
     }
   }
 
-  void fill_random(std::mt19937_64& rng, dgpp::uniform_rejection& dist) {
+  template <typename URBG>
+  void fill(URBG&& rng, dgpp::uniform_rejection& dist) {
     for (auto& val : data_) {
       val = dist(rng) & mask_;
     }
   }
 
-  auto add(const spir_matrix& mat) -> std::expected<void, std::string> {
-    auto [rows, cols] = mat.dimensions();
-    if (rows != r_ || cols != c_) {
-      return std::unexpected{"matrix dimension mismatch"};
-    }
 
+  auto add(const spir_matrix& mat) -> spir_matrix& {
     auto* dst = data_.data();
     const auto* src = mat.data_.data();
-    const std::size_t n = data_.size();
-    std::for_each(std::execution::par, dst, dst + n,
-                [&](std::uint64_t& v) {
-                  const std::size_t k = static_cast<std::size_t>(&v - dst);
-                  v = (v + src[k]) & mask_;
-                });
 
-    return {};
+    const std::size_t n = data_.size();
+
+    std::for_each(std::execution::par, dst, dst + n, [&](std::uint64_t& v) {
+      const std::size_t k = static_cast<std::size_t>(&v - dst);
+      v = (v + src[k]) & mask_;
+    });
+
+    return *this;
   }
 
-  auto sub(const spir_matrix& mat) -> std::expected<void, std::string> {
-    auto [rows, cols] = mat.dimensions();
-    if (rows != r_ || cols != c_) {
-      return std::unexpected{"matrix dimension mismatch"};
-    }
-
+  auto sub(const spir_matrix& mat) -> spir_matrix& {
     auto* dst = data_.data();
     const auto* src = mat.data_.data();
+
     const std::size_t n = data_.size();
-    std::for_each(std::execution::par, dst, dst + n,
-                [&](std::uint64_t& v) {
-                  const std::size_t k = static_cast<std::size_t>(&v - dst);
-                  v = (v - src[k]) & mask_;
-                });
 
-    return {};
+    std::for_each(std::execution::par, dst, dst + n, [&](std::uint64_t& v) {
+      const std::size_t k = static_cast<std::size_t>(&v - dst);
+      v = (v - src[k]) & mask_;
+    });
+
+    return *this;
   }
 
-  void add_scalar(std::uint64_t scalar) {
-    std::for_each(std::execution::par, data_.begin(), data_.end(),
-                [&](std::uint64_t& v) {
-                  v = (v + scalar) & mask_;
-                });
+  auto add(std::uint64_t scalar) -> spir_matrix& {
+    std::for_each(std::execution::par, data_.begin(), data_.end(), [&](std::uint64_t& v) { v = (v + scalar) & mask_; });
+    return *this;
   }
 
-  void mult_scalar(std::uint64_t scalar) {
-    std::for_each(std::execution::par, data_.begin(), data_.end(),
-                [&](std::uint64_t& v) {
-                  v = (v * scalar) & mask_;
-                });
+  auto mul(std::uint64_t scalar) -> spir_matrix& {
+    std::for_each(std::execution::par, data_.begin(), data_.end(), [&](std::uint64_t& v) { v = (v * scalar) & mask_; });
+    return *this;
   }
 
 private:
   std::uint64_t r_;
   std::uint64_t c_;
-  std::uint64_t mask_;                // precomputed mask
-  std::vector<std::uint64_t> data_;   // row-major flat storage
+  std::uint64_t mask_;              // precomputed mask
+  std::vector<std::uint64_t> data_; // row-major flat storage
 };
+
 
 // wrapper around skim::detail::encoding to provide matrix-like access
 // TODO: will want to improve this later to account for access patterns
 class skimdb_matrix {
 public:
-  explicit skimdb_matrix(std::vector<skim::detail::encoding>&& data, 
-                          std::uint64_t log_p,
-                          std::uint64_t rle_blocks,
-                          std::uint64_t sqrt_N)
+  explicit skimdb_matrix(std::vector<skim::detail::encoding>&& data,
+                         std::uint64_t log_p,
+                         std::uint64_t rle_blocks,
+                         std::uint64_t sqrt_N)
     : data_{std::move(data)}, log_p_{log_p}, rle_blocks_{rle_blocks}, sqrt_N_{sqrt_N} {}
 
   auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t {
@@ -159,6 +143,7 @@ private:
   std::uint64_t rle_blocks_;  // blocks needed per RLE encoding
   std::uint64_t sqrt_N_;      // matrix side length (blocks of data)
 };
+
 
 auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint64_t log_q)
     -> std::expected<spir_matrix, std::string> {

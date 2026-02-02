@@ -112,7 +112,7 @@ private:
   std::mt19937_64 rng{mat_seed};
 
   spir_matrix mat_a{sqrt_N, n, log_q};
-  mat_a.fill_random(rng);
+  mat_a.fill(rng);
 
   db_config config{k, s, t};
   spir_parameters parameters{n, sigma, rle_blocks, sqrt_N, log_p, log_q, mat_seed};
@@ -143,7 +143,7 @@ public:
         mat_a_{parameters_.sqrt_N, parameters_.n, parameters_.log_q} {
     // populate matrix A
     std::mt19937_64 rng{parameters_.mat_seed};
-    mat_a_.fill_random(rng);
+    mat_a_.fill(rng);
   }
 
 
@@ -170,7 +170,7 @@ public:
     std::mt19937_64 rng{new_seed()};
     spir_matrix s{parameters_.n, parameters_.log_q};
 
-    s.fill_random(rng);
+    s.fill(rng);
 
     // TODO: is this correct, do we need a new generator here?
     std::mt19937_64 erng{new_seed()};
@@ -178,7 +178,7 @@ public:
 
     spir_matrix e{parameters_.sqrt_N, 1, parameters_.log_q};
 
-    e.fill_random(erng, dist);
+    e.fill(erng, dist);
 
     std::uint64_t delta = 1ull << (parameters_.log_q - parameters_.log_p);
 
