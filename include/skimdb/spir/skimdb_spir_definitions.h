@@ -15,7 +15,7 @@ namespace skim {
 namespace spir {
 
 // random number generator that SPIR client and server agree to use
-using spir_common_rng = std::mt19937_64;
+using spir_common_rng_t = std::mt19937_64;
 
 
 struct skimdb_metadata {

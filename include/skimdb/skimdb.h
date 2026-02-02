@@ -29,17 +29,19 @@ class skimdb final {
 public:
   using parameters_type = skimdb_parameters;
 
+  struct skimdb_components {
+    std::vector<detail::encoding> data;
+    std::vector<std::string> labels;
+    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
+  };
+
+
   skimdb() = default;
+
 
   auto parameters() const -> parameters_type { return parameters_type{k_, s_, t_}; }
 
-  struct skimdb_parts {
-    std::vector<detail::encoding> data;
-    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
-    std::vector<std::string> labels;
-  };
-
-  auto take_parts() && -> skimdb_parts { return {std::move(data_), std::move(index_), std::move(labels_)}; }
+  auto explode() && -> skimdb_components { return {std::move(data_), std::move(labels_), std::move(index_)}; }
 
 
   // given a kmer, returns a generator over annotated labels
@@ -128,10 +130,9 @@ private:
   std::size_t s_{0};
   std::size_t t_{0};
 
-  phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index_;
-
-  std::vector<std::string> labels_;
   std::vector<detail::encoding> data_;
+  std::vector<std::string> labels_;
+  phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index_;
 };
 
 } // namespace skim

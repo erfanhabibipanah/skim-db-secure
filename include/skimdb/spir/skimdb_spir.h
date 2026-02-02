@@ -25,7 +25,6 @@
 
 #include "skimdb_spir_matrix.h"
 #include "skimdb_spir_definitions.h"
-#include "skimdb_spir_random.h"
 
 
 namespace skim {
@@ -89,7 +88,7 @@ private:
   }
 
   auto [k, s, t] = db.parameters();
-  auto db_parts = std::move(db).take_parts();
+  auto db_parts = std::move(db).explode();
 
   std::uint64_t kmers = db_parts.data.size();
   std::uint64_t max_rle = 0;
@@ -113,7 +112,7 @@ private:
   g_log->info("SPIR matrix dimension sqrt(N) = {}", sqrt_N);
 
   // generate matrix A
-  spir_common_rng rng{seed};
+  spir_common_rng_t rng{seed};
 
   spir_matrix A{sqrt_N, n, log_q};
   A.fill(rng);
@@ -136,12 +135,18 @@ private:
 
 class spir_client_state {
 public:
+  using rng_type = std::mt19937_64;
+
   explicit spir_client_state(skimdb_parameters skim_config, skimdb_metadata skim_metadata,
-                             spirdb_parameters spir_config, spir_matrix hint_c)
-      : skim_config_{std::move(skim_config)}, skim_metadata_{std::move(skim_metadata)},
-        spir_config_{std::move(spir_config)}, A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
-        hint_c_{std::move(hint_c)} {
-    spir_common_rng rng{spir_config_.seed};
+                             spirdb_parameters spir_config, spir_matrix hint_c,
+                             std::uint64_t seed = std::random_device{}())
+      : skim_config_{std::move(skim_config)},
+        skim_metadata_{std::move(skim_metadata)},
+        spir_config_{std::move(spir_config)},
+        A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
+        hint_c_{std::move(hint_c)},
+        rng_{seed} {
+    spir_common_rng_t rng{spir_config_.seed};
     A_.fill(rng);
   }
 
@@ -166,18 +171,13 @@ public:
     std::uint64_t col_idx = target_rle / spir_config_.sqrt_N;
     std::uint64_t row_idx = target_rle % spir_config_.sqrt_N;
 
-    std::mt19937_64 rng{new_seed()};
     spir_matrix s{spir_config_.n, spir_config_.log_q};
+    s.fill(rng_);
 
-    s.fill(rng);
-
-    // TODO: is this correct, do we need a new generator here?
-    std::mt19937_64 erng{new_seed()};
     dgpp::uniform_rejection dist{spir_config_.sigma};
 
     spir_matrix e{spir_config_.sqrt_N, 1, spir_config_.log_q};
-
-    e.fill(erng, dist);
+    e.fill(rng_, dist);
 
     std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
 
@@ -274,6 +274,8 @@ private:
 
   spir_matrix A_;      // matrix A
   spir_matrix hint_c_; // hint matrix from server
+
+  rng_type rng_;
 };
 
 } // namespace spir
