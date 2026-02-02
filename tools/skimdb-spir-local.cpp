@@ -66,26 +66,28 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("building server state...");
 
-  auto setup = 
-      skim::spir::setup_server(std::move(db), 16, 64, 1000, 6.4);
+  auto setup = skim::spir::make_server(std::move(db), 16, 64, 1000, 6.4);
+
   if (!setup) {
     log->error("could not setup server state: {}", setup.error());
     return -1;
   }
+
   auto server_state = setup.value();
 
   log->info("creating client...");
 
   skim::spir::spir_client_state client_state{
-      server_state.get_hint_c(),
-      server_state.get_config(),
-      server_state.get_metadata(),
-      server_state.get_params()
+    server_state.get_hint_c(),
+    server_state.get_config(),
+    server_state.get_metadata(),
+    server_state.get_parameters()
   };
 
   log->info("creating query for kmer AACGGTCCTAAGGTA...");
 
-  auto query = client_state.new_query("AACGGTCCTAAGGTA");
+  auto query = client_state.prepare_query("AACGGTCCTAAGGTA");
+
   if (!query) {
     log->error("could not create query: {}", query.error());
     return -1;
@@ -94,20 +96,24 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("submitting query...");
 
-  auto answer = server_state.answer(query_state.enc_vec);;
+  auto answer = server_state.answer(query_state.enc_vec);
+
   if (!answer) {
     log->error("could not get answer: {}", answer.error());
     return -1;
   }
+
   auto answer_vec = answer.value();
 
   log->info("recovering result...");
 
   auto recover_mat = client_state.recover(answer_vec, query_state);
+
   if (!recover_mat) {
     log->error("could not recover result: {}", recover_mat.error());
     return -1;
   }
+
   auto res_mat = recover_mat.value();
 
   log->info("query results:");

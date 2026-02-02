@@ -25,17 +25,10 @@ namespace spir {
 // implements matrices (and vectors) with modular arithmetic
 class spir_matrix {
 public:
-  explicit spir_matrix(std::uint64_t rows,
-                  std::uint64_t cols,
-                  std::uint64_t log_mod)
-    : r_{rows},
-      c_{cols},
-      mask_{ (log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1) },
-      data_(rows * cols, 0) {}
+  explicit spir_matrix(std::uint64_t rows, std::uint64_t cols, std::uint64_t log_mod)
+      : r_{rows}, c_{cols}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_(rows * cols, 0) {}
 
-  explicit spir_matrix(std::uint64_t n,
-                  std::uint64_t log_mod)
-    : spir_matrix(n, 1, log_mod) {}
+  explicit spir_matrix(std::uint64_t n, std::uint64_t log_mod) : spir_matrix(n, 1, log_mod) {}
 
 
   inline void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) {

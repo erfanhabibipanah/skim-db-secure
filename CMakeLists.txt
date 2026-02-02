@@ -92,9 +92,8 @@ install(
 )
 
 # -------------------------------------------------------------------
-# Tools
-# -------------------------------------------------------------------
 
+# Tools
 option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
 
 if(SKIMDB_BUILD_TOOLS)
@@ -102,7 +101,6 @@ if(SKIMDB_BUILD_TOOLS)
 endif()
 
 # gRPC
-
 option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)
 
 if(SKIMDB_BUILD_GRPC)
@@ -110,7 +108,6 @@ if(SKIMDB_BUILD_GRPC)
 endif()
 
 # SPIR
-
 option(SKIMDB_BUILD_SPIR "Build SPIR implementation" OFF)
 
 if (SKIMDB_BUILD_SPIR)
