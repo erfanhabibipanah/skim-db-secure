@@ -8,12 +8,14 @@
  *  See accompanying LICENSE
  */
 
+#include "prompted_input.h"
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 
 #include <cxxopts.hpp>
+#include <prompted_input.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
@@ -71,16 +73,18 @@ auto main(int argc, char* argv[]) -> int {
   log->info("connection established, [k={}, s={}, t={}]", k, s, t);
   log->info("ready for queries...");
 
+  prompted_input prompt;
   std::string q{};
 
-  std::cout << ">";
-  while (std::cin >> q && std::cin && !std::cin.eof()) {
+  while (prompt.getline(q)) {
+    if (!prompt.interactive()) {
+      log->info("running query {}", q);
+    }
+
     for (const auto& l : client.query(q)) {
       std::cout << "  " << l << std::endl;
     }
-    std::cout << ">";
   }
-  std::cout << "\n";
 
   log->info("done!");
 

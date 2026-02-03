@@ -3,6 +3,7 @@
 #include <string>
 
 #include <cxxopts.hpp>
+#include <prompted_input.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
@@ -94,9 +95,14 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("client ready for queries...");
 
+  prompted_input prompt;
   std::string q{};
 
-  while (std::cin >> q && std::cin && !std::cin.eof()) {
+  while (prompt.getline(q)) {
+    if (!prompt.interactive()) {
+      log->info("running query {}", q);
+    }
+
     auto query = client_state.prepare_query(q);
 
     if (!query) {
@@ -135,11 +141,9 @@ auto main(int argc, char* argv[]) -> int {
         log->info("  {}", label);
       }
     } else {
-      log->info("got {} labels", std::ranges::distance(client_state.result(res_mat)));
+      log->info("got {} label(s)", std::ranges::distance(client_state.result(res_mat)));
     }
   }
-
-  std::cout << "\n";
 
   log->info("done!");
 
