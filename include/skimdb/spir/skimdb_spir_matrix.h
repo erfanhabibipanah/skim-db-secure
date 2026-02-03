@@ -2,11 +2,7 @@
 #define SKIMDB_SPIR_MATRIX_H
 
 #include <cstdint>
-#include <execution>
-#include <expected>
-#include <random>
-#include <ranges>
-#include <string>
+#include <memory>
 #include <tuple>
 #include <vector>
 
@@ -15,8 +11,8 @@
 #include <fastxrd/fasta_buffered_reader.h>
 #include <fastxrd/fastx_files_reader.h>
 
-#include "skimdb/detail/skimdb_encoding.h"
-#include "skimdb/detail/skimdb_logger.h"
+#include <skimdb/detail/skimdb_encoding.h>
+#include <skimdb/detail/skimdb_logger.h>
 
 
 namespace skim {
@@ -31,13 +27,13 @@ public:
   explicit spir_matrix(std::uint64_t n, std::uint64_t log_mod) : spir_matrix(n, 1, log_mod) {}
 
 
-  inline void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
+  void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
 
-  inline void set(std::uint64_t i, std::uint64_t x) { data_[i] = x & mask_; }
+  void set(std::uint64_t i, std::uint64_t x) { data_[i] = x & mask_; }
 
-  inline auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
+  auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
 
-  inline auto get(std::uint64_t i) const -> std::uint64_t { return data_[i]; }
+  auto get(std::uint64_t i) const -> std::uint64_t { return data_[i]; }
 
 
   auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(r_, c_); }
@@ -59,6 +55,8 @@ public:
 
 
   auto sub(const spir_matrix& mat) -> spir_matrix& {
+    LogFun lf{"spir_matrix::sub(...)"};
+
     auto* dst = data_.data();
     const auto* src = mat.data_.data();
 
@@ -71,6 +69,8 @@ public:
 
 
   auto add(const spir_matrix& mat) -> spir_matrix& {
+    LogFun lf{"spir_matrix::add(...)"};
+
     auto* dst = data_.data();
     const auto* src = mat.data_.data();
 
@@ -82,6 +82,8 @@ public:
   }
 
   auto add(std::uint64_t scalar) -> spir_matrix& {
+    LogFun lf{"spir_matrix::add(scalar)"};
+
     auto* dst = data_.data();
 
     for (std::size_t i = 0, n = data_.size(); i < n; ++i) {
@@ -93,6 +95,8 @@ public:
 
 
   auto mul(std::uint64_t scalar) -> spir_matrix& {
+    LogFun lf{"spir_matrix::mul(...)"};
+
     auto* dst = data_.data();
 
     for (std::size_t i = 0, n = data_.size(); i < n; ++i) {
@@ -121,27 +125,33 @@ public:
     : data_{std::move(data)}, log_p_{log_p}, rle_blocks_{rle_blocks}, sqrt_N_{sqrt_N} {}
 
   auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t {
-    std::uint64_t col_maj  = j * sqrt_N_ + i;
-    std::uint64_t kmer_idx = col_maj / rle_blocks_;
-    std::uint64_t in_block = col_maj % rle_blocks_;
-    std::uint64_t offset   = (log_p_ == 8) ? (in_block / 2) : in_block;
+    const std::uint64_t col_maj = j * sqrt_N_ + i;
 
-    if (kmer_idx >= data_.size() || offset >= data_[kmer_idx].length()) {
+    const std::uint64_t kmer_idx = col_maj / rle_blocks_;
+    const std::uint64_t in_block = col_maj - kmer_idx * rle_blocks_;
+
+    if (kmer_idx >= data_.size()) [[unlikely]] {
       return 0;
     }
 
-    std::uint64_t val = static_cast<std::uint64_t>(data_[kmer_idx].get(offset));
+    const auto& block = data_[kmer_idx];
+    const std::uint64_t offset = (log_p_ == 8) ? (in_block >> 1) : in_block;
+
+    if (offset >= block.length()) [[unlikely]] {
+      return 0;
+    }
+
+    std::uint64_t val = static_cast<std::uint64_t>(block.get(offset));
 
     if (log_p_ == 8) {
-      val = ((in_block & 1ull) == 0) ? ((val >> 8) & 0xFF) : (val & 0xFF);
+      const std::uint64_t shift = (in_block & 1ull) << 3; // 0 or 8
+      val = (val >> (8 - shift)) & 0xFF;
     }
 
     return val;
   }
 
-  auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> {
-    return std::make_tuple(sqrt_N_, sqrt_N_);
-  }
+  auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(sqrt_N_, sqrt_N_); }
 
 private:
   std::vector<skim::detail::encoding> data_;
@@ -180,11 +190,16 @@ inline auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint6
 
   spir_matrix out{m_rows, log_q};
 
+#pragma omp parallel for schedule(static)
   for (std::uint64_t i = 0; i < m_rows; ++i) {
+
     std::uint64_t sum = 0;
+
+#pragma omp simd reduction(+ : sum)
     for (std::uint64_t j = 0; j < m_cols; ++j) {
       sum += mat.get(i, j) * vec.get(j);
     }
+
     out.set(i, sum);
   }
 
@@ -200,17 +215,31 @@ inline auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::u
 
   spir_matrix out{a_rows, b_cols, log_q};
 
-  for (std::uint64_t j = 0; j < b_cols; ++j) {
-    std::vector<std::uint64_t> acc(a_rows, 0);
-    for (std::uint64_t k = 0; k < a_cols; ++k) {
-      const std::uint64_t bkj = mat_b.get(k, j);
-      for (std::uint64_t i = 0; i < a_rows; ++i) {
-        acc[i] += mat_a.get(i, k) * bkj;
-      }
-    }
+#pragma omp parallel
+  {
+    std::unique_ptr<std::uint64_t[]> acc(new std::uint64_t[a_rows]); // probably faster than std::vector
 
-    for (std::uint64_t i = 0; i < a_rows; ++i) {
-      out.set(i, j, acc[i]);
+#pragma omp for schedule(static)
+    for (std::uint64_t j = 0; j < b_cols; ++j) {
+      std::memset(acc.get(), 0, a_rows * sizeof(std::uint64_t)); // probably faster than std::fill
+
+      for (std::uint64_t k = 0; k < a_cols; ++k) {
+        const std::uint64_t bkj = mat_b.get(k, j);
+
+        // could be good trick?
+        // if (bkj == 0) {
+        // continue;
+        // }
+
+#pragma omp simd
+        for (std::uint64_t i = 0; i < a_rows; ++i) {
+          acc[i] += mat_a.get(i, k) * bkj;
+        }
+      }
+
+      for (std::uint64_t i = 0; i < a_rows; ++i) {
+        out.set(i, j, acc[i]);
+      }
     }
   }
 
@@ -219,6 +248,8 @@ inline auto mat_mul(const skimdb_matrix& mat_a, const spir_matrix& mat_b, std::u
 
 // client side, answer recovery
 inline auto vec_mul(const spir_matrix& vec_a, const spir_matrix& vec_b) -> std::uint64_t {
+  LogFun lf{"vec_mul(spir_matrix, ...)"};
+
   auto [a_rows, a_cols] = vec_a.dimensions();
   auto [b_rows, b_cols] = vec_b.dimensions();
 

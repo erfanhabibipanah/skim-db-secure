@@ -17,11 +17,11 @@
 
 #include <parallel_hashmap/phmap.h>
 
-#include "skimdb/detail/skimdb_definitions.h"
-#include "skimdb/detail/skimdb_encoding.h"
-#include "skimdb/detail/skimdb_logger.h"
-#include "skimdb/detail/skimdb_util.h"
-#include "skimdb/skimdb.h"
+#include <skimdb/detail/skimdb_definitions.h>
+#include <skimdb/detail/skimdb_encoding.h>
+#include <skimdb/detail/skimdb_logger.h>
+#include <skimdb/detail/skimdb_util.h>
+#include <skimdb/skimdb.h>
 
 #include "skimdb_spir_matrix.h"
 #include "skimdb_spir_definitions.h"
@@ -109,7 +109,7 @@ private:
   std::uint64_t sqrt_N = rles_per_side * rle_blocks;
 
   g_log->info("skimdb contains {} kmers, blocks per RLE {}", kmers, rle_blocks);
-  g_log->info("SPIR matrix dimension sqrt(N) = {}", sqrt_N);
+  g_log->info("spir matrix dimension sqrt(N) = {}", sqrt_N);
 
   // generate matrix A
   spir_common_rng_t rng{seed};

@@ -45,8 +45,10 @@ if(SKIMDB_BUILD_GRPC)
 endif()
 
 if(SKIMDB_BUILD_SPIR)
+    find_package(OpenMP REQUIRED)
+
     add_executable(skimdb-spir-query skimdb-spir-query.cpp)
-    target_link_libraries(skimdb-spir-query PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra)
+    target_link_libraries(skimdb-spir-query PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
 
     install(TARGETS
         skimdb-spir-query

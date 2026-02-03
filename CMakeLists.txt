@@ -11,6 +11,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
 
+add_compile_options(
+    -O3
+    -march=native
+    -ffast-math
+    -funroll-loops
+)
+
 # -------------------------------------------------------------------
 # Dependencies
 # -------------------------------------------------------------------
