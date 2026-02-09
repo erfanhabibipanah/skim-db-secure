@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <tuple>
 #include <vector>
 
@@ -34,6 +35,8 @@ public:
   auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
 
   auto get(std::uint64_t i) const -> std::uint64_t { return data_[i]; }
+
+  auto data() -> std::uint64_t* { return data_.data(); }
 
 
   auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(r_, c_); }
@@ -116,6 +119,10 @@ private:
 
 // wrapper around skim::detail::encoding to provide matrix-like access
 // TODO: will want to improve this later to account for access patterns
+/* Expected sizes:
+ *                | log_p  |   kemrs  | max_rle | rle_per_col | sqrt_N |     N 
+ *  viral20250425 |   16   | 63512373 |   590   |     329     | 194110 | 37678692100
+ */ 
 class skimdb_matrix {
 public:
   explicit skimdb_matrix(std::vector<skim::detail::encoding>&& data,
@@ -151,6 +158,12 @@ public:
     return val;
   }
 
+  auto get_rle_in_col(std::uint64_t n, std::uint64_t col) const -> std::span<const std::uint16_t> {
+    std::uint64_t kmer_idx = (col * sqrt_N_) / rle_blocks_ + n;
+    if (kmer_idx >= data_.size()) [[unlikely]] return {};
+    return data_[kmer_idx].span();
+  }
+
   auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(sqrt_N_, sqrt_N_); }
 
 private:
@@ -182,25 +195,32 @@ inline auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint64_
 }
 
 // server side, prepare response
-inline auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log_q) -> spir_matrix {
+// TODO - this currently only handles p = 16, will need to adjust for p = 8 case
+          // can just cast uint16_t to uint8_t but then client and server must agree on endianess
+inline auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint64_t log_p, 
+    std::uint64_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
   LogFun lf{"mat_vec(skimdb_matrix, ...)"};
 
   auto [m_rows, m_cols] = mat.dimensions();
-  auto [v_rows, v_cols] = vec.dimensions();
-
   spir_matrix out{m_rows, log_q};
+  std::uint64_t* out_data = out.data();
+  std::uint64_t partitions = m_rows / rle_blocks;
 
 #pragma omp parallel for schedule(static)
-  for (std::uint64_t i = 0; i < m_rows; ++i) {
+  for (std::uint64_t p = 0; p < partitions; ++p) {
+    std::uint64_t* partition_data = out_data + p * rle_blocks;
 
-    std::uint64_t sum = 0;
-
-#pragma omp simd reduction(+ : sum)
     for (std::uint64_t j = 0; j < m_cols; ++j) {
-      sum += mat.get(i, j) * vec.get(j);
-    }
+      auto rle = mat.get_rle_in_col(p, j);
+      const std::uint16_t* rle_ptr = rle.data();
+      const std::uint64_t len = rle.size();
+      auto vec_val = vec.get(j);
 
-    out.set(i, sum);
+#pragma omp simd
+      for (std::uint64_t i = 0; i < len; ++i) {
+        partition_data[i] += static_cast<std::uint64_t>(rle_ptr[i]) * vec_val;
+      }
+    }
   }
 
   return out;

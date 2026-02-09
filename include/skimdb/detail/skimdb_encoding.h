@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <generator>
+#include <span>
 #include <vector>
 
 #include <cereal/types/vector.hpp>
@@ -182,6 +183,10 @@ public:
 
   auto get(std::size_t i) const -> std::uint16_t {
     return blocks_[i];
+  }
+
+  auto span() const noexcept -> std::span<const std::uint16_t> {
+    return {blocks_.data(), blocks_.size()};
   }
 
   template <typename Archive>

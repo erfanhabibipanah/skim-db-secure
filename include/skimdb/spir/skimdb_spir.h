@@ -56,7 +56,7 @@ public:
       return std::unexpected{"invalid query vector dimensions"};
     }
 
-    return mat_vec(DB_, query_vec, spir_config_.log_q);
+    return mat_vec(DB_, query_vec, spir_config_.log_p, spir_config_.log_q, spir_config_.rle_blocks);
   }
 
 private:
