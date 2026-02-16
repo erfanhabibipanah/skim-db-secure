@@ -12,10 +12,6 @@
 
 #include <dgpp/uniform_rejection.hpp>
 
-#include <skimdb/detail/skimdb_definitions.h>
-#include <skimdb/detail/skimdb_encoding.h>
-#include <skimdb/detail/skimdb_logger.h>
-#include <skimdb/detail/skimdb_util.h>
 #include <skimdb/skimdb.h>
 
 #include "skimdb_spir_matrix.h"
@@ -24,6 +20,8 @@
 
 namespace skim {
 namespace spir {
+
+namespace fs = std::filesystem;
 
 class spir_server_state {
 public:
@@ -52,6 +50,28 @@ public:
     }
 
     return mat_vec(DB_, query_vec, spir_config_.log_p, spir_config_.log_q, spir_config_.rle_blocks);
+  }
+
+  auto save(const fs::path& path) const -> std::expected<std::uintmax_t, std::string> {
+    std::ofstream os{path, std::ios::binary};
+    if (!os) {
+      return std::unexpected{"could not create file"};
+    }
+
+    try {
+      cereal::BinaryOutputArchive archive{os};
+      archive(
+        DB_, metadata_.index, metadata_.labels, skim_config_.k, skim_config_.s, skim_config_.t,
+        spir_config_.n, spir_config_.sigma, spir_config_.rle_blocks, spir_config_.sqrt_N, 
+        spir_config_.log_p, spir_config_.log_q, spir_config_.seed, hint_c_
+      );
+    } catch (...) {
+      return std::unexpected{"serialization failed"};
+    }
+
+    os.close();
+
+    return fs::file_size(path);
   }
 
 private:
@@ -126,6 +146,34 @@ private:
                            std::move(skim_conf),
                            std::move(spir_conf),
                            std::move(hint_c)};
+}
+
+[[nodiscard]] auto load_server(const fs::path& path) -> std::expected<spir_server_state, std::string> {
+  std::ifstream is{path, std::ios::binary};
+  if (!is) {
+    return std::unexpected{"could not open file"};
+  }
+
+  try {
+    cereal::BinaryInputArchive archive(is);
+
+    skimdb_matrix DB;
+    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
+    std::vector<std::string> labels;
+    skimdb_parameters skim_conf;
+    spirdb_parameters spir_conf;
+    spir_matrix hint_c;
+
+    archive(DB, index, labels, skim_conf.k, skim_conf.s, skim_conf.t,
+            spir_conf.n, spir_conf.sigma, spir_conf.rle_blocks, spir_conf.sqrt_N,
+            spir_conf.log_p, spir_conf.log_q, spir_conf.seed, hint_c);
+
+    skimdb_metadata metadata{std::move(index), std::move(labels)};
+
+    return spir_server_state{std::move(DB), std::move(metadata), std::move(skim_conf), std::move(spir_conf), std::move(hint_c)};
+  } catch (...) {
+    return std::unexpected{"deserialization failed"};
+  }
 }
 
 class spir_client_state {

@@ -7,6 +7,8 @@
 #include <tuple>
 #include <vector>
 
+#include <cereal/types/vector.hpp>
+
 #include <dgpp/uniform_rejection.hpp>
 
 #include <skimdb/detail/skimdb_encoding.h>
@@ -19,6 +21,8 @@ namespace spir {
 // implements matrices (and vectors) with modular arithmetic
 class spir_matrix {
 public:
+  explicit spir_matrix() = default;
+
   explicit spir_matrix(std::uint64_t rows, std::uint64_t cols, std::uint64_t log_mod)
       : r_{rows}, c_{cols}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_(rows * cols, 0) {}
 
@@ -118,6 +122,11 @@ public:
     return *this;
   }
 
+  template <typename Archive>
+  void serialize(Archive& archive) {
+    archive(r_, c_, mask_, data_);
+  }
+
 private:
   std::uint64_t r_;
   std::uint64_t c_;
@@ -134,6 +143,8 @@ private:
  */ 
 class skimdb_matrix {
 public:
+  explicit skimdb_matrix() = default;
+
   explicit skimdb_matrix(std::vector<skim::detail::encoding>&& data,
                          std::uint64_t log_p,
                          std::uint64_t rle_blocks,
@@ -174,6 +185,11 @@ public:
   }
 
   auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(sqrt_N_, sqrt_N_); }
+
+  template <typename Archive>
+  void serialize(Archive& archive) {
+    archive(data_, log_p_, rle_blocks_, sqrt_N_);
+  }
 
 private:
   std::vector<skim::detail::encoding> data_;

@@ -3,20 +3,22 @@
 #include <string>
 
 #include <cxxopts.hpp>
+#include <prompted_input.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+#include <skimdb/skimdb.h>
 #include <skimdb/spir/skimdb_spir.h>
-#include <skimdb/spir/net/gRPC/spirdb_service.h>
+
 
 namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
-  std::string in{};
-  std::string addr{"0.0.0.0:50051"};
+  std::string in = "";
+  std::string out = "";
   unsigned int logp = 16;
   unsigned int logq = 64;
   std::size_t n = 1000;
@@ -26,8 +28,8 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "spir database to serve", cxxopts::value<std::string>(in))
-      ("a,addr", "serve on network:port", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("i,input", "input skimdb database file", cxxopts::value<std::string>(in))
+      ("o,output", "output file for server state", cxxopts::value<std::string>(out))
       ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
       ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
       ("n", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
@@ -46,25 +48,13 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-spir-serve-rpc");
+  auto log = spdlog::stdout_color_mt("skimdb-spir-server-create");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   if (in.empty()) {
-    log->error("input database not specified!");
+    log->error("input not specified!");
     return -1;
   }
-
-  if (logp < 8) {
-    log->error("logp must be at least 8");
-    return -1;
-  }
-
-  if (logq < logp) {
-    log->error("logq must be at least logp");
-    return -1;
-  }
-
-  log->info("loading spir db from {}...", in);
 
   fs::path dir{in};
 
@@ -73,32 +63,39 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  auto server_state = skim::spir::load_server(dir);
-
-  if (!server_state) {
-    log->error("could not load {}, error: {}!", in, server_state.error());
+  if (out.empty()) {
+    log->error("output not specified!");
     return -1;
   }
 
-  skim::spir::rpc::SpirDBService service(std::move(*server_state));
-  grpc::ServerBuilder builder;
+  log->info("loading index from {}...", in);
 
-  builder.AddListeningPort(addr, grpc::InsecureServerCredentials());
-  builder.RegisterService(&service);
+  skim::skimdb db;
+  auto res = db.load(dir);
 
-  builder.SetMaxReceiveMessageSize(-1);
-  builder.SetMaxSendMessageSize(-1);
-
-  auto server = builder.BuildAndStart();
-
-  if (!server) {
-    log->error("could not create service on {}!", addr);
+  if (!res) {
+    log->error("could not load {}, error: {}!", in, res.error());
     return -1;
   }
 
-  log->info("listening for queries on {}...", addr);
+  log->info("building spir server state...");
 
-  server->Wait();
+  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma);
+
+  if (!setup) {
+    log->error("could not setup server state: {}", setup.error());
+    return -1;
+  }
+
+  auto server_state = setup.value();
+
+  log->info("saving server state to {}...", out);
+  auto save_res = server_state.save(out);
+
+  if (!save_res) {
+    log->error("could not save server state: {}", save_res.error());
+    return -1;
+  }
 
   log->info("done!");
 

@@ -47,6 +47,9 @@ endif()
 if(SKIMDB_BUILD_SPIR)
     find_package(OpenMP REQUIRED)
 
+    add_executable(skimdb-spir-create skimdb-spir-create.cpp)
+    target_link_libraries(skimdb-spir-create PRIVATE skimdb spirdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
+
     add_executable(skimdb-spir-dbsize skimdb-spir-dbsize.cpp)
     target_link_libraries(skimdb-spir-dbsize PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra)
 
@@ -60,6 +63,7 @@ if(SKIMDB_BUILD_SPIR)
     target_link_libraries(skimdb-spir-query-rpc PRIVATE skimdb spirdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
 
     install(TARGETS
+        skimdb-spir-create
         skimdb-spir-dbsize
         skimdb-spir-query
         skimdb-spir-serve-rpc
