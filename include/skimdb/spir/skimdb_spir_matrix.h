@@ -9,9 +9,6 @@
 
 #include <dgpp/uniform_rejection.hpp>
 
-#include <fastxrd/fasta_buffered_reader.h>
-#include <fastxrd/fastx_files_reader.h>
-
 #include <skimdb/detail/skimdb_encoding.h>
 #include <skimdb/detail/skimdb_logger.h>
 
@@ -27,6 +24,12 @@ public:
 
   explicit spir_matrix(std::uint64_t n, std::uint64_t log_mod) : spir_matrix(n, 1, log_mod) {}
 
+  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t rows, std::uint64_t cols, std::uint64_t log_mod)
+      : r_{rows}, c_{cols}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_{std::move(data)} {}
+
+  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t rows, std::uint64_t log_mod)
+      : spir_matrix(std::move(data), rows, 1, log_mod) {}
+
 
   void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
 
@@ -36,7 +39,13 @@ public:
 
   auto get(std::uint64_t i) const -> std::uint64_t { return data_[i]; }
 
+  auto vec() -> std::vector<std::uint64_t>& { return data_; }
+
+  auto vec() const -> const std::vector<std::uint64_t>& { return data_; }
+
   auto data() -> std::uint64_t* { return data_.data(); }
+
+  auto data() const -> const std::uint64_t* { return data_.data(); }
 
 
   auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(r_, c_); }

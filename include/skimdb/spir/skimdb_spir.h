@@ -12,11 +12,6 @@
 
 #include <dgpp/uniform_rejection.hpp>
 
-#include <fastxrd/fasta_buffered_reader.h>
-#include <fastxrd/fastx_files_reader.h>
-
-#include <parallel_hashmap/phmap.h>
-
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/detail/skimdb_encoding.h>
 #include <skimdb/detail/skimdb_logger.h>
@@ -149,6 +144,10 @@ public:
     spir_common_rng_t rng{spir_config_.seed};
     A_.fill(rng);
   }
+
+  auto get_sqrt_N() const -> std::uint64_t { return spir_config_.sqrt_N; }
+
+  auto get_log_q() const -> std::uint64_t { return spir_config_.log_q; }
 
 
   [[nodiscard]] auto prepare_query(const std::string& str) -> std::expected<spirdb_query_state, std::string> {

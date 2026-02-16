@@ -53,8 +53,16 @@ if(SKIMDB_BUILD_SPIR)
     add_executable(skimdb-spir-query skimdb-spir-query.cpp)
     target_link_libraries(skimdb-spir-query PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
 
+    add_executable(skimdb-spir-serve-rpc skimdb-spir-serve-rpc.cpp)
+    target_link_libraries(skimdb-spir-serve-rpc PRIVATE skimdb spirdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
+
+    add_executable(skimdb-spir-query-rpc skimdb-spir-query-rpc.cpp)
+    target_link_libraries(skimdb-spir-query-rpc PRIVATE skimdb spirdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
+
     install(TARGETS
         skimdb-spir-dbsize
         skimdb-spir-query
+        skimdb-spir-serve-rpc
+        skimdb-spir-query-rpc
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
