@@ -2,6 +2,7 @@
 #define SPIRDB_SERVICE_H
 
 #include <grpcpp/grpcpp.h>
+
 #include <skimdb/spir/skimdb_spir.h>
 
 #include "proto/spirdb.grpc.pb.h"

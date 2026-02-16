@@ -77,15 +77,17 @@ auto main(int argc, char* argv[]) -> int {
       log->info("running query {}", q);
     }
 
+    const auto start = std::chrono::steady_clock::now();
     if (verbose) {
-      log->info("query results:");
-
       for (const auto &l : client.query(q)) {
         log->info("  {}", l);
       }
     } else {
       log->info("got {} label(s)", std::ranges::distance(client.query(q)));
     }
+    const auto end = std::chrono::steady_clock::now();
+    log->info("query finished in {} ms",
+              std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count());
   }
 
   log->info("done!");
