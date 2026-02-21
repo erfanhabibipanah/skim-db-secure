@@ -77,9 +77,11 @@ public:
     LogFun lf{"spir_matrix::add(...)", spdlog::level::debug};
 
     auto* dst = data_.data();
+    std::size_t n = data_.size();
     const auto* src = mat.data_.data();
 
-    for (std::size_t i = 0, n = data_.size(); i < n; ++i) {
+  #pragma omp parallel for simd schedule(static)
+    for (std::size_t i = 0; i < n; ++i) {
       dst[i] = (dst[i] + src[i]) & mask_;
     }
 
@@ -124,15 +126,15 @@ public:
 
   template <typename Archive>
   void serialize(Archive& archive) {
-    archive(r_, c_, mask_, data_);
+    archive(r_, c_, log_mod_, mask_, data_);
   }
 
 private:
   std::uint64_t r_;
   std::uint64_t c_;
 
-  std::uint32_t log_mod_;       
-  std::uint64_t mask_;              // precomputed mask
+  std::uint32_t log_mod_;
+  std::uint64_t mask_;
 
   std::vector<std::uint64_t> data_; // row-major flat storage
 };
@@ -140,12 +142,12 @@ private:
 
 // wrapper around detail::encoding to provide matrix-like access
 /* Expected sizes:
- *                | log_p  |   kemrs  | max_rle | rle_per_col | sqrt_N |     N 
- * ------------------------------------------------------------------------------------
- *  viral20250425 |   16   | 63512373 |   590   |     329     | 194110 | 37678692100
- *  viral20250425 |   16   | 63512373 |   590   |     329     | 194110 | 37678692100
- *  viral20250425 |   16   | 63512373 |   590   |     329     | 194110 | 37678692100
- * ------------------------------------------------------------------------------------
+ *                |   kemrs  | log_p  | rle_blocks | rle_per_col | sqrt_N |     N       | approx log_N 
+ * ----------------------------------------------------------------------------------------------------
+ *                |          |    8   |    1180    |     233     | 274940 | 75592003600 |    36.1
+ *  viral20250425 | 63512373 |   16   |     590    |     329     | 194110 | 37678692100 |    35.1
+ *                |          |   24   |     394    |     402     | 158388 | 25086758544 |    34.5  
+ * ----------------------------------------------------------------------------------------------------
  */ 
 class skimdb_matrix {
 public:
