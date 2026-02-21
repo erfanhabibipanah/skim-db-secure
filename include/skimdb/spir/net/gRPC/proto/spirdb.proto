@@ -24,13 +24,14 @@ message SpirParametersReply {
   uint64 n          = 1;
   double sigma      = 2;
 
-  uint64 rle_blocks = 3;
-  uint64 sqrt_N     = 4;
+  uint32 log_p      = 3;
+  uint32 log_q      = 4;
 
-  uint64 log_p      = 5;
-  uint64 log_q      = 6;
+  uint32 block_len  = 5;
+  uint64 rle_blocks = 6;
+  uint64 sqrt_N     = 7;
 
-  uint64 seed       = 7;
+  uint64 seed       = 8;
 }
 
 message SpirHintRequest { }

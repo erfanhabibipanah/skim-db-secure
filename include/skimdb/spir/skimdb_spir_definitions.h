@@ -1,5 +1,5 @@
-#ifndef SKIMDB_SPIR_PARAMETERS_H
-#define SKIMDB_SPIR_PARAMETERS_H
+#ifndef SKIMDB_SPIR_DEFINITIONS_H
+#define SKIMDB_SPIR_DEFINITIONS_H
 
 #include <cstdint>
 #include <random>
@@ -27,13 +27,14 @@ struct spirdb_parameters {
   std::uint64_t n; // LWE dimension
   double sigma;    // LWE error distribution stddev
 
+  std::uint32_t log_p; // plaintext modulus
+  std::uint32_t log_q; // ciphertext modulus
+
+  std::uint32_t block_len;  // bytes of plaintext data we can pack into one block
   std::uint64_t rle_blocks; // number of blocks needed per RLE encoding
   std::uint64_t sqrt_N;     // matrix side length (blocks of data)
 
-  std::uint64_t log_p; // plaintext modulus
-  std::uint64_t log_q; // ciphertext modulus
-
-  std::uint64_t seed; // seed for matrix A
+  std::uint64_t seed; // seed for matrix A,1
 };
 
 struct spirdb_query_state {
@@ -45,4 +46,4 @@ struct spirdb_query_state {
 } // namespace spir
 } // namespace skim
 
-#endif // SKIMDB_SPIR_PARAMETERS_H
+#endif // SKIMDB_SPIR_DEFINITIONS_H

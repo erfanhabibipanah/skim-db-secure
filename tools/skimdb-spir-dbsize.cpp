@@ -84,8 +84,7 @@ auto main(int argc, char* argv[]) -> int {
 
   std::uint64_t bytes_per_rle = 2 * max_rle;
   std::uint64_t bytes_per_block = logp / 8;
-  std::uint64_t blocks_per_rle =
-      (bytes_per_rle % bytes_per_block) ? (bytes_per_rle / bytes_per_block) + 1 : (bytes_per_rle / bytes_per_block);
+  std::uint64_t blocks_per_rle = bytes_per_rle / bytes_per_block + ((bytes_per_rle % bytes_per_block) ? 1 : 0);
 
   log->info("blocks required per RLE: {}", blocks_per_rle);
 

@@ -18,21 +18,13 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
-  unsigned int logp = 16;
-  unsigned int logq = 64;
-  std::size_t n = 1000;
-  double sigma = 6.4;
   bool verbose = false;
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "input database file", cxxopts::value<std::string>(in))
-      ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
-      ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
-      ("n", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
-      ("s,sigma", "variance of error distribution", cxxopts::value<double>(sigma)->default_value(std::to_string(sigma)))
+      ("i,input", "spir database to query", cxxopts::value<std::string>(in))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");
 
@@ -52,9 +44,11 @@ auto main(int argc, char* argv[]) -> int {
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   if (in.empty()) {
-    log->error("input not specified!");
+    log->error("input database not specified!");
     return -1;
   }
+  
+  log->info("loading spir db from {}...", in);
 
   fs::path dir{in};
 
@@ -63,30 +57,15 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  log->info("loading index from {}...", in);
-
-  skim::skimdb db;
-  auto res = db.load(dir);
-
-  if (!res) {
-    log->error("could not load {}, error: {}!", in, res.error());
-    return -1;
-  }
-
-  auto [k, s, t] = db.parameters();
-  log->info("index loaded, [k={}, s={}, t={}]", k, s, t);
-
-  log->info("building spir server state...");
-
-  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma);
+  auto setup = skim::spir::load_server(dir);
 
   if (!setup) {
-    log->error("could not setup server state: {}", setup.error());
+    log->error("could not load {}, error: {}!", in, setup.error());
     return -1;
   }
 
   auto server_state = setup.value();
-
+  
 
   log->info("creating client...");
 
@@ -125,23 +104,14 @@ auto main(int argc, char* argv[]) -> int {
 
     log->info("recovering result...");
 
-    auto recover_mat = client_state.recover(answer_vec, query_state);
-
-    if (!recover_mat) {
-      log->warn("could not recover result: {}", recover_mat.error());
-      continue;
-    }
-
-    auto res_mat = recover_mat.value();
-
     if (verbose) {
       log->info("query results:");
 
-      for (auto label : client_state.result(res_mat)) {
+      for (auto label : client_state.result(answer_vec, query_state)) {
         log->info("  {}", label);
       }
     } else {
-      log->info("got {} label(s)", std::ranges::distance(client_state.result(res_mat)));
+      log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state)));
     }
   }
 
