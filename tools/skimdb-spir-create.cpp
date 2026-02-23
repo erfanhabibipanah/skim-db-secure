@@ -19,10 +19,10 @@ namespace fs = std::filesystem;
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
   std::string out = "";
-  unsigned int logp = 16;
+  unsigned int logp = 22;
   unsigned int logq = 64;
-  std::size_t n = 1000;
-  double sigma = 6.4;
+  std::size_t n = 1923;
+  double sigma = 271.65;
 
   try {
     cxxopts::Options options(argv[0]);
