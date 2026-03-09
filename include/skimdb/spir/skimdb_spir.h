@@ -62,21 +62,41 @@ public:
   [[nodiscard]] auto answer(const spir_matrix& qu) const -> std::expected<spir_matrix, std::string> {
     auto [q_rows, q_cols] = qu.dimensions();
 
-    if (q_rows != spir_config_.sqrt_N || q_cols != 1) {
+    if (q_rows != 1 || q_cols != spir_config_.sqrt_N) {
       return std::unexpected{"invalid query vector dimensions"};
     }
 
     return mat_vec(DB_, qu, spir_config_.log_q, spir_config_.rle_blocks);
   }
 
-  [[nodiscard]] auto answer_batch(const spir_matrix& qu) const -> std::expected<spir_matrix, std::string> {
-    auto [q_rows, q_cols] = qu.dimensions(); 
-
-    if (q_rows != spir_config_.sqrt_N / spir_config_.rle_blocks || q_cols != spir_config_.sqrt_N) {
+  [[nodiscard]] auto batch_answer(const spir_matrix& qu_mat) const -> std::expected<spir_matrix, std::string> {
+    auto [q_rows, q_cols] = qu_mat.dimensions();
+    
+    if (q_rows != spir_config_.batch_size || q_cols != spir_config_.sqrt_N) {
       return std::unexpected{"invalid query matrix dimensions"};
     }
 
-    return batched_mat_vec(DB_, qu, spir_config_.log_q, spir_config_.rle_blocks);
+    spir_matrix ans{spir_config_.sqrt_N, spir_config_.log_q};
+
+    std::uint32_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
+    std::uint32_t rles_per_batch = rles_per_col / spir_config_.batch_size;
+    std::uint32_t remaining_rles = rles_per_col % spir_config_.batch_size;
+
+    for (std::uint64_t i = 0; i < spir_config_.batch_size; ++i) {
+      std::uint32_t start_idx = i * rles_per_batch;
+      std::uint32_t count = rles_per_batch; 
+
+      if (i < remaining_rles) {
+        start_idx += i; 
+        count += 1;
+      } else {
+        start_idx += remaining_rles;
+      }
+      
+      partitioned_mat_vec(DB_, qu_mat.row(i), ans.span(), spir_config_.log_q, start_idx, count, spir_config_.rle_blocks);
+    }
+
+    return ans;
   }
 
 
@@ -90,8 +110,8 @@ public:
       cereal::BinaryOutputArchive archive{os};
       archive(
         DB_, metadata_.index, metadata_.labels, skim_config_.k, skim_config_.s, skim_config_.t,
-        spir_config_.n, spir_config_.sigma, spir_config_.log_p, spir_config_.log_q, spir_config_.block_len, 
-        spir_config_.rle_blocks, spir_config_.sqrt_N, spir_config_.seed, hint_c_
+        spir_config_.n, spir_config_.sigma, spir_config_.log_p, spir_config_.log_q, spir_config_.batch_size, 
+        spir_config_.block_len, spir_config_.rle_blocks, spir_config_.sqrt_N, spir_config_.seed, hint_c_
       );
     } catch (...) {
       return std::unexpected{"serialization failed"};
@@ -113,7 +133,7 @@ private:
 
 
 [[nodiscard]] auto make_server(skimdb&& db, unsigned int log_p, unsigned int log_q, std::size_t n, double sigma,
-                               std::uint64_t seed = std::random_device{}())
+                               std::uint32_t batch_size = 1, std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server(...)"};
 
@@ -162,7 +182,7 @@ private:
   A.fill(rng);
 
   skimdb_parameters skim_conf{k, s, t};
-  spirdb_parameters spir_conf{n, sigma, log_p, log_q, block_len, rle_blocks, sqrt_N, seed};
+  spirdb_parameters spir_conf{n, sigma, log_p, log_q, batch_size, block_len, rle_blocks, sqrt_N, seed};
 
   skimdb_matrix DB{std::move(db_parts.data), block_len, rle_blocks, sqrt_N};
   skimdb_metadata metadata{std::move(db_parts.index), std::move(db_parts.labels)};
@@ -198,8 +218,8 @@ private:
     spir_matrix hint_c;
 
     archive(DB, index, labels, skim_conf.k, skim_conf.s, skim_conf.t,
-            spir_conf.n, spir_conf.sigma, spir_conf.log_p, spir_conf.log_q, spir_conf.block_len, 
-            spir_conf.rle_blocks, spir_conf.sqrt_N, spir_conf.seed, hint_c);
+            spir_conf.n, spir_conf.sigma, spir_conf.log_p, spir_conf.log_q, spir_conf.batch_size,
+            spir_conf.block_len, spir_conf.rle_blocks, spir_conf.sqrt_N, spir_conf.seed, hint_c);
 
     skimdb_metadata metadata{std::move(index), std::move(labels)};
 
@@ -274,56 +294,16 @@ public:
     return spirdb_query_state{i_row, std::move(s), std::move(qu)};
   }
 
-  [[nodiscard]] auto new_batch() -> spirdb_query_state {
-    LogFun lf{"spir_client_state::new_batch(...)"}; 
-
-    std::uint64_t k_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
-
-    // now a matrix with multiple rows, each row is a secret vector for one query
-    spir_matrix s{k_per_col, spir_config_.n, spir_config_.log_q}; 
-    s.fill(rng_);
-
-    auto qu = batched_mat_vec(A_, s, spir_config_.log_q);
-
-    return spirdb_query_state{0, std::move(s), std::move(qu)};
-  }
-
-  void update_batch(spirdb_query_state& batch_state, const std::uint64_t row, const std::uint64_t col) {
-    dgpp::uniform_rejection dist{spir_config_.sigma};
-    spir_matrix e{spir_config_.sqrt_N, spir_config_.log_q};
-    e.fill(rng_, dist);
-    auto* e_data = e.data();
-
-    auto* qu_data = batch_state.qu_vec.data() + row * spir_config_.sqrt_N;
-  #pragma omp parallel for simd schedule(static)
-    for (std::uint64_t i = 0; i < spir_config_.sqrt_N; ++i) {
-      qu_data[i] = qu_data[i] + e_data[i];
-    }
-
-    std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
-    qu_data[col] += delta;
-  }
-
 
   [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query)
       -> std::generator<const std::string&> {
     LogFun lf{"spir_client_state::result(...)"};
 
-    auto rle = recover(ans, query);
-    for (auto idx : rle.select_idxs()) {
-      if (idx >= skim_metadata_.labels.size()) {
-        break;
-      }
-      co_yield skim_metadata_.labels[idx];
-    }
-  }
+    auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec.span(), spir_config_.log_q, query.i_row, spir_config_.rle_blocks);
+    d.div_delta(spir_config_.log_q - spir_config_.log_p);
+    auto d_data = d.span();
 
-  [[nodiscard]] auto batch_result(const spir_matrix& ans, const spirdb_query_state& batch_state, std::uint64_t row) 
-      -> std::generator<const std::string&>{
-    LogFun lf{"spir_client_state::batch_result(...)"};
-
-    batch_state.i_row = spir_config_.rle_blocks * row; 
-    auto rle = recover(ans, batch_state);
+    auto rle = recover(d_data);
     for (auto idx : rle.select_idxs()) {
       if (idx >= skim_metadata_.labels.size()) {
         break;
@@ -333,11 +313,7 @@ public:
   }
 
 private:
-  inline auto recover(const spir_matrix& ans, const spirdb_query_state& query) -> detail::encoding {
-    auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec, spir_config_.log_q, query.i_row, spir_config_.rle_blocks);
-    d.div_delta(spir_config_.log_q - spir_config_.log_p);
-    auto* d_data = d.data();
-
+  inline auto recover(std::span<const std::uint64_t> d_data) -> detail::encoding {
     std::vector<std::uint16_t> rle_data;
 
     switch (spir_config_.block_len) {

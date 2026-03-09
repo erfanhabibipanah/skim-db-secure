@@ -27,11 +27,13 @@ message SpirParametersReply {
   uint32 log_p      = 3;
   uint32 log_q      = 4;
 
-  uint32 block_len  = 5;
-  uint64 rle_blocks = 6;
-  uint64 sqrt_N     = 7;
+  uint32 batch_size = 5;
 
-  uint64 seed       = 8;
+  uint32 block_len  = 6;
+  uint64 rle_blocks = 7;
+  uint64 sqrt_N     = 8;
+
+  uint64 seed       = 9;
 }
 
 message SpirHintRequest { }
@@ -54,4 +56,5 @@ service SpirDB {
   rpc GetSpirParameters(SpirParametersRequest) returns (SpirParametersReply);
   rpc GetSpirHint(SpirHintRequest) returns (SpirHintReply);
   rpc Query(QueryRequest) returns (QueryReply);
+  rpc BatchQuery(QueryRequest) returns (QueryReply);
 }

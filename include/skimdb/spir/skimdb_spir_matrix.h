@@ -29,13 +29,13 @@ public:
   explicit spir_matrix(std::uint64_t rows, std::uint64_t cols, std::uint32_t log_mod)
       : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_(rows * cols, 0) {}
 
-  explicit spir_matrix(std::uint64_t n, std::uint32_t log_mod) : spir_matrix(n, 1, log_mod) {}
+  explicit spir_matrix(std::uint64_t n, std::uint32_t log_mod) : spir_matrix(1, n, log_mod) {}
 
   explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t rows, std::uint64_t cols, std::uint32_t log_mod)
       : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_{std::move(data)} {}
 
-  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t rows, std::uint32_t log_mod)
-      : spir_matrix(std::move(data), rows, 1, log_mod) {}
+  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t n, std::uint32_t log_mod)
+      : spir_matrix(std::move(data), 1, n, log_mod) {}
 
 
   void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
@@ -46,13 +46,14 @@ public:
 
   auto get(std::uint64_t i) const -> std::uint64_t { return data_[i]; }
 
-  auto vec() -> std::vector<std::uint64_t>& { return data_; }
 
-  auto vec() const -> const std::vector<std::uint64_t>& { return data_; }
+  auto span() -> std::span<std::uint64_t> { return data_; }
 
-  auto data() -> std::uint64_t* { return data_.data(); }
+  auto span() const -> std::span<const std::uint64_t> { return data_; }
 
-  auto data() const -> const std::uint64_t* { return data_.data(); }
+  auto row(std::size_t i) -> std::span<std::uint64_t> { return std::span{data_}.subspan(i * c_, c_); }
+
+  auto row(std::size_t i) const -> std::span<const std::uint64_t> { return std::span{data_}.subspan(i * c_, c_); }
 
 
   auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(r_, c_); }
@@ -111,7 +112,7 @@ public:
     const auto* src = data_.data();
 
     spir_matrix out{c_, r_, log_mod_};
-    auto *dst = out.data();
+    auto dst = out.span();
 
   #pragma omp parallel for schedule(static)
     for (std::uint64_t i = 0; i < r_; ++i) {
@@ -138,6 +139,68 @@ private:
 
   std::vector<std::uint64_t> data_; // row-major flat storage
 };
+
+
+void mat_vec(const spir_matrix&mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, std::uint32_t log_q) {
+  auto [m_rows, m_cols] = mat.dimensions();
+  auto mat_data = mat.span();
+
+  std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
+
+#pragma omp parallel for schedule(static)
+  for (std::uint64_t i = 0; i < m_rows; ++i) {
+    std::uint64_t sum = 0;
+
+  #pragma omp simd reduction(+:sum)
+    for (std::uint64_t j = 0; j < m_cols; ++j) {
+      sum += (mat_data[i * m_cols + j] * vec[j]) & mask;
+    }
+
+    dst[i] = sum & mask;
+  }
+}
+
+
+// client side, prepare query (A*s)
+auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint32_t log_q) -> spir_matrix {
+  LogFun lf{"mat_vec(spir_matrix, ...)", spdlog::level::debug};
+
+  auto [m_rows, _] = mat.dimensions();
+  spir_matrix out{m_rows, log_q};
+
+  mat_vec(mat, vec.span(), out.span(), log_q);
+
+  return out;
+}
+
+
+// client side, answer recovery: computing (ans - hint_c*s) for a range of blocks making up the target rle.
+auto sub_mat_vec_rows(const spir_matrix &ans, const spir_matrix &hint, std::span<const std::uint64_t> s_data,
+    std::uint32_t log_q, std::uint64_t i_start, std::uint64_t n_rows) -> spir_matrix {
+  LogFun lf{"sub_mat_vec_rows(...)", spdlog::level::debug};
+
+  auto [r, c] = hint.dimensions();
+  std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
+
+  const auto h_data = hint.span();
+
+  spir_matrix out{n_rows, log_q};
+
+#pragma omp parallel for schedule(static)
+  for (std::uint64_t i = 0; i < n_rows; ++i) {
+    std::uint64_t sum = 0;
+
+  #pragma omp simd reduction(+:sum)
+    for (std::uint64_t j = 0; j < c; ++j) {
+      sum += (h_data[(i_start + i) * c + j] * s_data[j]) & mask;
+    }
+
+    sum &= mask;
+    out.set(i, ans.get(i_start + i) - sum);
+  }
+
+  return out;
+}
 
 
 // wrapper around detail::encoding to provide matrix-like access
@@ -182,76 +245,14 @@ private:
 };
 
 
-// client side, prepare query (A*s)
-inline auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint32_t log_q) -> spir_matrix {
-  LogFun lf{"mat_vec(spir_matrix, ...)", spdlog::level::debug};
-
-  auto [m_rows, m_cols] = mat.dimensions();
-
-  auto* mat_data = mat.data();
-  auto* vec_data = vec.data();
-
-  spir_matrix out{m_rows, log_q};
-
+void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, 
+    std::uint32_t log_q, std::uint32_t start, std::uint32_t count, std::uint64_t rle_blocks) {
+  auto [_, m_cols] = mat.dimensions();
   std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
 #pragma omp parallel for schedule(static)
-  for (std::uint64_t i = 0; i < m_rows; ++i) {
-    std::uint64_t sum = 0;
-
-  #pragma omp simd reduction(+:sum)
-    for (std::uint64_t j = 0; j < m_cols; ++j) {
-      sum += (mat_data[i * m_cols + j] * vec_data[j]) & mask;
-    }
-
-    out.set(i, sum);
-  }
-
-  return out;
-}
-
-
-inline auto batched_mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint32_t log_q) -> spir_matrix {
-  LogFun lf{"batched_mat_vec(spir_matrix, ...)", spdlog::level::debug};
-
-  auto [m_rows, m_cols] = mat.dimensions();
-  auto [v_rows, v_cols] = vec.dimensions(); 
-
-  auto* mat_data = mat.data();
-  auto* vec_data = vec.data();
-
-  spir_matrix out{v_rows, m_rows, log_q};
-
-  std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
-
-#pragma omp parallel for schedule(static)
-  for (std::uint64_t s = 0; s < v_rows; ++s) {
-    auto* s_data = vec_data + s * v_cols;
-
-    for (std::uint64_t i = 0; i < m_rows; ++i){
-      std::uint64_t sum = 0;
-
-    #pragma omp simd reduction(+:sum)
-      for (std::uint64_t j = 0; j < m_cols; ++j) {
-        sum += (mat_data[i * m_cols + j] * s_data[j]) & mask;
-      }
-
-      out.set(s, i, sum);  
-    }
-  }
-
-  return out;
-}
-
-
-inline void mat_vec(const skimdb_matrix& mat, const std::uint64_t* vec, std::uint64_t* dst, std::uint32_t log_q, std::uint64_t rle_blocks) {
-  auto [m_rows, m_cols] = mat.dimensions();
-  std::uint64_t partitions = m_rows / rle_blocks;
-  std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
-
-#pragma omp parallel for schedule(static)
-  for (std::uint64_t p = 0; p < partitions; ++p) {
-    std::uint64_t* partition_dst = dst + p * rle_blocks;
+  for (std::uint64_t p = start; p < start + count; ++p) {
+    std::span<std::uint64_t> partition_dst = dst.subspan(p * rle_blocks, rle_blocks);
 
     switch (mat.get_block_len()) {
       case 1: {
@@ -315,173 +316,42 @@ inline void mat_vec(const skimdb_matrix& mat, const std::uint64_t* vec, std::uin
         break;
       }
     }
+  }
 
-  #pragma omp simd
-    for (std::uint64_t i = 0; i < rle_blocks; ++i) {
-      partition_dst[i] &= mask;
-    }
+#pragma omp parallel for simd schedule(static)
+  for (std::uint64_t i = 0; i < dst.size(); ++i) {
+    dst[i] &= mask;
   }
 }
 
 
-// server side, prepare response (DB*qu)
-inline auto mat_vec(const skimdb_matrix& mat, const spir_matrix& vec, std::uint32_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
+auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::uint32_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
   LogFun lf{"mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
 
-  auto [m_rows, _] = mat.dimensions();
+  auto [db_r, _] = db.dimensions();
+  spir_matrix out{db_r, log_q};
 
-  auto* vec_data = vec.data();
-
-  spir_matrix out{m_rows, log_q};
-  auto* dst = out.data();
-
-  mat_vec(mat, vec_data, dst, log_q, rle_blocks);
+  partitioned_mat_vec(db, vec.span(), out.span(), log_q, 0, db_r / rle_blocks, rle_blocks);
 
   return out;
 }
 
 
 // server setup (hint_c = DB*A)
-inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::uint32_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
+auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::uint32_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
   LogFun lf{"mat_mul(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();
   auto [a_r, a_c] = mat_a.dimensions();
 
   auto trans_a = mat_a.transpose();
-  const auto* t_src = trans_a.data();
-
   spir_matrix out{a_c, db_r, log_q};
-  auto* dst = out.data();
 
   for (std::uint64_t i = 0; i < a_c; ++i) {
-    mat_vec(db, t_src + i * a_r, dst + i * db_r, log_q, rle_blocks); 
+    partitioned_mat_vec(db, trans_a.row(i), out.row(i), log_q, 0, db_r / rle_blocks, rle_blocks);
   }
 
   return out.transpose();
-}
-
-
-// client side, answer recovery: computing (ans - hint_c*s) for a range of blocks making up the target rle.
-inline auto sub_mat_vec_rows(const spir_matrix &ans, const spir_matrix &hint, const spir_matrix &s,
-    std::uint32_t log_q, std::uint64_t i_start, std::uint64_t n_rows) -> spir_matrix {
-  LogFun lf{"sub_mat_vec_rows(...)", spdlog::level::debug};
-
-  auto [r, c] = hint.dimensions();
-  std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
-
-  auto* h_data = hint.data();
-  auto* s_data = s.data();
-
-  spir_matrix out{n_rows, log_q};
-
-#pragma omp parallel for schedule(static)
-  for (std::uint64_t i = 0; i < n_rows; ++i) {
-    std::uint64_t sum = 0;
-
-  #pragma omp simd reduction(+:sum)
-    for (std::uint64_t j = 0; j < c; ++j) {
-      sum += (h_data[(i_start + i) * c + j] * s_data[j]) & mask;
-    }
-
-    sum &= mask;
-    out.set(i, ans.get(i_start + i) - sum);
-  }
-
-  return out;
-}
-
-
-inline auto batched_mat_vec(const skimdb_matrix& mat, const spir_matrix& qu, std::uint32_t log_q, std::uint64_t rle_blocks) 
-    -> spir_matrix {
-  LogFun lf{"batched_mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
-
-  auto [m_rows, m_cols] = mat.dimensions();
-  auto [q_rows, q_cols] = qu.dimensions();
-
-  std::uint64_t partitions = m_rows / rle_blocks;
-  std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
-
-  auto *qu_src = qu.data();
-
-  spir_matrix out{q_rows, log_q};
-  auto *dst = out.data();
-
-#pragma omp parallel for schedule(static)
-  for (std::uint64_t p = 0; p < partitions; ++p) {
-    auto* partition_src = qu_src + p * m_cols;
-    auto* partition_dst = dst + p * rle_blocks;
-
-    switch (mat.get_block_len()) {
-      case 1: {
-        for (std::uint64_t j = 0; j < m_cols; ++j) {
-          auto rle = mat.get_rle_in_col(p, j);
-          const std::uint8_t* rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
-          const std::uint64_t len = rle.size() * 2;
-          auto vec_val = qu_src[j];
-
-        #pragma omp simd
-          for (std::uint64_t i = 0; i < len; ++i) {
-            partition_dst[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
-          }
-        }
-
-        break;
-      }
-      case 2: {
-        for (std::uint64_t j = 0; j < m_cols; ++j) {
-          auto rle = mat.get_rle_in_col(p, j);
-          const std::uint16_t* rle_ptr = rle.data();
-          const std::uint64_t len = rle.size();
-          auto vec_val = partition_src[j];
-
-        #pragma omp simd
-          for (std::uint64_t i = 0; i < len; ++i) {
-            partition_dst[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
-          }
-        }
-
-        break;
-      }
-      case 3: {
-        for (std::uint64_t j = 0; j < m_cols; ++j) {
-          auto rle = mat.get_rle_in_col(p, j);
-          const std::uint8_t* rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
-          const std::uint64_t len = rle.size() * 2;
-          const std::uint64_t full_blocks = len / 3;
-          auto vec_val = partition_src[j];
-
-        #pragma omp simd
-          for (std::uint64_t i = 0; i < full_blocks; ++i) {
-            partition_dst[i] += (static_cast<std::uint64_t>(rle_ptr[i*3]) << 16
-                                | static_cast<std::uint64_t>(rle_ptr[i*3 + 1]) << 8
-                                | static_cast<std::uint64_t>(rle_ptr[i*3 + 2])) * vec_val & mask;
-          }
-
-          if (full_blocks * 3 < len) {
-            std::uint64_t val = 0;
-            for (auto i = 0; i < 3; ++i) {
-              val = (full_blocks * 3 + i < len) ? (val << 8) | rle_ptr[full_blocks * 3 + i] : (val << 8);
-            }
-            partition_dst[full_blocks] += (val * vec_val) & mask;
-          }
-        }
-
-        break;
-      }
-      default: [[unlikely]] {
-        g_log->error("impossible case, block length {}", mat.get_block_len());
-        break;
-      }
-    }
-
-  #pragma omp simd
-    for (std::uint64_t i = 0; i < rle_blocks; ++i) {
-      partition_dst[i] &= mask;
-    }
-  }
-
-  return out;
 }
 
 } // namespace spir

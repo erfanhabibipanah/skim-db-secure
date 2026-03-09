@@ -56,6 +56,7 @@ public:
     reply->set_sigma(spir_params.sigma);
     reply->set_log_p(spir_params.log_p);
     reply->set_log_q(spir_params.log_q);
+    reply->set_batch_size(spir_params.batch_size);
     reply->set_block_len(spir_params.block_len);
     reply->set_rle_blocks(spir_params.rle_blocks);
     reply->set_sqrt_n(spir_params.sqrt_N);
@@ -69,15 +70,14 @@ public:
     g_log->trace("serving SPIR hint request from {}...", context->peer());
 
     const auto& hint_c = state_.hint_c();
-    auto data = hint_c.vec();
+    const auto data = hint_c.span();
 
     *reply->mutable_hint_c() = {data.begin(), data.end()};
   
     return grpc::Status::OK;
   }
 
-  grpc::Status Query(grpc::ServerContext* context, const QueryRequest* request,
-                     QueryReply* reply) override {
+  grpc::Status Query(grpc::ServerContext* context, const QueryRequest* request, QueryReply* reply) override {
     LogFun lf{"SpirDBService::Query(...)"};
     g_log->trace("serving SPIR query request from {}...", context->peer());
     
@@ -86,15 +86,38 @@ public:
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size");
     }
 
-    spir_matrix query_vec{std::move(query_vec_data), state_.spir_parameters().sqrt_N, 1, state_.spir_parameters().log_q};
+    spir_matrix query_vec{std::move(query_vec_data), state_.spir_parameters().sqrt_N, state_.spir_parameters().log_q};
     auto ans = state_.answer(query_vec);
 
     if (!ans) {
       return grpc::Status(grpc::StatusCode::INTERNAL, ans.error());
     }
 
-    auto ans_data = (*ans).vec();
+    auto ans_data = (*ans).span();
+    *reply->mutable_ans() = {ans_data.begin(), ans_data.end()};
 
+    return grpc::Status::OK;
+  }
+
+  grpc::Status BatchQuery(grpc::ServerContext* context, const QueryRequest* request, QueryReply* reply) override {
+    LogFun lf{"SpirDBService::BatchQuery(...)"};
+    g_log->trace("serving SPIR batch query request from {}...", context->peer());
+
+    auto spir_params = state_.spir_parameters();
+
+    std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
+    if (query_vec_data.size() != spir_params.sqrt_N * spir_params.batch_size) {
+      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size");
+    }
+
+    spir_matrix query_vec{std::move(query_vec_data), spir_params.batch_size, spir_params.sqrt_N, spir_params.log_q};
+    auto ans = state_.batch_answer(query_vec);
+
+    if (!ans) {
+      return grpc::Status(grpc::StatusCode::INTERNAL, ans.error());
+    }
+
+    auto ans_data = (*ans).span();
     *reply->mutable_ans() = {ans_data.begin(), ans_data.end()};
 
     return grpc::Status::OK;

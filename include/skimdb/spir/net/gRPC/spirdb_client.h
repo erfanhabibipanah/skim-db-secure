@@ -81,7 +81,7 @@ public:
     g_log->debug("initializing client state...");
     skimdb_parameters skim_conf{db_ans.k(), db_ans.s(), db_ans.t()};
     skimdb_metadata skim_meta{std::move(index), std::move(labels)};
-    spirdb_parameters spir_conf{spir_ans.n(), spir_ans.sigma(), spir_ans.log_p(), spir_ans.log_q(), spir_ans.block_len(), spir_ans.rle_blocks(), spir_ans.sqrt_n(), spir_ans.seed()};
+    spirdb_parameters spir_conf{spir_ans.n(), spir_ans.sigma(), spir_ans.log_p(), spir_ans.log_q(), spir_ans.batch_size(), spir_ans.block_len(), spir_ans.rle_blocks(), spir_ans.sqrt_n(), spir_ans.seed()};
     spir_matrix hint_c{std::move(hint_data), spir_ans.sqrt_n(), spir_ans.n(), spir_ans.log_p()};
 
     state_.emplace(std::move(skim_conf), std::move(skim_meta), std::move(spir_conf), std::move(hint_c));
@@ -104,7 +104,7 @@ public:
     }
 
     auto query_state = query.value();
-    auto qu_data = query_state.qu_vec.vec();
+    auto qu_data = query_state.qu_vec.span();
 
     grpc::ClientContext ctx;
 
