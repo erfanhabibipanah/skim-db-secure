@@ -93,17 +93,21 @@ public:
     LogFun lf{"SpirDBClient::query(...)"};
 
     if (!state_.has_value()) {
-      g_log->error("client not initialized! call setup() first.");
+      g_log->error("client not initialized! call setup() first...");
       co_return;
     }
 
-    auto query = state_->prepare_query(s);
-    if (!query) {
-      g_log->error("failed to prepare query: {}", query.error());
+    if (!state_->is_valid_kmer(s)) {
+      g_log->error("invalid kmer: {}", s);
       co_return;
     }
 
-    auto query_state = query.value();
+    auto pos = state_->kmer_to_position(s);
+    if (!pos) {
+      co_return;
+    }
+
+    auto query_state = state_->prepare_query(pos->second);
     auto qu_data = query_state.qu_vec.span();
 
     grpc::ClientContext ctx;
@@ -123,7 +127,7 @@ public:
     auto pir_params = state_->get_spir_parameters();
     spir_matrix ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
 
-    co_yield std::ranges::elements_of(state_->result(ans_mat, query_state));
+    co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos->first));
   }
 
 private:

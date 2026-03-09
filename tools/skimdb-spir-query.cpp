@@ -82,14 +82,18 @@ auto main(int argc, char* argv[]) -> int {
       log->info("running query {}", q);
     }
 
-    auto query = client_state.prepare_query(q);
-
-    if (!query) {
-      log->warn("could not create query: {}", query.error());
+    if (!client_state.is_valid_kmer(q)) {
+      log->warn("invalid kmer: {}", q);
       continue;
     }
 
-    auto query_state = query.value();
+    auto pos = client_state.kmer_to_position(q);
+    if (!pos) {
+      log->info("kmer not found in DB: {}", q);
+      continue;
+    }
+
+    auto query_state = client_state.prepare_query(pos->second);
 
     log->info("submitting query...");
 
@@ -107,11 +111,11 @@ auto main(int argc, char* argv[]) -> int {
     if (verbose) {
       log->info("query results:");
 
-      for (auto label : client_state.result(answer_vec, query_state)) {
+      for (auto label : client_state.result(answer_vec, query_state, pos->first)) {
         log->info("  {}", label);
       }
     } else {
-      log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state)));
+      log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state, pos->first)));
     }
   }
 

@@ -162,7 +162,7 @@ void mat_vec(const spir_matrix&mat, std::span<const std::uint64_t> vec, std::spa
 
 
 // client side, prepare query (A*s)
-auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint32_t log_q) -> spir_matrix {
+inline auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint32_t log_q) -> spir_matrix {
   LogFun lf{"mat_vec(spir_matrix, ...)", spdlog::level::debug};
 
   auto [m_rows, _] = mat.dimensions();
@@ -175,7 +175,7 @@ auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::uint32_t log_q
 
 
 // client side, answer recovery: computing (ans - hint_c*s) for a range of blocks making up the target rle.
-auto sub_mat_vec_rows(const spir_matrix &ans, const spir_matrix &hint, std::span<const std::uint64_t> s_data,
+inline auto sub_mat_vec_rows(const spir_matrix &ans, const spir_matrix &hint, std::span<const std::uint64_t> s_data,
     std::uint32_t log_q, std::uint64_t i_start, std::uint64_t n_rows) -> spir_matrix {
   LogFun lf{"sub_mat_vec_rows(...)", spdlog::level::debug};
 
@@ -325,7 +325,7 @@ void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t
 }
 
 
-auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::uint32_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
+inline auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::uint32_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
   LogFun lf{"mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();
@@ -338,7 +338,7 @@ auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::uint32_t log_
 
 
 // server setup (hint_c = DB*A)
-auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::uint32_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
+inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::uint32_t log_q, std::uint64_t rle_blocks) -> spir_matrix {
   LogFun lf{"mat_mul(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();

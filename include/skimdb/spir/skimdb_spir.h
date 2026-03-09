@@ -261,10 +261,9 @@ public:
     return detail::is_valid(str, skim_config_.k) && detail::is_syncmer(kmer, skim_config_.k, skim_config_.s, skim_config_.t);
   }
 
+  auto kmer_to_position(const std::string& str) const -> std::expected<std::pair<std::uint64_t, std::uint64_t>, std::string> {
+    LogFun lf{"spir_client_state::kmer_to_position(...)"};
 
-  [[nodiscard]] auto prepare_query(const std::string& str) -> std::expected<spirdb_query_state, std::string> {
-    LogFun lf{"spir_client_state::prepare_query(...)"};
-    
     auto kmer = detail::kmer_to_uint32(str);
     auto iter = skim_metadata_.index.find(kmer);
     if (iter == skim_metadata_.index.end()) {
@@ -277,6 +276,13 @@ public:
     std::uint64_t target_rle = static_cast<std::uint64_t>(iter->second) * spir_config_.rle_blocks;
     std::uint64_t i_col = target_rle / spir_config_.sqrt_N;
     std::uint64_t i_row = target_rle % spir_config_.sqrt_N;
+
+    return std::make_pair(i_row, i_col);
+  }
+
+
+  [[nodiscard]] auto prepare_query(std::uint64_t i_col) -> spirdb_query_state {
+    LogFun lf{"spir_client_state::prepare_query(...)"};
 
     spir_matrix s{spir_config_.n, spir_config_.log_q};
     s.fill(rng_);
@@ -291,15 +297,36 @@ public:
     qu.add(e);
     qu.set(i_col, qu.get(i_col) + delta);
 
-    return spirdb_query_state{i_row, std::move(s), std::move(qu)};
+    return spirdb_query_state{std::move(s), std::move(qu)};
   }
 
 
-  [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query)
+  [[nodiscard]] auto new_batch() -> spirdb_query_state {
+    LogFun lf{"spir_client_state::new_batch(...)"};
+
+    spir_matrix s{spir_config_.batch_size, spir_config_.n, spir_config_.log_q};
+    s.fill(rng_);
+
+    dgpp::uniform_rejection dist{spir_config_.sigma};
+    spir_matrix e{spir_config_.batch_size, spir_config_.sqrt_N, spir_config_.log_q};
+    e.fill(rng_, dist);
+
+    spir_matrix qu{spir_config_.batch_size, spir_config_.sqrt_N, spir_config_.log_q};
+
+    for (std::size_t i = 0; i < spir_config_.batch_size; ++i) {
+      mat_vec(A_, s.row(i), qu.row(i), spir_config_.log_q);
+    }
+    qu.add(e);
+
+    return spirdb_query_state{std::move(s), std::move(qu)};
+  }
+
+
+  [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::uint64_t i_row)
       -> std::generator<const std::string&> {
     LogFun lf{"spir_client_state::result(...)"};
 
-    auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec.span(), spir_config_.log_q, query.i_row, spir_config_.rle_blocks);
+    auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec.span(), spir_config_.log_q, i_row, spir_config_.rle_blocks);
     d.div_delta(spir_config_.log_q - spir_config_.log_p);
     auto d_data = d.span();
 
@@ -313,7 +340,7 @@ public:
   }
 
 private:
-  inline auto recover(std::span<const std::uint64_t> d_data) -> detail::encoding {
+  auto recover(std::span<const std::uint64_t> d_data) -> detail::encoding {
     std::vector<std::uint16_t> rle_data;
 
     switch (spir_config_.block_len) {

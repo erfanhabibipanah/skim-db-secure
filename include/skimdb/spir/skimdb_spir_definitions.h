@@ -40,16 +40,8 @@ struct spirdb_parameters {
 };
 
 struct spirdb_query_state {
-  std::uint64_t i_row; // target row index
   spir_matrix s_vec;   // secret vector
   spir_matrix qu_vec;  // encrypted query vector
-};
-
-struct spirdb_batched_query_state {
-  std::vector<std::uint32_t> kmers;   // query kmers (kmers[i] is the query kmer for query i)
-  std::vector<std::uint64_t> i_rows;  // target row indices for active queries (i_rows[i] is the target row index for query i)
-  spir_matrix s_mat;                  // secret vector matrix (row i of s_mat stores s_vec for query i)
-  spir_matrix qu_mat;                 // encrypted query vectors (row i of qu_mat stores qu_vec for query i)
 };
 
 } // namespace spir
