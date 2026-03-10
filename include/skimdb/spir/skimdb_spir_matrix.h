@@ -141,7 +141,7 @@ private:
 };
 
 
-void mat_vec(const spir_matrix&mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, std::uint32_t log_q) {
+void mat_vec(const spir_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, std::uint32_t log_q) {
   auto [m_rows, m_cols] = mat.dimensions();
   auto mat_data = mat.span();
 
@@ -245,6 +245,7 @@ private:
 };
 
 
+// TODO: looks overly complicated - this is also what we would like to offload to GPU
 void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, 
     std::uint32_t log_q, std::uint32_t start, std::uint32_t count, std::uint64_t rle_blocks) {
   auto [_, m_cols] = mat.dimensions();
