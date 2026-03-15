@@ -13,7 +13,7 @@
 #include <string>
 
 #include <cxxopts.hpp>
-#include <fmt_extra.h>
+#include <fmtextra/fmt_extra.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
@@ -30,9 +30,9 @@ auto main(int argc, char* argv[]) -> int {
   std::string in = "";
   std::string out = "";
 
-  int k = 15;
-  int s = 9;
-  int t = 2;
+  std::uint64_t k = 15;
+  std::uint64_t s = 9;
+  std::uint64_t t = 2;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -40,9 +40,9 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "input file or directory, FASTA format", cxxopts::value<std::string>(in))
       ("o,output", "database file name", cxxopts::value<std::string>(out))
-      ("k", "k-mer size", cxxopts::value<int>(k)->default_value(std::to_string(k)))
-      ("s", "syncmer s size", cxxopts::value<int>(s)->default_value(std::to_string(s)))
-      ("t", "syncmer t parameter", cxxopts::value<int>(t)->default_value(std::to_string(t)))
+      ("k", "k-mer size", cxxopts::value<std::uint64_t>(k)->default_value(std::to_string(k)))
+      ("s", "syncmer s size", cxxopts::value<std::uint64_t>(s)->default_value(std::to_string(s)))
+      ("t", "syncmer t parameter", cxxopts::value<std::uint64_t>(t)->default_value(std::to_string(t)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -79,16 +79,6 @@ auto main(int argc, char* argv[]) -> int {
 
   if ((k < 10) || (k > skim::g_kmer_limit)) {
     log->error("incorrect k, must be 10 < k <= {}", skim::g_kmer_limit);
-    return -1;
-  }
-
-  if (s < 0) {
-    log->error("incorrect s, must be s >= 0");
-    return -1;
-  }
-
-  if (t < 0) {
-    log->error("incorrect t, must be t >= 0");
     return -1;
   }
 

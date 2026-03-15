@@ -1,4 +1,4 @@
-find_package(spdlog 1.6 REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 message(STATUS "Found spdlog ${spdlog_VERSION} at ${spdlog_DIR}")
 
 CPMAddPackage(
@@ -6,67 +6,99 @@ CPMAddPackage(
     GITHUB_REPOSITORY jarro2783/cxxopts
     VERSION 3.3.1
     OPTIONS
-      "CXXOPTS_BUILD_EXAMPLES OFF"
-      "CXXOPTS_BUILD_TESTS OFF"
+        "CXXOPTS_BUILD_EXAMPLES OFF"
+        "CXXOPTS_BUILD_TESTS OFF"
 )
 
-CPMAddPackage(
-    NAME fmtextra
-    GIT_REPOSITORY https://gitlab.com/jzola/fmtextra.git
-    GIT_TAG main
+# --------------------------------------------------------------------
+# Tool compile flags
+# --------------------------------------------------------------------
+
+add_library(skimdb_tooling_flags INTERFACE)
+
+target_compile_definitions(skimdb_tooling_flags INTERFACE
+    SPDLOG_USE_STD_FORMAT
 )
 
-add_executable(skimdb-index-create skimdb-index-create.cpp)
-target_link_libraries(skimdb-index-create PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra)
+target_compile_options(skimdb_tooling_flags INTERFACE
 
-add_executable(skimdb-index-query skimdb-index-query.cpp)
-target_link_libraries(skimdb-index-query PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog)
+    # Debug
+    $<$<CONFIG:Debug>:
+        -O0
+        -g3
+        -fno-omit-frame-pointer
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wno-implicit-fallthrough
+    >
 
-add_executable(skimdb-kmer-generate skimdb-kmer-generate.cpp)
-target_link_libraries(skimdb-kmer-generate PRIVATE cxxopts::cxxopts spdlog::spdlog)
+    # Release
+    $<$<CONFIG:Release>:
+        -O3
+        -march=native
+        -ffast-math
+        -funroll-loops
+    >
+)
 
-install(TARGETS
-        skimdb-index-create
-        skimdb-index-query
-        skimdb-kmer-generate
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# --------------------------------------------------------------------
+# Tool dependencies
+# --------------------------------------------------------------------
+
+add_library(skimdb_tool_deps INTERFACE)
+
+target_link_libraries(skimdb_tool_deps INTERFACE
+    skimdb
+    cxxopts::cxxopts
+    spdlog::spdlog_header_only
+    fmtextra
+    skimdb_tooling_flags
+)
+
+# --------------------------------------------------------------------
+# Tool helper
+# --------------------------------------------------------------------
+
+function(skimdb_add_tool name)
+    add_executable(${name} ${name}.cpp)
+
+    target_link_libraries(${name} PRIVATE
+        skimdb_tool_deps
+        ${ARGN}
+    )
+
+    install(TARGETS ${name}
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    )
+endfunction()
+
+# --------------------------------------------------------------------
+# Base tools
+# --------------------------------------------------------------------
+
+skimdb_add_tool(skimdb-index-create)
+skimdb_add_tool(skimdb-index-query)
+skimdb_add_tool(skimdb-kmer-generate)
+
+# --------------------------------------------------------------------
+# gRPC tools
+# --------------------------------------------------------------------
 
 if(SKIMDB_BUILD_GRPC)
-    add_executable(skimdb-index-serve-rpc skimdb-index-serve-rpc.cpp)
-    target_link_libraries(skimdb-index-serve-rpc PRIVATE skimdb skimdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra)
-
-    add_executable(skimdb-index-query-rpc skimdb-index-query-rpc.cpp)
-    target_link_libraries(skimdb-index-query-rpc PRIVATE skimdb skimdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra)
-
-    install(TARGETS
-        skimdb-index-serve-rpc
-        skimdb-index-query-rpc
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    skimdb_add_tool(skimdb-index-serve-rpc skimdb::proto)
+    skimdb_add_tool(skimdb-index-query-rpc skimdb::proto)
 endif()
+
+# --------------------------------------------------------------------
+# SPIR tools
+# --------------------------------------------------------------------
 
 if(SKIMDB_BUILD_SPIR)
     find_package(OpenMP REQUIRED)
-
-    add_executable(skimdb-spir-create skimdb-spir-create.cpp)
-    target_link_libraries(skimdb-spir-create PRIVATE skimdb spirdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
-
-    add_executable(skimdb-spir-dbsize skimdb-spir-dbsize.cpp)
-    target_link_libraries(skimdb-spir-dbsize PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra)
-
-    add_executable(skimdb-spir-query skimdb-spir-query.cpp)
-    target_link_libraries(skimdb-spir-query PRIVATE skimdb cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
-
-    add_executable(skimdb-spir-serve-rpc skimdb-spir-serve-rpc.cpp)
-    target_link_libraries(skimdb-spir-serve-rpc PRIVATE skimdb spirdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
-
-    add_executable(skimdb-spir-query-rpc skimdb-spir-query-rpc.cpp)
-    target_link_libraries(skimdb-spir-query-rpc PRIVATE skimdb spirdb_proto cxxopts::cxxopts spdlog::spdlog fmtextra OpenMP::OpenMP_CXX)
-
-    install(TARGETS
-        skimdb-spir-create
-        skimdb-spir-dbsize
-        skimdb-spir-query
-        skimdb-spir-serve-rpc
-        skimdb-spir-query-rpc
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    skimdb_add_tool(skimdb-spir-create spirdb::proto OpenMP::OpenMP_CXX)
+    skimdb_add_tool(skimdb-spir-dbsize)
+    skimdb_add_tool(skimdb-spir-query OpenMP::OpenMP_CXX)
+    skimdb_add_tool(skimdb-spir-serve-rpc spirdb::proto OpenMP::OpenMP_CXX)
+    skimdb_add_tool(skimdb-spir-query-rpc spirdb::proto OpenMP::OpenMP_CXX)
 endif()

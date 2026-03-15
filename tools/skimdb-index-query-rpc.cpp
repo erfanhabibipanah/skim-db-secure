@@ -8,18 +8,17 @@
  *  See accompanying LICENSE
  */
 
-#include "prompted_input.h"
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <string>
 
 #include <cxxopts.hpp>
-#include <prompted_input.h>
+#include <fmtextra/prompted_input.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb.h>
 #include <skimdb/net/gRPC/skimdb_client.h>

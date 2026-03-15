@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
 project(skimdb VERSION 0.0.1 LANGUAGES CXX)
 
+option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
+option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)
+option(SKIMDB_BUILD_SPIR "Build SPIR implementation" OFF)
+
 # Compile commands
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -10,13 +14,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
-
-add_compile_options(
-    -O3
-    -march=native
-    -ffast-math
-    -funroll-loops
-)
 
 # -------------------------------------------------------------------
 # Dependencies
@@ -45,7 +42,7 @@ CPMAddPackage(
 CPMAddPackage(
     NAME roaring
     GITHUB_REPOSITORY RoaringBitmap/CRoaring
-    GIT_TAG v4.5.1
+    GIT_TAG v4.6.1
     OPTIONS "ENABLE_ROARING_TESTS OFF"
     EXCLUDE_FROM_ALL YES
 )
@@ -86,11 +83,11 @@ target_include_directories(skimdb INTERFACE
 target_link_libraries(skimdb INTERFACE
     cereal
     dgpp
-    roaring
     fastxrd
     fmtextra
     phmap
-    tbb
+    roaring
+    TBB::tbb
 )
 
 install(
@@ -99,24 +96,17 @@ install(
 )
 
 # -------------------------------------------------------------------
-
 # Tools
-option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
-
 if(SKIMDB_BUILD_TOOLS)
     add_subdirectory(tools)
 endif()
 
 # gRPC
-option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)
-
 if(SKIMDB_BUILD_GRPC)
     add_subdirectory(include/skimdb/net/gRPC)
 endif()
 
 # SPIR
-option(SKIMDB_BUILD_SPIR "Build SPIR implementation" OFF)
-
 if (SKIMDB_BUILD_SPIR)
     add_subdirectory(include/skimdb/spir/net/gRPC)
 endif()

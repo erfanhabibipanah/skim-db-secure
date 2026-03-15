@@ -3,7 +3,7 @@
 #include <string>
 
 #include <cxxopts.hpp>
-#include <fmt_extra.h>
+#include <fmtextra/fmt_extra.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>

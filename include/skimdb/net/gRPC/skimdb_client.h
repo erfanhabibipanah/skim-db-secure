@@ -26,7 +26,7 @@ namespace rpc {
 
 class SkimDBClient final {
 public:
-  explicit SkimDBClient(std::shared_ptr<grpc::Channel> channel) : stub_(SkimDB::NewStub(channel)) {
+  explicit SkimDBClient(std::shared_ptr<grpc::Channel> channel) : stub_{SkimDB::NewStub(channel)} {
     g_log->debug("rpc client created!");
   }
 

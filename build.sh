@@ -11,6 +11,7 @@ usage() {
   echo "  -s        build SPIR support"
   echo "  -h        display this help"
   echo "  -v        enable verbose mode"
+  echo "  -d        enable debug mode"
   echo "  -j <JOBS> set number of make jobs to build with (default: $JOBS)"
 }
 
@@ -18,7 +19,7 @@ DIR=$(pwd)/release
 CMAKE_CALL="../"
 
 
-while getopts "Tgshvj:r:" arg; do
+while getopts "Tgshvdj:r:" arg; do
   case $arg in
     h)
       usage
@@ -26,6 +27,9 @@ while getopts "Tgshvj:r:" arg; do
       ;;
     v)
       VERBOSE="VERBOSE=1"
+      ;;
+    d)
+      CMAKE_CALL="$CMAKE_CALL -DCMAKE_BUILD_TYPE=Debug"
       ;;
     j)
       JOBS=$OPTARG

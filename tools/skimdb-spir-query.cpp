@@ -3,7 +3,7 @@
 #include <string>
 
 #include <cxxopts.hpp>
-#include <prompted_input.h>
+#include <fmtextra/prompted_input.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
@@ -47,7 +47,7 @@ auto main(int argc, char* argv[]) -> int {
     log->error("input database not specified!");
     return -1;
   }
-  
+
   log->info("loading spir db from {}...", in);
 
   fs::path dir{in};
@@ -65,7 +65,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   auto server_state = setup.value();
-  
+
 
   log->info("creating client...");
 

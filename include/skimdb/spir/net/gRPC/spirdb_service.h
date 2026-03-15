@@ -21,9 +21,10 @@ class SpirDBService final : public SpirDB::Service {
 public:
   explicit SpirDBService(spir_server_state&& state) : state_(std::move(state)) { g_log->debug("rpc service created!"); }
 
-  grpc::Status GetDbParameters(grpc::ServerContext* context, const DbParametersRequest*, DbParametersReply* reply) override {
+  grpc::Status GetDbParameters(grpc::ServerContext* context, const DbParametersRequest*,
+                               DbParametersReply* reply) override {
     LogFun lf{"SpirDBService::GetDbParameters(...)", spdlog::level::debug};
-    g_log->trace("serving DB parameters request from {}...", context->peer());
+    g_log->trace("serving db parameters request from {}...", context->peer());
 
     auto [k, s, t] = state_.skim_parameters();
 
@@ -36,7 +37,7 @@ public:
 
   grpc::Status GetDbMetadata(grpc::ServerContext* context, const DbMetadataRequest*, DbMetadataReply* reply) override {
     LogFun lf{"SpirDBService::GetDbMetadata(...)", spdlog::level::debug};
-    g_log->trace("serving DB metadata request from {}...", context->peer());
+    g_log->trace("serving db metadata request from {}...", context->peer());
 
     for (const auto& kidx : state_.skim_metadata().index) {
       (*reply->mutable_index())[kidx.first] = kidx.second;
@@ -46,9 +47,10 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status GetSpirParameters(grpc::ServerContext* context, const SpirParametersRequest*, SpirParametersReply* reply) override {
+  grpc::Status GetSpirParameters(grpc::ServerContext* context, const SpirParametersRequest*,
+                                 SpirParametersReply* reply) override {
     LogFun lf{"SpirDBService::GetSpirParameters(...)", spdlog::level::debug};
-    g_log->trace("serving SPIR parameters request from {}...", context->peer());
+    g_log->trace("serving spir parameters request from {}...", context->peer());
 
     auto spir_params = state_.spir_parameters();
 
@@ -67,20 +69,20 @@ public:
 
   grpc::Status GetSpirHint(grpc::ServerContext* context, const SpirHintRequest*, SpirHintReply* reply) override {
     LogFun lf{"SpirDBService::GetSpirHint(...)", spdlog::level::debug};
-    g_log->trace("serving SPIR hint request from {}...", context->peer());
+    g_log->trace("serving spir hint request from {}...", context->peer());
 
     const auto& hint_c = state_.hint_c();
     const auto data = hint_c.span();
 
     *reply->mutable_hint_c() = {data.begin(), data.end()};
-  
+
     return grpc::Status::OK;
   }
 
   grpc::Status Query(grpc::ServerContext* context, const QueryRequest* request, QueryReply* reply) override {
     LogFun lf{"SpirDBService::Query(...)"};
-    g_log->trace("serving SPIR query request from {}...", context->peer());
-    
+    g_log->trace("serving spir query request from {}...", context->peer());
+
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
     if (query_vec_data.size() != state_.spir_parameters().sqrt_N) {
       return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size");
@@ -101,7 +103,7 @@ public:
 
   grpc::Status BatchQuery(grpc::ServerContext* context, const QueryRequest* request, QueryReply* reply) override {
     LogFun lf{"SpirDBService::BatchQuery(...)"};
-    g_log->trace("serving SPIR batch query request from {}...", context->peer());
+    g_log->trace("serving spir batch query request from {}...", context->peer());
 
     auto spir_params = state_.spir_parameters();
 

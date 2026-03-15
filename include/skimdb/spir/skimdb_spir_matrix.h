@@ -4,7 +4,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <memory>
 #include <span>
 #include <tuple>
 #include <utility>
@@ -18,8 +17,7 @@
 #include <skimdb/detail/skimdb_logger.h>
 
 
-namespace skim {
-namespace spir {
+namespace skim::spir {
 
 // implements matrices (and vectors) with modular arithmetic
 class spir_matrix {
@@ -27,7 +25,8 @@ public:
   explicit spir_matrix() = default;
 
   explicit spir_matrix(std::uint64_t rows, std::uint64_t cols, std::uint32_t log_mod)
-      : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_(rows * cols, 0) {}
+      : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)},
+        data_(rows * cols, 0) {}
 
   explicit spir_matrix(std::uint64_t n, std::uint32_t log_mod) : spir_matrix(1, n, log_mod) {}
 
@@ -131,18 +130,21 @@ public:
   }
 
 private:
-  std::uint64_t r_;
-  std::uint64_t c_;
+  std::uint64_t r_{0};
+  std::uint64_t c_{0};
 
-  std::uint32_t log_mod_;
-  std::uint64_t mask_;
+  std::uint32_t log_mod_{0};
+  std::uint64_t mask_{0};
 
   std::vector<std::uint64_t> data_; // row-major flat storage
 };
 
 
 void mat_vec(const spir_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, std::uint32_t log_q) {
-  auto [m_rows, m_cols] = mat.dimensions();
+  uint64_t m_rows = 0; // declared explicitely for libomp
+  uint64_t m_cols = 0;
+
+  std::tie(m_rows, m_cols) = mat.dimensions();
   auto mat_data = mat.span();
 
   std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
@@ -179,7 +181,10 @@ inline auto sub_mat_vec_rows(const spir_matrix &ans, const spir_matrix &hint, st
     std::uint32_t log_q, std::uint64_t i_start, std::uint64_t n_rows) -> spir_matrix {
   LogFun lf{"sub_mat_vec_rows(...)", spdlog::level::debug};
 
-  auto [r, c] = hint.dimensions();
+  std::uint64_t r = 0;
+  std::uint64_t c = 0;
+
+  std::tie(r, c) = hint.dimensions();
   std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
   const auto h_data = hint.span();
@@ -205,13 +210,13 @@ inline auto sub_mat_vec_rows(const spir_matrix &ans, const spir_matrix &hint, st
 
 // wrapper around detail::encoding to provide matrix-like access
 /* Expected sizes:
- *                |   kemrs  | log_p  | rle_blocks | rle_per_col | sqrt_N |     N       | approx log_N 
+ *                |   kemrs  | log_p  | rle_blocks | rle_per_col | sqrt_N |     N       | approx log_N
  * ----------------------------------------------------------------------------------------------------
  *                |          |    8   |    1180    |     233     | 274940 | 75592003600 |    36.1
  *  viral20250425 | 63512373 |   16   |     590    |     329     | 194110 | 37678692100 |    35.1
- *                |          |   24   |     394    |     402     | 158388 | 25086758544 |    34.5  
+ *                |          |   24   |     394    |     402     | 158388 | 25086758544 |    34.5
  * ----------------------------------------------------------------------------------------------------
- */ 
+ */
 class skimdb_matrix {
 public:
   explicit skimdb_matrix() = default;
@@ -246,9 +251,11 @@ private:
 
 
 // TODO: looks overly complicated - this is also what we would like to offload to GPU
-void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, 
-    std::uint32_t log_q, std::uint32_t start, std::uint32_t count, std::uint64_t rle_blocks) {
-  auto [_, m_cols] = mat.dimensions();
+void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst,
+                         std::uint32_t log_q, std::uint32_t start, std::uint32_t count, std::uint64_t rle_blocks) {
+  std::uint64_t m_cols = 0;
+  std::tie(std::ignore, m_cols) = mat.dimensions();
+
   std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
 #pragma omp parallel for schedule(static)
@@ -355,7 +362,6 @@ inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::uint
   return out.transpose();
 }
 
-} // namespace spir
-} // namespace skim
+} // namespace skim::spir
 
 #endif // SKIMDB_SPIR_MATRIX_H

@@ -14,8 +14,7 @@
 #include "skimdb_definitions.h"
 
 
-namespace skim {
-namespace detail {
+namespace skim::detail {
 
 namespace fs = std::filesystem;
 
@@ -213,7 +212,7 @@ inline auto total_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std
   return count;
 }
 
-inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std::size_t {
+inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t) -> std::size_t {
   std::uint64_t num_kmers = 1ULL << (2 * k);
 
   if (s == 0 || s >= k) {
@@ -225,7 +224,6 @@ inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t t) ->
   return num_kmers / (k - s + 1);
 }
 
-} // namespace detail
-} // namespace skim
+} // namespace skim::detail
 
 #endif // SKIMDB_UTIL_H

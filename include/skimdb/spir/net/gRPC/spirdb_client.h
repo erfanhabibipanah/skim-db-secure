@@ -2,15 +2,10 @@
 #define SPIRDB_CLIENT_H
 
 #include <cstddef>
-#include <cstdint>
 #include <expected>
 #include <generator>
 #include <memory>
-#include <optional>
-#include <ranges>
-#include <string>
 #include <utility>
-#include <vector>
 
 #include <grpcpp/grpcpp.h>
 
@@ -33,45 +28,54 @@ public:
   auto setup() -> std::expected<void, std::string> {
     LogFun lf{"SpirDBClient::setup(...)"};
 
-    g_log->debug("fetching DB parameters from server...");
+    g_log->debug("fetching db parameters from server...");
+
     grpc::ClientContext ctx1;
     DbParametersRequest db_req;
     DbParametersReply db_ans;
     grpc::Status db_status = stub_->GetDbParameters(&ctx1, db_req, &db_ans);
+
     if (!db_status.ok()) {
       return std::unexpected{db_status.error_message()};
     }
 
-    g_log->debug("fetching DB metadata from server...");
+    g_log->debug("fetching db metadata from server...");
+
     grpc::ClientContext ctx2;
     DbMetadataRequest meta_req;
     DbMetadataReply meta_ans;
     grpc::Status meta_status = stub_->GetDbMetadata(&ctx2, meta_req, &meta_ans);
+
     if (!meta_status.ok()) {
       return std::unexpected{meta_status.error_message()};
     }
 
     phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
+
     for (const auto& kidx : meta_ans.index()) {
       index[kidx.first] = kidx.second;
     }
 
     std::vector<std::string> labels{meta_ans.labels().begin(), meta_ans.labels().end()};
 
-    g_log->debug("fetching SPIR parameters from server...");
+    g_log->debug("fetching spir parameters from server...");
+
     grpc::ClientContext ctx3;
     SpirParametersRequest spir_req;
     SpirParametersReply spir_ans;
     grpc::Status spir_status = stub_->GetSpirParameters(&ctx3, spir_req, &spir_ans);
+
     if (!spir_status.ok()) {
       return std::unexpected{spir_status.error_message()};
     }
 
-    g_log->debug("fetching SPIR hint from server...");
+    g_log->debug("fetching spir hint from server...");
+
     grpc::ClientContext ctx4;
     SpirHintRequest hint_req;
     SpirHintReply hint_ans;
     grpc::Status hint_status = stub_->GetSpirHint(&ctx4, hint_req, &hint_ans);
+
     if (!hint_status.ok()) {
       return std::unexpected{hint_status.error_message()};
     }
@@ -79,6 +83,7 @@ public:
     std::vector<std::uint64_t> hint_data{hint_ans.hint_c().begin(), hint_ans.hint_c().end()};
 
     g_log->debug("initializing client state...");
+
     skimdb_parameters skim_conf{db_ans.k(), db_ans.s(), db_ans.t()};
     skimdb_metadata skim_meta{std::move(index), std::move(labels)};
     spirdb_parameters spir_conf{spir_ans.n(), spir_ans.sigma(), spir_ans.log_p(), spir_ans.log_q(), spir_ans.batch_size(), spir_ans.block_len(), spir_ans.rle_blocks(), spir_ans.sqrt_n(), spir_ans.seed()};
@@ -103,6 +108,7 @@ public:
     }
 
     auto pos = state_->kmer_to_position(s);
+
     if (!pos) {
       co_return;
     }
@@ -132,7 +138,6 @@ public:
 
 private:
     std::optional<spir_client_state> state_; // client state (initialized on setup)
-
     std::unique_ptr<SpirDB::Stub> stub_;
 };
 

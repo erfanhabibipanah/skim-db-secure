@@ -18,7 +18,7 @@
 #include <spdlog/sinks/null_sink.h>
 #include <spdlog/spdlog.h>
 
-#include <fmt_extra.h>
+#include <fmtextra/fmt_extra.h>
 
 
 namespace skim {

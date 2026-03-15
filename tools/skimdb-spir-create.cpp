@@ -3,7 +3,7 @@
 #include <string>
 
 #include <cxxopts.hpp>
-#include <prompted_input.h>
+#include <fmtextra/prompted_input.h>
 
 #include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
