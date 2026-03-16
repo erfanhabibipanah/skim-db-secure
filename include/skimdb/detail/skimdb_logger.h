@@ -41,6 +41,11 @@ public:
     g_log->log(level_, "DONE: {} in {}", name_, as_time(t.count()));
   }
 
+  LogFun(const LogFun&) = delete;
+  LogFun(LogFun&&) = delete;
+  auto operator=(const LogFun&) = delete;
+  auto operator=(LogFun&&) = delete;
+
 private:
   std::chrono::steady_clock::time_point tp_;
   std::string name_{""};

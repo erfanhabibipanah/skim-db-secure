@@ -10,7 +10,7 @@ if [ -d .cpm-cache/ ]; then
     if compgen -G ".cpm-cache/$DIR/*.hash" > /dev/null; then
       HASH=$(basename "${HASH[0]}" .hash)
       ln -s ../.cpm-cache/$DIR/$HASH .cpm-include/$DIR
-      echo `pwd`/.cpm-include/$DIR
+      echo `pwd`/.cpm-include/$DIR/include
     fi
   done
 else
