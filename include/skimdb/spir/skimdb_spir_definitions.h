@@ -11,16 +11,15 @@
 #include "skimdb_spir_matrix.h"
 
 
-namespace skim {
-namespace spir {
+namespace skim::spir {
 
 // random number generator that SPIR client and server agree to use
 using spir_common_rng_t = std::mt19937_64;
 
 
 struct skimdb_metadata {
-  phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index; // kmer to row index map
-  std::vector<std::string> labels;                                 // annotated labels
+  phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index; // kmer to row index map
+  std::vector<std::string> labels;                                   // annotated labels
 };
 
 struct spirdb_parameters {
@@ -40,11 +39,10 @@ struct spirdb_parameters {
 };
 
 struct spirdb_query_state {
-  spir_matrix s_vec;   // secret vector
-  spir_matrix qu_vec;  // encrypted query vector
+  spir_matrix s_vec;  // secret vector
+  spir_matrix qu_vec; // encrypted query vector
 };
 
-} // namespace spir
-} // namespace skim
+} // namespace skim::spir
 
 #endif // SKIMDB_SPIR_DEFINITIONS_H

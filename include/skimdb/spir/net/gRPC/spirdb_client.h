@@ -1,7 +1,6 @@
 #ifndef SPIRDB_CLIENT_H
 #define SPIRDB_CLIENT_H
 
-#include <cstddef>
 #include <expected>
 #include <generator>
 #include <memory>
@@ -15,9 +14,7 @@
 #include "proto/spirdb.grpc.pb.h"
 
 
-namespace skim {
-namespace spir {
-namespace rpc {
+namespace skim::spir::rpc {
 
 class SpirDBClient final {
 public:
@@ -50,7 +47,7 @@ public:
       return std::unexpected{meta_status.error_message()};
     }
 
-    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
+    phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index;
 
     for (const auto& kidx : meta_ans.index()) {
       index[kidx.first] = kidx.second;
@@ -84,9 +81,20 @@ public:
 
     g_log->debug("initializing client state...");
 
-    skimdb_parameters skim_conf{db_ans.k(), db_ans.s(), db_ans.t()};
-    skimdb_metadata skim_meta{std::move(index), std::move(labels)};
-    spirdb_parameters spir_conf{spir_ans.n(), spir_ans.sigma(), spir_ans.log_p(), spir_ans.log_q(), spir_ans.batch_size(), spir_ans.block_len(), spir_ans.rle_blocks(), spir_ans.sqrt_n(), spir_ans.seed()};
+    skimdb_parameters skim_conf{.k = db_ans.k(), .s = db_ans.s(), .t = db_ans.t()};
+
+    skimdb_metadata skim_meta{.index = std::move(index), .labels = std::move(labels)};
+
+    spirdb_parameters spir_conf{.n = spir_ans.n(),
+                                .sigma = spir_ans.sigma(),
+                                .log_p = spir_ans.log_p(),
+                                .log_q = spir_ans.log_q(),
+                                .batch_size = spir_ans.batch_size(),
+                                .block_len = spir_ans.block_len(),
+                                .rle_blocks = spir_ans.rle_blocks(),
+                                .sqrt_N = spir_ans.sqrt_n(),
+                                .seed = spir_ans.seed()};
+
     spir_matrix hint_c{std::move(hint_data), spir_ans.sqrt_n(), spir_ans.n(), spir_ans.log_p()};
 
     state_.emplace(std::move(skim_conf), std::move(skim_meta), std::move(spir_conf), std::move(hint_c));
@@ -119,7 +127,7 @@ public:
     grpc::ClientContext ctx;
 
     QueryRequest req;
-    *req.mutable_qu() = {qu_data.begin(), qu_data.end()};
+    req.mutable_qu()->Assign(qu_data.begin(), qu_data.end());
 
     QueryReply reply;
     grpc::Status status = stub_->Query(&ctx, req, &reply);
@@ -130,7 +138,7 @@ public:
 
     std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};
 
-    auto pir_params = state_->get_spir_parameters();
+    auto pir_params = state_->spir_parameters();
     spir_matrix ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
 
     co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos->first));
@@ -141,8 +149,6 @@ private:
     std::unique_ptr<SpirDB::Stub> stub_;
 };
 
-} // namespace rpc
-} // namespace spir
-} // namespace skim
+} // namespace skim::spir::rpc
 
 #endif // SPIRDB_CLIENT_H

@@ -19,25 +19,25 @@
 #include "detail/skimdb_logger.h"
 
 
-namespace skim {
-namespace solver {
+namespace skim::solver {
 
 inline void greedy_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) {
   LogFun lf{"greedy_order_bitmaps"};
 
   std::vector<std::size_t> sizes(bitmaps.size());
-  auto bs_zip = std::views::zip(bitmaps, sizes);
 
-  std::for_each(bs_zip.begin(), bs_zip.end(), [&](auto&& bs) {
-    auto& [bitmap, size] = bs;
+  for (auto&& [bitmap, size] : std::views::zip(bitmaps, sizes)) {
     size = bitmap.cardinality();
-  });
+  }
 
   auto bls_zip = std::views::zip(bitmaps, labels, sizes);
   std::ranges::sort(bls_zip, std::ranges::greater{}, [](const auto& bls) { return std::get<2>(bls); });
 
+  constexpr std::size_t min_win = 16;
+  constexpr double win_factor = 0.25;
+
   // selected somewhat arbitrarily
-  int w = std::min(16, static_cast<int>(0.25 * bitmaps.size()));
+  auto w = std::min(min_win, static_cast<std::size_t>(win_factor * bitmaps.size()));
 
   for (std::size_t i = 0, end = bitmaps.size() - w - 1; i < end; ++i) {
     auto& B = bitmaps[i];
@@ -59,7 +59,6 @@ inline void greedy_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std
   }
 }
 
-} // namespace solver
-} // namespace skim
+} // namespace skim::solver
 
 #endif // SKIMDB_SOLVERS_H

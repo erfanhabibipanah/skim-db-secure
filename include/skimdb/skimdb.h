@@ -1,12 +1,11 @@
 #ifndef SKIMDB_H
 #define SKIMDB_H
 
-#include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <generator>
 #include <string>
-#include <tuple>
 #include <vector>
 
 #include <cereal/archives/binary.hpp>
@@ -32,20 +31,22 @@ public:
   struct skimdb_components {
     std::vector<detail::encoding> data;
     std::vector<std::string> labels;
-    phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index;
+    phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index;
   };
 
 
   skimdb() = default;
 
 
-  auto parameters() const -> parameters_type { return parameters_type{k_, s_, t_}; }
+  [[nodiscard]] auto parameters() const -> parameters_type { return parameters_type{.k = k_, .s = s_, .t = t_}; }
 
-  auto explode() && -> skimdb_components { return {std::move(data_), std::move(labels_), std::move(index_)}; }
+  [[nodiscard]] auto explode() && -> skimdb_components {
+    return {.data = std::move(data_), .labels = std::move(labels_), .index = std::move(index_)};
+  }
 
 
   // given a kmer, returns a generator over annotated labels
-  [[nodiscard]] auto query(const std::string& s) const -> std::generator<const std::string&> {
+  [[nodiscard]] auto query(std::string s) const -> std::generator<const std::string&> {
     auto pos = m_find_kmer_pos_(s);
 
     if (!pos.has_value()) {
@@ -103,7 +104,7 @@ public:
 private:
   friend class builder;
 
-  [[nodiscard]] auto m_find_kmer_pos_(const std::string& s) const -> std::optional<std::size_t> {
+  [[nodiscard]] auto m_find_kmer_pos_(const std::string& s) const -> std::optional<std::uint64_t> {
     if (!detail::is_valid(s, k_)) {
       return std::nullopt;
     }
@@ -120,19 +121,19 @@ private:
     return it->second;
   }
 
-  [[nodiscard]] auto m_traverse_kmer_(std::size_t kmer_pos) const -> std::generator<std::size_t> {
+  [[nodiscard]] auto m_traverse_kmer_(std::uint64_t kmer_pos) const -> std::generator<std::uint64_t> {
     for (auto label_idx : data_[kmer_pos].select_idxs()) {
       co_yield label_idx;
     }
   }
 
-  std::size_t k_{0};
-  std::size_t s_{0};
-  std::size_t t_{0};
+  std::uint64_t k_{0};
+  std::uint64_t s_{0};
+  std::uint64_t t_{0};
 
   std::vector<detail::encoding> data_;
   std::vector<std::string> labels_;
-  phmap::parallel_flat_hash_map<std::uint32_t, std::size_t> index_;
+  phmap::parallel_flat_hash_map<std::uint32_t, uint64_t> index_;
 };
 
 } // namespace skim

@@ -2,6 +2,7 @@
 #define SKIMDB_BUILDER_H
 
 #include <algorithm>
+#include <cstdint>
 #include <execution>
 #include <expected>
 #include <filesystem>
@@ -29,7 +30,7 @@ public:
   // labels become owned by the resulting skimdb index, hence move semantics
   // bitmaps are always post-processed so passing by const reference
   [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps, std::vector<std::string> labels,
-                                        std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+                                        std::uint64_t k, std::uint64_t s, std::uint64_t t) -> skimdb {
     LogFun lf{"build_index(...)"};
 
     g_log->info("packing kmers into data with (k={}, s={}, t={})...", k, s, t);
@@ -86,7 +87,7 @@ public:
   [[nodiscard]] static auto build_file_index(const fs::path& dir,
                                              const std::vector<std::string>& files,
                                              std::vector<std::string> labels,
-                                             std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+                                             std::uint64_t k, std::uint64_t s, std::uint64_t t) -> skimdb {
     LogFun lf{"build_file_index(dir, files, ...)"};
 
     std::vector<bitmap_t> bitmaps(files.size());
@@ -101,14 +102,14 @@ public:
   }
 
   [[nodiscard]] static auto build_file_index(const fs::path& dir, const fs::path& f2l,
-                                             std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+                                             std::uint64_t k, std::uint64_t s, std::uint64_t t) -> skimdb {
     LogFun lf{"build_file_index(dir, f2l, ...)"};
     auto [files, labels] = detail::load_f2l(f2l);
     return build_file_index(dir, files, std::move(labels), k, s, t);
   }
 
   template <std::ranges::input_range Range>
-  [[nodiscard]] static auto build_range_index(Range&& range, std::size_t k, std::size_t s, std::size_t t)
+  [[nodiscard]] static auto build_range_index(Range&& range, std::uint64_t k, std::uint64_t s, std::uint64_t t)
       -> skimdb {
     LogFun lf{"build_range_index(...)"};
 
@@ -138,7 +139,7 @@ public:
     return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
-  [[nodiscard]] static auto build_dir_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t)
+  [[nodiscard]] static auto build_dir_index(const fs::path& dir, std::uint64_t k, std::uint64_t s, std::uint64_t t)
       -> skimdb {
     LogFun lf{"build_dir_index(...)"};
     fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
@@ -147,16 +148,17 @@ public:
 
   // merges indexes with a disjoint set of labels
   template <std::ranges::input_range Range>
-  [[nodiscard]] static auto merge_disjoint_indexes(Range&& range, std::size_t k, std::size_t s, std::size_t t) -> std::expected<skimdb, std::string> {
+  [[nodiscard]] static auto merge_disjoint_indexes(Range&& range, std::uint64_t k, std::uint64_t s, std::uint64_t t)
+      -> std::expected<skimdb, std::string> {
     LogFun lf{"merge_disjoint_indexes(...)"};
 
     std::vector<bitmap_t> bitmaps;
     std::vector<std::string> labels;
 
-    auto offset = 0;
+    std::size_t offset = 0;
 
     for (const skimdb& db : range) {
-      if (db.parameters() != skimdb_parameters{k, s, t}) {
+      if (db.parameters() != skimdb_parameters{.k = k, .s = s, .t = t}) {
         return std::unexpected{"parameter mismatch"};
       }
 

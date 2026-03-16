@@ -24,13 +24,12 @@ target_compile_options(skimdb_tooling_flags INTERFACE
 
     # Debug
     $<$<CONFIG:Debug>:
+        -g
         -O0
-        -g3
         -fno-omit-frame-pointer
         -Wall
         -Wextra
         -Wpedantic
-        -Wno-implicit-fallthrough
     >
 
     # Release
@@ -97,7 +96,7 @@ endif()
 if(SKIMDB_BUILD_SPIR)
     find_package(OpenMP REQUIRED)
     skimdb_add_tool(skimdb-spir-create spirdb::proto OpenMP::OpenMP_CXX)
-    skimdb_add_tool(skimdb-spir-dbsize)
+    skimdb_add_tool(skimdb-spir-dbsize OpenMP::OpenMP_CXX)
     skimdb_add_tool(skimdb-spir-query OpenMP::OpenMP_CXX)
     skimdb_add_tool(skimdb-spir-serve-rpc spirdb::proto OpenMP::OpenMP_CXX)
     skimdb_add_tool(skimdb-spir-query-rpc spirdb::proto OpenMP::OpenMP_CXX)

@@ -19,12 +19,25 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
 # Dependencies
 # -------------------------------------------------------------------
 
-file(DOWNLOAD
-    https://github.com/cpm-cmake/CPM.cmake/releases/download/v0.40.8/CPM.cmake
-    ${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake
-    EXPECTED_HASH SHA256=78ba32abdf798bc616bab7c73aac32a17bbd7b06ad9e26a6add69de8f3ae4791
+set(CPM_DOWNLOAD_VERSION 0.42.1)
+set(CPM_EXPECTED_HASH SHA256=f3a6dcc6a04ce9e7f51a127307fa4f699fb2bade357a8eb4c5b45df76e1dc6a5)
+
+set(CPM_DOWNLOAD_LOCATION
+    ${CMAKE_BINARY_DIR}/cmake/CPM_${CPM_DOWNLOAD_VERSION}.cmake
 )
-include(${CMAKE_CURRENT_BINARY_DIR}/cmake/CPM.cmake)
+
+if(NOT EXISTS ${CPM_DOWNLOAD_LOCATION})
+    file(DOWNLOAD
+        https://github.com/cpm-cmake/CPM.cmake/releases/download/v${CPM_DOWNLOAD_VERSION}/CPM.cmake
+        ${CPM_DOWNLOAD_LOCATION}
+        EXPECTED_HASH ${CPM_EXPECTED_HASH}
+    )
+endif()
+
+include(${CPM_DOWNLOAD_LOCATION})
+
+# persistent dependency cache
+set(CPM_SOURCE_CACHE ${CMAKE_SOURCE_DIR}/.cpm-cache)
 
 CPMAddPackage(
     NAME cereal

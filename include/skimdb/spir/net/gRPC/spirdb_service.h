@@ -13,9 +13,7 @@
 #include "proto/spirdb.grpc.pb.h"
 
 
-namespace skim {
-namespace spir {
-namespace rpc {
+namespace skim::spir::rpc {
 
 class SpirDBService final : public SpirDB::Service {
 public:
@@ -43,7 +41,8 @@ public:
       (*reply->mutable_index())[kidx.first] = kidx.second;
     }
 
-    *reply->mutable_labels() = {state_.skim_metadata().labels.begin(), state_.skim_metadata().labels.end()};
+    reply->mutable_labels()->Assign(state_.skim_metadata().labels.begin(), state_.skim_metadata().labels.end());
+
     return grpc::Status::OK;
   }
 
@@ -74,7 +73,7 @@ public:
     const auto& hint_c = state_.hint_c();
     const auto data = hint_c.span();
 
-    *reply->mutable_hint_c() = {data.begin(), data.end()};
+    reply->mutable_hint_c()->Assign(data.begin(), data.end());
 
     return grpc::Status::OK;
   }
@@ -83,9 +82,11 @@ public:
     LogFun lf{"SpirDBService::Query(...)"};
     g_log->trace("serving spir query request from {}...", context->peer());
 
+    // TODO: can we eliminate this copy?
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
+
     if (query_vec_data.size() != state_.spir_parameters().sqrt_N) {
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size");
+      return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size"};
     }
 
     spir_matrix query_vec{std::move(query_vec_data), state_.spir_parameters().sqrt_N, state_.spir_parameters().log_q};
@@ -96,7 +97,7 @@ public:
     }
 
     auto ans_data = (*ans).span();
-    *reply->mutable_ans() = {ans_data.begin(), ans_data.end()};
+    reply->mutable_ans()->Assign(ans_data.begin(), ans_data.end());
 
     return grpc::Status::OK;
   }
@@ -107,9 +108,11 @@ public:
 
     auto spir_params = state_.spir_parameters();
 
+    // TODO: can we eliminate this copy?
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
+
     if (query_vec_data.size() != spir_params.sqrt_N * spir_params.batch_size) {
-      return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size");
+      return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size"};
     }
 
     spir_matrix query_vec{std::move(query_vec_data), spir_params.batch_size, spir_params.sqrt_N, spir_params.log_q};
@@ -120,7 +123,7 @@ public:
     }
 
     auto ans_data = (*ans).span();
-    *reply->mutable_ans() = {ans_data.begin(), ans_data.end()};
+    reply->mutable_ans()->Assign(ans_data.begin(), ans_data.end());
 
     return grpc::Status::OK;
   }
@@ -129,8 +132,6 @@ private:
   spir_server_state state_;
 };
 
-} // namespace rpc
-} // namespace spir
-} // namespace skim
+} // namespace skim::spir::rpc
 
 #endif // SPIRDB_SERVICE_H

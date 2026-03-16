@@ -1,4 +1,6 @@
 *~
+.cpm-cache/
+.cpm-include/
 build/
 release/
 tests/test.skimdb

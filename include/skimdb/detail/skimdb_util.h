@@ -43,7 +43,7 @@ inline auto load_f2l(const fs::path& path) {
   return std::make_pair(names, labels);
 }
 
-inline auto is_valid(const std::string& kmer, std::size_t k) -> bool {
+inline auto is_valid(const std::string& kmer, std::size_t k) noexcept -> bool {
   if (kmer.length() != k) {
     return false;
   }
@@ -67,7 +67,7 @@ inline auto is_valid(const std::string& kmer, std::size_t k) -> bool {
   return true;
 }
 
-inline auto char_to_base2(char c) -> int {
+inline auto char_to_base2(char c) noexcept -> int {
   switch (c) {
   case 'A':
   case 'a':
@@ -86,7 +86,7 @@ inline auto char_to_base2(char c) -> int {
   }
 }
 
-inline auto kmer_to_uint32(const std::string& kmer) -> std::uint32_t {
+inline auto kmer_to_uint32(const std::string& kmer) noexcept -> std::uint32_t {
   if (kmer.length() > g_kmer_limit) {
     return 0;
   }
@@ -104,7 +104,7 @@ inline auto kmer_to_uint32(const std::string& kmer) -> std::uint32_t {
   return result;
 }
 
-inline auto reverse_complement(std::uint32_t kmer, std::size_t k) -> std::uint32_t {
+inline auto reverse_complement(std::uint32_t kmer, std::size_t k) noexcept -> std::uint32_t {
   std::uint32_t rev_comp = 0;
 
   for (std::size_t i = 0; i < k; ++i) {
@@ -115,7 +115,7 @@ inline auto reverse_complement(std::uint32_t kmer, std::size_t k) -> std::uint32
   return rev_comp;
 }
 
-inline auto is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t t) -> bool {
+inline auto is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t t) noexcept -> bool {
   if (s == 0 || s >= k) {
     return true;
   }
@@ -212,7 +212,7 @@ inline auto total_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std
   return count;
 }
 
-inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t) -> std::size_t {
+inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t) noexcept -> std::size_t {
   std::uint64_t num_kmers = 1ULL << (2 * k);
 
   if (s == 0 || s >= k) {

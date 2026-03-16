@@ -2,7 +2,7 @@
 
 if [ -d build/ ]; then
   cd build/
-  make
+  make -j 8
   make install
 else
   ./build.sh
