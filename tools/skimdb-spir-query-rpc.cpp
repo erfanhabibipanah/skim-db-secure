@@ -15,6 +15,7 @@
 auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
   bool verbose = false;
+  bool use_rlwe = false;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -22,6 +23,9 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
+#ifdef SKIMDB_USE_RLWE
+      ("rlwe", "use Ring-LWE hybrid query mode", cxxopts::value<bool>(use_rlwe)->default_value("false"))
+#endif
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -61,6 +65,12 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+#ifdef SKIMDB_USE_RLWE
+  if (use_rlwe) {
+    client.init_rlwe();
+  }
+#endif
+
   log->info("ready for queries...");
 
   prompted_input prompt;
@@ -72,11 +82,24 @@ auto main(int argc, char* argv[]) -> int {
     }
 
     if (verbose) {
-      for (const auto &l : client.query(q)) {
+#ifdef SKIMDB_USE_RLWE
+      auto results = use_rlwe ? client.query_hybrid(q) : client.query(q);
+#else
+      auto results = client.query(q);
+#endif
+      for (const auto &l : results) {
         log->info("  {}", l);
       }
     } else {
-      log->info("got {} label(s)", std::ranges::distance(client.query(q)));
+#ifdef SKIMDB_USE_RLWE
+      if (use_rlwe) {
+        log->info("got {} label(s)", std::ranges::distance(client.query_hybrid(q)));
+      } else {
+#endif
+        log->info("got {} label(s)", std::ranges::distance(client.query(q)));
+#ifdef SKIMDB_USE_RLWE
+      }
+#endif
     }
   }
 

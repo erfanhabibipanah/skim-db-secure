@@ -19,6 +19,7 @@ namespace fs = std::filesystem;
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
   bool verbose = false;
+  bool use_rlwe = false;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -26,6 +27,9 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "spir database to query", cxxopts::value<std::string>(in))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
+#ifdef SKIMDB_USE_RLWE
+      ("rlwe", "use Ring-LWE hybrid query mode", cxxopts::value<bool>(use_rlwe)->default_value("false"))
+#endif
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -72,6 +76,15 @@ auto main(int argc, char* argv[]) -> int {
   skim::spir::spir_client_state client_state{server_state.skim_parameters(), server_state.skim_metadata(),
                                              server_state.spir_parameters(), server_state.hint_c()};
 
+#ifdef SKIMDB_USE_RLWE
+  if (use_rlwe) {
+    auto spir_conf = server_state.spir_parameters();
+    std::uint64_t poly_degree = spir_conf.n;
+    std::uint64_t p_mod = 1ULL << spir_conf.log_p;
+    client_state.init_rlwe(poly_degree, p_mod);
+  }
+#endif
+
   log->info("client ready for queries...");
 
   prompted_input prompt;
@@ -93,7 +106,17 @@ auto main(int argc, char* argv[]) -> int {
       continue;
     }
 
+#ifdef SKIMDB_USE_RLWE
     auto query_state = client_state.prepare_query(pos->second);
+    if (use_rlwe) {
+      auto hybrid = client_state.prepare_query_hybrid(q);
+      if (hybrid) {
+        query_state = std::move(hybrid->second);
+      }
+    }
+#else
+    auto query_state = client_state.prepare_query(pos->second);
+#endif
 
     log->info("submitting query...");
 
@@ -111,11 +134,29 @@ auto main(int argc, char* argv[]) -> int {
     if (verbose) {
       log->info("query results:");
 
-      for (auto label : client_state.result(answer_vec, query_state, pos->first)) {
-        log->info("  {}", label);
+#ifdef SKIMDB_USE_RLWE
+      if (use_rlwe) {
+        for (auto label : client_state.result_hybrid(answer_vec, query_state, pos->first)) {
+          log->info("  {}", label);
+        }
+      } else {
+#endif
+        for (auto label : client_state.result(answer_vec, query_state, pos->first)) {
+          log->info("  {}", label);
+        }
+#ifdef SKIMDB_USE_RLWE
       }
+#endif
     } else {
-      log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state, pos->first)));
+#ifdef SKIMDB_USE_RLWE
+      if (use_rlwe) {
+        log->info("got {} label(s)", std::ranges::distance(client_state.result_hybrid(answer_vec, query_state, pos->first)));
+      } else {
+#endif
+        log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state, pos->first)));
+#ifdef SKIMDB_USE_RLWE
+      }
+#endif
     }
   }
 

@@ -32,6 +32,10 @@
 #include "skimdb_spir_matrix.h"
 #include "skimdb_spir_definitions.h"
 
+#ifdef SKIMDB_USE_RLWE
+#include "skimdb_spir_rlwe.h"
+#endif
+
 
 namespace skim::spir {
 
@@ -203,6 +207,78 @@ private:
 }
 
 
+#ifdef SKIMDB_USE_RLWE
+[[nodiscard]] auto make_server_rlwe(skimdb&& db, unsigned int log_p, unsigned int log_q,
+                                    std::uint64_t poly_degree, std::uint32_t batch_size = 1,
+                                    std::uint64_t seed = std::random_device{}())
+    -> std::expected<spir_server_state, std::string> {
+  LogFun lf{"make_server_rlwe(...)"};
+
+  if (log_p < 8 || log_p >= 32) {
+    return std::unexpected{"unsupported plaintext modulus"};
+  }
+  if (log_q != 32 && log_q != 64) {
+    return std::unexpected{"RLWE requires log_q = 32 or 64"};
+  }
+  if (poly_degree == 0 || (poly_degree & (poly_degree - 1)) != 0) {
+    return std::unexpected{"poly_degree must be a power of 2"};
+  }
+
+  std::uint64_t p_mod = 1ULL << log_p;
+  std::size_t n = poly_degree;
+
+  auto [k, s, t] = db.parameters();
+  auto db_parts = std::move(db).explode();
+
+  std::uint64_t kmers = db_parts.data.size();
+  std::uint64_t max_rle = 0;
+  for (const auto& entry : db_parts.data) {
+    max_rle = std::max(max_rle, entry.length());
+  }
+
+  if (kmers == 0 || max_rle == 0) {
+    return std::unexpected{"empty skimdb index"};
+  }
+
+  std::uint32_t block_len = log_p / 8;
+  std::uint64_t rle_blocks = 2 * max_rle / block_len + ((2 * max_rle % block_len) ? 1 : 0);
+  std::uint64_t min_blocks = kmers * rle_blocks;
+
+  g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
+
+  double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
+  std::uint64_t rles_per_side = static_cast<std::uint64_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
+  std::uint64_t sqrt_N = rles_per_side * rle_blocks;
+
+  g_log->info("spir matrix dimension sqrt(N) = {}, poly_degree = {}", sqrt_N, poly_degree);
+
+  rlwe::RLWEContext ctx(poly_degree, log_q, p_mod);
+  rlwe::RLWEKey key(ctx);
+
+  spir_common_rng_t rng{seed};
+  auto [a_seeds, num_seeds] = rlwe::gen_a_seeds(rng, sqrt_N, poly_degree);
+
+  g_log->info("RLWE: num_seeds = {}", num_seeds);
+
+  skimdb_parameters skim_conf{k, s, t};
+  double sigma = seal::util::seal_he_std_parms_error_std_dev;
+  spirdb_parameters spir_conf{n, sigma, log_p, log_q, batch_size, block_len, rle_blocks, sqrt_N, seed};
+
+  skimdb_matrix DB{std::move(db_parts.data), block_len, rle_blocks, sqrt_N};
+  skimdb_metadata metadata{std::move(db_parts.index), std::move(db_parts.labels)};
+
+  g_log->info("precomputing RLWE hint matrix via NTT...");
+  auto hint_c = rlwe::compute_hint_ntt(ctx, key, DB, a_seeds, num_seeds, sqrt_N, rle_blocks);
+
+  return spir_server_state{std::move(DB),
+                           std::move(metadata),
+                           std::move(skim_conf),
+                           std::move(spir_conf),
+                           std::move(hint_c)};
+}
+#endif
+
+
 [[nodiscard]] auto load_server(const fs::path& path) -> std::expected<spir_server_state, std::string> {
   LogFun lf{"load_server(...)"};
 
@@ -258,6 +334,18 @@ public:
     A_.fill(rng);
   }
 
+
+#ifdef SKIMDB_USE_RLWE
+  void init_rlwe(std::uint64_t poly_degree, std::uint64_t plaintext_mod) {
+    rlwe_ctx_ = std::make_unique<rlwe::RLWEContext>(poly_degree, spir_config_.log_q, plaintext_mod);
+    rlwe_key_ = std::make_unique<rlwe::RLWEKey>(*rlwe_ctx_);
+
+    spir_common_rng_t seed_rng{spir_config_.seed};
+    auto [seeds, num_seeds] = rlwe::gen_a_seeds(seed_rng, spir_config_.sqrt_N, poly_degree);
+    a_seeds_ = std::move(seeds);
+    num_a_seeds_ = num_seeds;
+  }
+#endif
 
   [[nodiscard]] auto skim_parameters() const -> skimdb_parameters { return skim_config_; }
 
@@ -329,6 +417,53 @@ public:
 
     return spirdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)};
   }
+
+
+#ifdef SKIMDB_USE_RLWE
+  [[nodiscard]] auto prepare_query_hybrid(const std::string& str)
+      -> std::expected<std::pair<std::uint64_t, spirdb_query_state>, std::string> {
+    LogFun lf{"spir_client_state::prepare_query_hybrid(...)"};
+
+    if (!rlwe_ctx_ || !rlwe_key_) {
+      return std::unexpected{"RLWE context not initialized"};
+    }
+
+    auto pos = kmer_to_position(str);
+    if (!pos) {
+      return std::unexpected{pos.error()};
+    }
+
+    auto [i_row, i_col] = *pos;
+
+    std::vector<std::uint64_t> pt_data(spir_config_.sqrt_N, 0);
+    pt_data[i_col] = 1;
+
+    auto qu = rlwe::prepare_query_hybrid(
+        *rlwe_ctx_, *rlwe_key_, a_seeds_, num_a_seeds_, pt_data.data(), spir_config_.sqrt_N);
+
+    auto s = rlwe_key_->extract_lwe_key();
+
+    return std::make_pair(i_row, spirdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)});
+  }
+
+
+  [[nodiscard]] auto result_hybrid(const spir_matrix& ans, const spirdb_query_state& query, std::uint64_t i_row)
+      -> std::generator<const std::string&> {
+    LogFun lf{"spir_client_state::result_hybrid(...)"};
+
+    auto d = rlwe::recover_hybrid(
+        *rlwe_ctx_, ans, hint_c_, query.s_vec, spir_config_.log_q, i_row, spir_config_.rle_blocks);
+    auto d_data = d.span();
+
+    auto rle = m_recover_(d_data);
+    for (auto idx : rle.select_idxs()) {
+      if (idx >= skim_metadata_.labels.size()) {
+        break;
+      }
+      co_yield skim_metadata_.labels[idx];
+    }
+  }
+#endif
 
 
   [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::uint64_t i_row)
@@ -410,6 +545,15 @@ private:
   spir_matrix hint_c_; // hint matrix from server
 
   rng_type rng_;
+
+#ifdef SKIMDB_USE_RLWE
+  std::unique_ptr<rlwe::RLWEContext> rlwe_ctx_;
+  std::unique_ptr<rlwe::RLWEKey> rlwe_key_;
+  std::vector<std::uint64_t> a_seeds_;
+  std::uint64_t num_a_seeds_ = 0;
+
+
+#endif
 };
 
 } // namespace skim::spir

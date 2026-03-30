@@ -102,6 +102,58 @@ public:
     return {};
   }
 
+
+#ifdef SKIMDB_USE_RLWE
+  void init_rlwe() {
+    if (!state_.has_value()) {
+      g_log->error("client not initialized! call setup() first.");
+      return;
+    }
+    auto spir_conf = state_->spir_parameters();
+    std::uint64_t poly_degree = spir_conf.n;
+    std::uint64_t p_mod = 1ULL << spir_conf.log_p;
+    state_->init_rlwe(poly_degree, p_mod);
+    rlwe_mode_ = true;
+  }
+
+  auto query_hybrid(const std::string& s) -> std::generator<const std::string&> {
+    LogFun lf{"SpirDBClient::query_hybrid(...)"};
+
+    if (!state_.has_value()) {
+      g_log->error("client not initialized! call setup() first.");
+      co_return;
+    }
+
+    auto hybrid = state_->prepare_query_hybrid(s);
+    if (!hybrid) {
+      g_log->error("failed to prepare hybrid query: {}", hybrid.error());
+      co_return;
+    }
+
+    auto [i_row, query_state] = std::move(*hybrid);
+    auto qu_data = query_state.qu_vec.span();
+
+    grpc::ClientContext ctx;
+
+    QueryRequest req;
+    *req.mutable_qu() = {qu_data.begin(), qu_data.end()};
+
+    QueryReply reply;
+    grpc::Status status = stub_->Query(&ctx, req, &reply);
+    if (!status.ok()) {
+      g_log->error("query failed: {}", status.error_message());
+      co_return;
+    }
+
+    std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};
+
+    auto pir_params = state_->spir_parameters();
+    spir_matrix ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
+
+    co_yield std::ranges::elements_of(state_->result_hybrid(ans_mat, query_state, i_row));
+  }
+#endif
+
   auto query(const std::string& s) -> std::generator<const std::string&> {
     LogFun lf{"SpirDBClient::query(...)"};
 
@@ -146,6 +198,10 @@ public:
 
 private:
     std::optional<spir_client_state> state_; // client state (initialized on setup)
+
+#ifdef SKIMDB_USE_RLWE
+    bool rlwe_mode_ = false;
+#endif
     std::unique_ptr<SpirDB::Stub> stub_;
 };
 

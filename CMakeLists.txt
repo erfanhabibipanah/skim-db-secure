@@ -120,6 +120,26 @@ if(SKIMDB_BUILD_GRPC)
 endif()
 
 # SPIR
-if (SKIMDB_BUILD_SPIR)
+if (SKIMDB_BUILD_SPIR AND SKIMDB_BUILD_GRPC)
     add_subdirectory(include/skimdb/spir/net/gRPC)
+endif()
+
+# RLWE (Ring-LWE via CrowdSurf's forked SEAL)
+option(SKIMDB_USE_RLWE "Enable Ring-LWE support using SEAL" OFF)
+
+if (SKIMDB_USE_RLWE)
+    set(SEAL_DIR "" CACHE PATH "Path to forked SEAL build directory")
+
+    if (NOT SEAL_DIR)
+        message(FATAL_ERROR "SKIMDB_USE_RLWE requires SEAL_DIR to be set (e.g. -DSEAL_DIR=/path/to/SEAL/build)")
+    endif()
+
+    add_library(seal_rlwe STATIC IMPORTED GLOBAL)
+    set_target_properties(seal_rlwe PROPERTIES
+        IMPORTED_LOCATION "${SEAL_DIR}/lib/libseal-4.1.a"
+        INTERFACE_INCLUDE_DIRECTORIES "${SEAL_DIR}/include/SEAL-4.1"
+    )
+
+    target_compile_definitions(skimdb INTERFACE SKIMDB_USE_RLWE)
+    target_link_libraries(skimdb INTERFACE seal_rlwe)
 endif()
