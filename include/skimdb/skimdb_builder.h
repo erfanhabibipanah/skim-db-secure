@@ -27,6 +27,33 @@ namespace fs = std::filesystem;
 
 class builder final {
 public:
+  [[nodiscard]] static auto build_index_mphf(const std::vector<bitmap_t>& bitmaps, std::vector<std::string> labels,
+                                             std::uint64_t k, std::uint64_t s, std::uint64_t t) -> skimdb {
+    skimdb db;
+
+    db.k_ = k;
+    db.s_ = s;
+    db.t_ = t;
+
+    auto& index = db.index_;
+    auto& data = db.data_;
+
+    db.labels_ = std::move(labels);
+
+    for (auto& bmp : bitmaps) {
+      for (std::uint32_t kmer : bmp) {
+        index.kmers.add(kmer);
+      }
+    }
+
+    index.kmers.runOptimize();
+
+    index.hash = bbh::bbhash{std::ranges::subrange(index.kmers.begin(), index.kmers.end())};
+
+    return db;
+  }
+
+  /*
   // labels become owned by the resulting skimdb index, hence move semantics
   // bitmaps are always post-processed so passing by const reference
   [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps, std::vector<std::string> labels,
@@ -56,7 +83,7 @@ public:
 
     std::size_t free_idx = 0;
 
-    for (std::size_t i = 0, end = bitmaps.size(); i < end; i++) {
+    for (std::size_t i = 0, end = bitmaps.size(); i < end; ++i) {
       auto& bitmap = bitmaps[i];
 
       for (std::uint32_t kmer : bitmap) {
@@ -83,6 +110,7 @@ public:
 
     return db;
   }
+  */
 
   [[nodiscard]] static auto build_file_index(const fs::path& dir,
                                              const std::vector<std::string>& files,

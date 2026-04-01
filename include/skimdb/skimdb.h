@@ -8,12 +8,11 @@
 #include <string>
 #include <vector>
 
+#include <bbhash/bbhash.h>
+
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
-
-#include <parallel_hashmap/phmap.h>
-#include <parallel_hashmap/phmap_dump.h>
 
 #include "detail/skimdb_definitions.h"
 #include "detail/skimdb_encoding.h"
@@ -27,6 +26,11 @@ namespace fs = std::filesystem;
 class skimdb final {
 public:
   using parameters_type = skimdb_parameters;
+
+  struct kmer_index {
+    bitmap_t kmers;
+    bbh::bbhash<std::uint64_t> hash;
+  }
 
   struct skimdb_components {
     std::vector<detail::encoding> data;
