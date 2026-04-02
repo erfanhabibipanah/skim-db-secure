@@ -21,9 +21,6 @@
 
 #include <dgpp/uniform_rejection.hpp>
 
-#include <parallel_hashmap/phmap.h>
-#include <parallel_hashmap/phmap_dump.h>
-
 #include <skimdb/detail/skimdb_logger.h>
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/detail/skimdb_encoding.h>
@@ -215,7 +212,7 @@ private:
     cereal::BinaryInputArchive archive(is);
 
     skimdb_matrix DB;
-    phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index;
+    skimdb::kmer_index index;
     std::vector<std::string> labels;
     skimdb_parameters skim_conf{};
     spirdb_parameters spir_conf{};

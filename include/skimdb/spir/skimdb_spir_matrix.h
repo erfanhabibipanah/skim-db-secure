@@ -10,7 +10,6 @@
 #include <vector>
 
 #include <cereal/types/vector.hpp>
-
 #include <dgpp/uniform_rejection.hpp>
 
 #include <skimdb/detail/skimdb_encoding.h>
