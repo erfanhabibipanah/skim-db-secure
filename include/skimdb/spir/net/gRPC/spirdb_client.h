@@ -47,7 +47,7 @@ public:
       return std::unexpected{meta_status.error_message()};
     }
 
-    phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index;
+    skimdb::index index;
 
     for (const auto& kidx : meta_ans.index()) {
       index[kidx.first] = kidx.second;

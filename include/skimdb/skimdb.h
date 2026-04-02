@@ -35,6 +35,7 @@ public:
 
   struct kmer_index {
     kmer_index() = default;
+
     bitmap_t kmers{};
     bbh::bbhash<kmer_binary_t> hash;
 

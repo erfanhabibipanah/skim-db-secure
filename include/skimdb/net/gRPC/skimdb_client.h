@@ -21,8 +21,7 @@
 #include "proto/skimdb.grpc.pb.h"
 
 
-namespace skim {
-namespace rpc {
+namespace skim::rpc {
 
 class SkimDBClient final {
 public:
@@ -41,7 +40,7 @@ public:
       std::unexpected{status.error_message()};
     }
 
-    return skimdb::parameters_type{ans.k(), ans.s(), ans.t()};
+    return skimdb::parameters_type{.k = ans.k(), .s = ans.s(), .t = ans.t()};
   }
 
   auto query(const std::string& q) const -> std::generator<std::string> {
@@ -68,7 +67,6 @@ private:
     std::unique_ptr<SkimDB::Stub> stub_;
 };
 
-} // namespace rpc
-} // namespace skimdb
+} // namespace skim::rpc
 
 #endif // SKIMDB_CLIENT_H
