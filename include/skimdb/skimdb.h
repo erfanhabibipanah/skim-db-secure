@@ -137,11 +137,7 @@ private:
     auto kmer = detail::kmer_to_binary(s);
     auto kmer_idx = std::min(kmer, detail::reverse_complement(kmer, k_));
 
-    if (!index_.kmers.contains(kmer_idx)) {
-      return std::nullopt;
-    }
-
-    return index_.hash.find(kmer_idx);
+    return index_.find(kmer_idx);
   }
 
   [[nodiscard]] auto m_traverse_kmer_(std::size_t kmer_pos) const -> std::generator<std::size_t> {
