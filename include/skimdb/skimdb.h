@@ -1,19 +1,20 @@
 #ifndef SKIMDB_H
 #define SKIMDB_H
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <generator>
+#include <optional>
 #include <string>
 #include <vector>
+
+#include <bbhash/bbhash.h>
 
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
-
-#include <parallel_hashmap/phmap.h>
-#include <parallel_hashmap/phmap_dump.h>
 
 #include "detail/skimdb_definitions.h"
 #include "detail/skimdb_encoding.h"
@@ -28,10 +29,34 @@ class skimdb final {
 public:
   using parameters_type = skimdb_parameters;
 
+  static_assert(sizeof(std::size_t) == sizeof(bbh::bbhash<kmer_binary_t>::size_type) &&
+                    std::is_unsigned_v<bbh::bbhash<kmer_binary_t>::size_type>,
+                "size_type must be equivalent to std::size_t");
+
+  struct kmer_index {
+    kmer_index() = default;
+
+    bitmap_t kmers{};
+    bbh::bbhash<kmer_binary_t> hash;
+
+    [[nodiscard]] auto find(kmer_binary_t kmer) const -> std::optional<std::size_t> {
+      if (kmers.contains(kmer)) {
+        return hash.find(kmer);
+      }
+      return std::nullopt;
+    }
+
+    template <class Archive>
+    void serialize(Archive& ar) {
+      ar(CEREAL_NVP(kmers));
+      ar(CEREAL_NVP(hash));
+    }
+  };
+
   struct skimdb_components {
     std::vector<detail::encoding> data;
     std::vector<std::string> labels;
-    phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index;
+    kmer_index index;
   };
 
 
@@ -71,8 +96,8 @@ public:
     try {
       cereal::BinaryInputArchive archive(is);
       archive(*this);
-    } catch (...) {
-      return std::unexpected{"deserialization failed"};
+    } catch (const std::exception& e) {
+      return std::unexpected{std::format("deserialization failed {}", e.what())};
     }
 
     return {};
@@ -87,8 +112,8 @@ public:
     try {
       cereal::BinaryOutputArchive archive{os};
       archive(*this);
-    } catch (...) {
-      return std::unexpected{"serialization failed"};
+    } catch (const std::exception& e) {
+      return std::unexpected{std::format("serialization failed {}", e.what())};
     }
 
     os.close();
@@ -104,36 +129,30 @@ public:
 private:
   friend class builder;
 
-  [[nodiscard]] auto m_find_kmer_pos_(const std::string& s) const -> std::optional<std::uint64_t> {
+  [[nodiscard]] auto m_find_kmer_pos_(const std::string& s) const -> std::optional<std::size_t> {
     if (!detail::is_valid(s, k_)) {
       return std::nullopt;
     }
 
-    auto kmer = detail::kmer_to_uint32(s);
+    auto kmer = detail::kmer_to_binary(s);
     auto kmer_idx = std::min(kmer, detail::reverse_complement(kmer, k_));
 
-    auto it = index_.find(kmer_idx);
-
-    if (it == index_.end()) {
-      return std::nullopt;
-    }
-
-    return it->second;
+    return index_.find(kmer_idx);
   }
 
-  [[nodiscard]] auto m_traverse_kmer_(std::uint64_t kmer_pos) const -> std::generator<std::uint64_t> {
+  [[nodiscard]] auto m_traverse_kmer_(std::size_t kmer_pos) const -> std::generator<std::size_t> {
     for (auto label_idx : data_[kmer_pos].select_idxs()) {
       co_yield label_idx;
     }
   }
 
-  std::uint64_t k_{0};
-  std::uint64_t s_{0};
-  std::uint64_t t_{0};
+  std::size_t k_{0};
+  std::size_t s_{0};
+  std::size_t t_{0};
 
   std::vector<detail::encoding> data_;
   std::vector<std::string> labels_;
-  phmap::parallel_flat_hash_map<std::uint32_t, uint64_t> index_;
+  kmer_index index_;
 };
 
 } // namespace skim

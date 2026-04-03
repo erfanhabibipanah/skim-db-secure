@@ -2,7 +2,7 @@
 #define SKIMDB_BUILDER_H
 
 #include <algorithm>
-#include <cstdint>
+#include <cstddef>
 #include <execution>
 #include <expected>
 #include <filesystem>
@@ -14,7 +14,6 @@
 #include <fastxrd/fastx_files_reader.h>
 
 #include "detail/skimdb_definitions.h"
-#include "detail/skimdb_encoding.h"
 #include "detail/skimdb_logger.h"
 #include "detail/skimdb_util.h"
 #include "skimdb.h"
@@ -27,10 +26,8 @@ namespace fs = std::filesystem;
 
 class builder final {
 public:
-  // labels become owned by the resulting skimdb index, hence move semantics
-  // bitmaps are always post-processed so passing by const reference
   [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps, std::vector<std::string> labels,
-                                        std::uint64_t k, std::uint64_t s, std::uint64_t t) -> skimdb {
+                                        std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_index(...)"};
 
     g_log->info("packing kmers into data with (k={}, s={}, t={})...", k, s, t);
@@ -49,27 +46,34 @@ public:
 
     db.labels_ = std::move(labels);
 
-    // our estimate is probably off hence we divide
-    // this still should give good amortization
-    // without overblowing memory
-    data.reserve(total_kmers >> 2);
+    // we first build k-mer hash
+    std::vector<kmer_binary_t> kmers;
+    kmers.reserve(total_kmers);
 
-    std::size_t free_idx = 0;
+    for (auto& bmp : bitmaps) {
+      for (kmer_binary_t kmer : bmp) {
+        if (!index.kmers.contains(kmer)) {
+          index.kmers.add(kmer);
+          kmers.push_back(kmer);
+        }
+      }
+    }
 
-    for (std::size_t i = 0, end = bitmaps.size(); i < end; i++) {
+    index.kmers.runOptimize();
+
+    index.hash = bbh::bbhash<kmer_binary_t>{std::ranges::subrange(kmers.begin(), kmers.end())};
+    kmers = {};
+
+    // now we prepeare data
+    g_log->info("found {} unique kmers", index.kmers.cardinality());
+
+    data.resize(index.kmers.cardinality());
+
+    for (std::size_t i = 0, end = bitmaps.size(); i < end; ++i) {
       auto& bitmap = bitmaps[i];
 
-      for (std::uint32_t kmer : bitmap) {
-        auto [it, inserted] = index.try_emplace(kmer, free_idx);
-        if (inserted) {
-          free_idx++;
-        }
-
-        std::size_t idx = it->second;
-
-        if (idx >= data.size()) {
-          data.resize(idx + 1);
-        }
+      for (kmer_binary_t kmer : bitmap) {
+        std::size_t idx = index.hash.find(kmer).value();
         data[idx].push(i);
       }
     }
@@ -87,7 +91,7 @@ public:
   [[nodiscard]] static auto build_file_index(const fs::path& dir,
                                              const std::vector<std::string>& files,
                                              std::vector<std::string> labels,
-                                             std::uint64_t k, std::uint64_t s, std::uint64_t t) -> skimdb {
+                                             std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_file_index(dir, files, ...)"};
 
     std::vector<bitmap_t> bitmaps(files.size());
@@ -102,14 +106,14 @@ public:
   }
 
   [[nodiscard]] static auto build_file_index(const fs::path& dir, const fs::path& f2l,
-                                             std::uint64_t k, std::uint64_t s, std::uint64_t t) -> skimdb {
+                                             std::size_t k, std::size_t s, std::size_t t) -> skimdb {
     LogFun lf{"build_file_index(dir, f2l, ...)"};
     auto [files, labels] = detail::load_f2l(f2l);
     return build_file_index(dir, files, std::move(labels), k, s, t);
   }
 
   template <std::ranges::input_range Range>
-  [[nodiscard]] static auto build_range_index(Range&& range, std::uint64_t k, std::uint64_t s, std::uint64_t t)
+  [[nodiscard]] static auto build_range_index(Range&& range, std::size_t k, std::size_t s, std::size_t t)
       -> skimdb {
     LogFun lf{"build_range_index(...)"};
 
@@ -118,8 +122,8 @@ public:
 
     g_log->info("extracting kmers with (k={}, s={}, t={})...", k, s, t);
 
-    std::uint64_t kmer_count = 0;
-    std::uint32_t d = 0;
+    std::size_t kmer_count = 0;
+    kmer_binary_t kmax = 0;
 
     for (auto&& seq : range) {
       labels.emplace_back(std::move(std::get<0>(seq)));
@@ -127,19 +131,19 @@ public:
       bitmap_t bitmap;
       auto [count, last] = detail::update_bitmap(read, k, s, t, bitmap);
       kmer_count += count;
-      d = std::max(d, last);
+      kmax = std::max(kmax, last);
       bitmaps.emplace_back(std::move(bitmap));
     }
 
     g_log->info("{} kmers extracted from {} sequences", kmer_count, labels.size());
-    g_log->info("largest kmer: {}", d);
+    g_log->info("largest kmer: {}", kmax);
 
     solver::greedy_order_bitmaps(bitmaps, labels);
 
     return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
-  [[nodiscard]] static auto build_dir_index(const fs::path& dir, std::uint64_t k, std::uint64_t s, std::uint64_t t)
+  [[nodiscard]] static auto build_dir_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t)
       -> skimdb {
     LogFun lf{"build_dir_index(...)"};
     fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
@@ -148,7 +152,7 @@ public:
 
   // merges indexes with a disjoint set of labels
   template <std::ranges::input_range Range>
-  [[nodiscard]] static auto merge_disjoint_indexes(Range&& range, std::uint64_t k, std::uint64_t s, std::uint64_t t)
+  [[nodiscard]] static auto merge_disjoint_indexes(Range&& range, std::size_t k, std::size_t s, std::size_t t)
       -> std::expected<skimdb, std::string> {
     LogFun lf{"merge_disjoint_indexes(...)"};
 
@@ -165,7 +169,8 @@ public:
       labels.insert(labels.end(), db.labels_.begin(), db.labels_.end());
       bitmaps.resize(labels.size());
 
-      for (const auto& [kmer, pos] : db.index_) {
+      for (const auto& kmer : db.index_.kmers) {
+        auto pos = db.index_.hash.find(kmer).value();
         for (auto l : db.m_traverse_kmer_(pos)) {
           bitmaps[l + offset].add(kmer);
         }

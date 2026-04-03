@@ -1,6 +1,7 @@
 #ifndef SKIMDB_UTIL_H
 #define SKIMDB_UTIL_H
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -8,10 +9,34 @@
 #include <utility>
 #include <vector>
 
+#include <cereal/cereal.hpp>
 #include <fastxrd/fasta_simple_reader.h>
 
 #include "skimdb_logger.h"
 #include "skimdb_definitions.h"
+
+
+namespace cereal {
+
+template <class Archive>
+void save(Archive& ar, const roaring::Roaring& bitmap) {
+  auto size = bitmap.getSizeInBytes();
+  std::vector<char> buf(size);
+  bitmap.write(buf.data());
+  ar(cereal::make_nvp("size", size));
+  ar(cereal::make_nvp("data", buf));
+}
+
+template <class Archive>
+void load(Archive& ar, roaring::Roaring& bitmap) {
+  std::size_t size{};
+  ar(cereal::make_nvp("size", size));
+  std::vector<char> buf(size);
+  ar(cereal::make_nvp("data", buf));
+  bitmap = roaring::Roaring::readSafe(buf.data(), size);
+}
+
+} // namespace cereal
 
 
 namespace skim::detail {
@@ -86,12 +111,12 @@ inline auto char_to_base2(char c) noexcept -> int {
   }
 }
 
-inline auto kmer_to_uint32(const std::string& kmer) noexcept -> std::uint32_t {
+inline auto kmer_to_binary(const std::string& kmer) noexcept -> kmer_binary_t {
   if (kmer.length() > g_kmer_limit) {
     return 0;
   }
 
-  std::uint32_t result = 0;
+  kmer_binary_t result = 0;
 
   for (char c : kmer) {
     int base = char_to_base2(c);
@@ -104,8 +129,8 @@ inline auto kmer_to_uint32(const std::string& kmer) noexcept -> std::uint32_t {
   return result;
 }
 
-inline auto reverse_complement(std::uint32_t kmer, std::size_t k) noexcept -> std::uint32_t {
-  std::uint32_t rev_comp = 0;
+inline auto reverse_complement(kmer_binary_t kmer, std::size_t k) noexcept -> kmer_binary_t {
+  kmer_binary_t rev_comp = 0;
 
   for (std::size_t i = 0; i < k; ++i) {
     rev_comp = (rev_comp << 2) | (3 - (kmer & 3));
@@ -115,19 +140,19 @@ inline auto reverse_complement(std::uint32_t kmer, std::size_t k) noexcept -> st
   return rev_comp;
 }
 
-inline auto is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t t) noexcept -> bool {
+inline auto is_syncmer(kmer_binary_t kmer, std::size_t k, std::size_t s, std::size_t t) noexcept -> bool {
   if (s == 0 || s >= k) {
     return true;
   }
 
-  std::uint32_t smer_mask = (1U << (2 * s)) - 1;
+  kmer_binary_t smer_mask = (1U << (2 * s)) - 1;
   std::size_t num_smers = k - s + 1;
 
   std::size_t tmer_shift = 2 * (k - s - t);
-  std::uint32_t tmer = (kmer >> tmer_shift) & smer_mask;
+  kmer_binary_t tmer = (kmer >> tmer_shift) & smer_mask;
 
   for (std::size_t i = 0; i < num_smers; ++i) {
-    std::uint32_t smer = kmer & smer_mask;
+    kmer_binary_t smer = kmer & smer_mask;
     if (smer < tmer) {
       return false;
     }
@@ -138,14 +163,14 @@ inline auto is_syncmer(uint32_t kmer, std::size_t k, std::size_t s, std::size_t 
 }
 
 inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s, std::size_t t, bitmap_t& bitmap) {
-  std::uint32_t kmer = 0;
-  std::uint32_t rev_comp = 0;
+  kmer_binary_t kmer = 0;
+  kmer_binary_t rev_comp = 0;
 
   std::size_t base_count = 0;
-  std::uint32_t kmer_mask = (1ULL << (2 * k)) - 1;
+  kmer_binary_t kmer_mask = (1ULL << (2 * k)) - 1;
 
-  std::uint32_t tot_added = 0;
-  std::uint32_t last_added = 0;
+  kmer_binary_t tot_added = 0;
+  kmer_binary_t last_added = 0;
 
   for (std::size_t i = 0, end = read.length(); i < end; ++i) {
     auto base = char_to_base2(read[i]);
@@ -156,11 +181,11 @@ inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s,
     }
 
     kmer = (kmer << 2) | base;
-    rev_comp = (rev_comp >> 2) | (static_cast<std::uint32_t>(3 - base) << ((k - 1) * 2));
+    rev_comp = (rev_comp >> 2) | (static_cast<kmer_binary_t>(3 - base) << ((k - 1) * 2));
     base_count++;
 
     if (base_count >= k) {
-      std::uint32_t canonical = std::min((kmer & kmer_mask), (rev_comp & kmer_mask));
+      kmer_binary_t canonical = std::min((kmer & kmer_mask), (rev_comp & kmer_mask));
       if (is_syncmer(canonical, k, s, t)) {
         bitmap.add(canonical);
         last_added = canonical;
@@ -192,17 +217,17 @@ inline auto populate_bitmap(const fs::path& dir, const std::string& filename,
 
 inline auto total_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std::size_t {
   LogFun lf{"total_kmer_count", spdlog::level::debug};
-  std::uint64_t num_kmers = 1ULL << (2 * k);
+  std::size_t num_kmers = 1ULL << (2 * k);
 
   if (s == 0 || s >= k) {
-    std::uint64_t num_palindromes = (1ULL << (2 * (k >> 1))) * ((k + 1) % 2);
+    std::size_t num_palindromes = (1ULL << (2 * (k >> 1))) * ((k + 1) % 2);
     return static_cast<std::size_t>((num_kmers + num_palindromes) / 2);
   }
 
   std::size_t count = 0;
 
-  for (std::uint32_t kmer = 0; kmer < num_kmers; ++kmer) {
-    std::uint32_t canonical = std::min(kmer, reverse_complement(kmer, k));
+  for (kmer_binary_t kmer = 0; kmer < num_kmers; ++kmer) {
+    kmer_binary_t canonical = std::min(kmer, reverse_complement(kmer, k));
 
     if (kmer == canonical && is_syncmer(kmer, k, s, t)) {
       count += 1;
@@ -213,10 +238,10 @@ inline auto total_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std
 }
 
 inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t) noexcept -> std::size_t {
-  std::uint64_t num_kmers = 1ULL << (2 * k);
+  std::size_t num_kmers = 1ULL << (2 * k);
 
   if (s == 0 || s >= k) {
-    std::uint64_t num_palindromes = (1ULL << (2 * (k >> 1))) * ((k + 1) % 2);
+    std::size_t num_palindromes = (1ULL << (2 * (k >> 1))) * ((k + 1) % 2);
     return static_cast<std::size_t>((num_kmers + num_palindromes) / 2);
   }
 

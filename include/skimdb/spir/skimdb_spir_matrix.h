@@ -10,7 +10,6 @@
 #include <vector>
 
 #include <cereal/types/vector.hpp>
-
 #include <dgpp/uniform_rejection.hpp>
 
 #include <skimdb/detail/skimdb_encoding.h>
@@ -24,38 +23,38 @@ class spir_matrix {
 public:
   explicit spir_matrix() = default;
 
-  explicit spir_matrix(std::uint64_t rows, std::uint64_t cols, std::uint32_t log_mod)
+  explicit spir_matrix(std::size_t rows, std::size_t cols, std::size_t log_mod)
       : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)},
         data_(rows * cols, 0) {}
 
-  explicit spir_matrix(std::uint64_t n, std::uint32_t log_mod) : spir_matrix(1, n, log_mod) {}
+  explicit spir_matrix(std::size_t n, std::size_t log_mod) : spir_matrix(1, n, log_mod) {}
 
-  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t rows, std::uint64_t cols, std::uint32_t log_mod)
+  explicit spir_matrix(std::vector<spir_data_t>&& data, std::size_t rows, std::size_t cols, std::size_t log_mod)
       : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_{std::move(data)} {}
 
-  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t n, std::uint32_t log_mod)
+  explicit spir_matrix(std::vector<spir_data_t>&& data, std::size_t n, std::size_t log_mod)
       : spir_matrix(std::move(data), 1, n, log_mod) {}
 
 
-  void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
+  void set(std::size_t i, std::size_t j, spir_data_t x) { data_[i * c_ + j] = x & mask_; }
 
-  void set(std::uint64_t i, std::uint64_t x) { data_[i] = x & mask_; }
+  void set(std::size_t i, spir_data_t x) { data_[i] = x & mask_; }
 
-  auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
+  auto get(std::size_t i, std::size_t j) const -> spir_data_t { return data_[i * c_ + j]; }
 
-  auto get(std::uint64_t i) const -> std::uint64_t { return data_[i]; }
-
-
-  auto span() -> std::span<std::uint64_t> { return data_; }
-
-  auto span() const -> std::span<const std::uint64_t> { return data_; }
-
-  auto row(std::size_t i) -> std::span<std::uint64_t> { return std::span{data_}.subspan(i * c_, c_); }
-
-  auto row(std::size_t i) const -> std::span<const std::uint64_t> { return std::span{data_}.subspan(i * c_, c_); }
+  auto get(std::size_t i) const -> spir_data_t { return data_[i]; }
 
 
-  auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(r_, c_); }
+  auto span() -> std::span<spir_data_t> { return data_; }
+
+  auto span() const -> std::span<const spir_data_t> { return data_; }
+
+  auto row(std::size_t i) -> std::span<spir_data_t> { return std::span{data_}.subspan(i * c_, c_); }
+
+  auto row(std::size_t i) const -> std::span<const spir_data_t> { return std::span{data_}.subspan(i * c_, c_); }
+
+
+  auto dimensions() const -> std::tuple<std::size_t, std::size_t> { return std::make_tuple(r_, c_); }
 
 
   template <typename URBG>
@@ -94,7 +93,7 @@ public:
 
     auto* dst = data_.data();
     std::size_t n = data_.size();
-    std::uint64_t half_delta = (log_delta == 0) ? 0ull : (1ull << (log_delta - 1));
+    spir_data_t half_delta = (log_delta == 0) ? 0ull : (1ull << (log_delta - 1));
 
   #pragma omp parallel for simd schedule(static)
     for (std::size_t i = 0; i < n; ++i) {
@@ -114,8 +113,8 @@ public:
     auto dst = out.span();
 
   #pragma omp parallel for schedule(static)
-    for (std::uint64_t i = 0; i < r_; ++i) {
-      for (std::uint64_t j = 0; j < c_; ++j) {
+    for (std::size_t i = 0; i < r_; ++i) {
+      for (std::size_t j = 0; j < c_; ++j) {
         dst[j * r_ + i] = src[i * c_ + j];
       }
     }
@@ -130,13 +129,13 @@ public:
   }
 
 private:
-  std::uint64_t r_{0};
-  std::uint64_t c_{0};
+  std::size_t r_{0};
+  std::size_t c_{0};
 
-  std::uint32_t log_mod_{0};
-  std::uint64_t mask_{0};
+  std::size_t log_mod_{0};
+  std::size_t mask_{0};
 
-  std::vector<std::uint64_t> data_; // row-major flat storage
+  std::vector<spir_data_t> data_; // row-major flat storage
 };
 
 
@@ -222,12 +221,12 @@ public:
   explicit skimdb_matrix() = default;
 
   explicit skimdb_matrix(std::vector<detail::encoding>&& data,
-                         std::uint32_t block_len,
+                         std::uint32_t block_size,
                          std::uint64_t rle_blocks,
                          std::uint64_t sqrt_N)
-    : data_{std::move(data)}, block_len_{block_len}, rle_blocks_{rle_blocks}, sqrt_N_{sqrt_N} {}
+    : data_{std::move(data)}, block_size_{block_size}, rle_blocks_{rle_blocks}, sqrt_N_{sqrt_N} {}
 
-  auto get_block_len() const -> std::uint32_t { return block_len_; }
+  auto block_size() const -> std::uint32_t { return block_size_; }
 
   auto get_rle_in_col(std::uint64_t n, std::uint64_t col) const -> std::span<const std::uint16_t> {
     std::uint64_t kmer_idx = (col * sqrt_N_) / rle_blocks_ + n;
@@ -239,12 +238,12 @@ public:
 
   template <typename Archive>
   void serialize(Archive& archive) {
-    archive(data_, block_len_, rle_blocks_, sqrt_N_);
+    archive(data_, block_size_, rle_blocks_, sqrt_N_);
   }
 
 private:
   std::vector<detail::encoding> data_;
-  std::uint32_t block_len_;   // bytes of plaintext data we can pack into one block
+  std::uint32_t block_size_;   // bytes of plaintext data we can pack into one block
   std::uint64_t rle_blocks_;  // blocks needed per RLE encoding
   std::uint64_t sqrt_N_;      // matrix side length (blocks of data)
 };
@@ -262,7 +261,7 @@ void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t
   for (std::uint64_t p = start; p < start + count; ++p) {
     std::span<std::uint64_t> partition_dst = dst.subspan(p * rle_blocks, rle_blocks);
 
-    switch (mat.get_block_len()) {
+    switch (mat.block_size()) {
       case 1: {
         for (std::uint64_t j = 0; j < m_cols; ++j) {
           auto rle = mat.get_rle_in_col(p, j);
@@ -294,7 +293,7 @@ void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t
         break;
       }
       case 3: {
-        for (std::uint64_t j = 0; j < m_cols; ++j) {
+        for (std::size_t j = 0; j < m_cols; ++j) {
           auto rle = mat.get_rle_in_col(p, j);
           const std::uint8_t* rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
           const std::uint64_t len = rle.size() * 2;
@@ -302,7 +301,7 @@ void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t
           auto vec_val = vec[j];
 
         #pragma omp simd
-          for (std::uint64_t i = 0; i < full_blocks; ++i) {
+          for (std::size_t i = 0; i < full_blocks; ++i) {
             partition_dst[i] += (static_cast<std::uint64_t>(rle_ptr[i*3]) << 16
                                 | static_cast<std::uint64_t>(rle_ptr[i*3 + 1]) << 8
                                 | static_cast<std::uint64_t>(rle_ptr[i*3 + 2])) * vec_val & mask;
@@ -320,14 +319,14 @@ void partitioned_mat_vec(const skimdb_matrix& mat, std::span<const std::uint64_t
         break;
       }
       default: [[unlikely]] {
-        g_log->error("impossible case, block length {}", mat.get_block_len());
+        g_log->error("impossible case, block length {}", mat.block_size());
         break;
       }
     }
   }
 
 #pragma omp parallel for simd schedule(static)
-  for (std::uint64_t i = 0; i < dst.size(); ++i) {
+  for (std::size_t i = 0; i < dst.size(); ++i) {
     dst[i] &= mask;
   }
 }
@@ -355,7 +354,7 @@ inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::uint
   auto trans_a = mat_a.transpose();
   spir_matrix out{a_c, db_r, log_q};
 
-  for (std::uint64_t i = 0; i < a_c; ++i) {
+  for (std::size_t i = 0; i < a_c; ++i) {
     partitioned_mat_vec(db, trans_a.row(i), out.row(i), log_q, 0, db_r / rle_blocks, rle_blocks);
   }
 
