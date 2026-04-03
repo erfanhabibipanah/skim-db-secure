@@ -29,6 +29,7 @@ namespace fs = std::filesystem;
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
   std::string out = "";
+  std::string lbl = "";
 
   std::uint64_t k = 15;
   std::uint64_t s = 9;
@@ -40,6 +41,7 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "input file or directory, FASTA format", cxxopts::value<std::string>(in))
       ("o,output", "database file name", cxxopts::value<std::string>(out))
+      ("l,labels", "label mapping file", cxxopts::value<std::string>(lbl))
       ("k", "k-mer size", cxxopts::value<std::uint64_t>(k)->default_value(std::to_string(k)))
       ("s", "syncmer s size", cxxopts::value<std::uint64_t>(s)->default_value(std::to_string(s)))
       ("t", "syncmer t parameter", cxxopts::value<std::uint64_t>(t)->default_value(std::to_string(t)))
@@ -84,7 +86,13 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("indexing {}...", in);
 
-  auto db = skim::builder::build_dir_index(dir, k, s, t);
+  skim::skimdb db;
+
+  if (lbl.empty()) {
+    db = skim::builder::build_dir_index(dir, k, s, t);
+  } else {
+    db = skim::builder::build_file_index(dir, lbl, k, s, t);
+  }
 
   log->info("index ready!");
   log->info("saving index to {}...", out);
