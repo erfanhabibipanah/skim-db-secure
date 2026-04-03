@@ -29,7 +29,7 @@ message SpirParametersReply {
 
   uint32 batch_size = 5;
 
-  uint32 block_len  = 6;
+  uint32 block_size = 6;
   uint64 rle_blocks = 7;
   uint64 sqrt_N     = 8;
 

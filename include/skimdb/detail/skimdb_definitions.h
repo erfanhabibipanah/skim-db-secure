@@ -1,17 +1,20 @@
 #ifndef SKIMDB_DEFINITIONS_H
 #define SKIMDB_DEFINITIONS_H
 
+#include <cstddef>
 #include <cstdint>
 #include <roaring/roaring.hh>
 
 
 namespace skim {
 
+static_assert(sizeof(std::size_t) == 8, "std::size_t must be 64-bit");
+
 // parameters describing skimdb database
 struct skimdb_parameters {
-  std::uint64_t k;
-  std::uint64_t s;
-  std::uint64_t t;
+  std::size_t k;
+  std::size_t s;
+  std::size_t t;
 };
 
 // for now equivalence is defined by all parameters being the same
@@ -25,12 +28,16 @@ inline auto operator!=(const skimdb_parameters& lhs, const skimdb_parameters& rh
 }
 
 
-// default bitmap type for intermediate data handling
+// type to represent encoded k-mer
+using kmer_binary_t = std::uint32_t;
+
+
+// default bitmap type for k-mer handling (k-mer binary type must be storable in bitmap_t)
 using bitmap_t = roaring::Roaring;
 
 
 // max k-mer size handled by skimdb
-inline constexpr std::uint64_t g_kmer_limit = 16;
+inline constexpr std::size_t g_kmer_limit = 16;
 
 } // namespace skim
 

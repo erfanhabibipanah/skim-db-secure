@@ -58,7 +58,7 @@ public:
     reply->set_log_p(spir_params.log_p);
     reply->set_log_q(spir_params.log_q);
     reply->set_batch_size(spir_params.batch_size);
-    reply->set_block_len(spir_params.block_len);
+    reply->set_block_size(spir_params.block_size);
     reply->set_rle_blocks(spir_params.rle_blocks);
     reply->set_sqrt_n(spir_params.sqrt_N);
     reply->set_seed(spir_params.seed);
