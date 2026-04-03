@@ -8,6 +8,7 @@
 
 namespace skim {
 
+// we need 64bit std::size_t (e.g., 64bit is used by gRPC)
 static_assert(sizeof(std::size_t) == 8, "std::size_t must be 64-bit");
 
 // parameters describing skimdb database

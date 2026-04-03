@@ -24,10 +24,12 @@ message SpirParametersReply {
   uint64 n          = 1;
   double sigma      = 2;
 
-  uint32 log_p      = 3;
-  uint32 log_q      = 4;
+  // std::size_t
+  uint64 log_p      = 3;
+  uint64 log_q      = 4;
 
-  uint32 batch_size = 5;
+  // std::size_t
+  uint64 batch_size = 5;
 
   uint32 block_len  = 6;
   uint64 rle_blocks = 7;

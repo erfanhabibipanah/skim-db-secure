@@ -1,6 +1,8 @@
 AlwaysBreakTemplateDeclarations: true
 BasedOnStyle: LLVM
 ColumnLimit: 120
+BinPackArguments: false
+BinPackParameters: false
 MaxEmptyLinesToKeep: 2
 PointerAlignment: Left
 ReflowComments: true

@@ -23,26 +23,26 @@ class spir_matrix {
 public:
   explicit spir_matrix() = default;
 
-  explicit spir_matrix(std::uint64_t rows, std::uint64_t cols, std::uint32_t log_mod)
+  explicit spir_matrix(std::size_t rows, std::size_t cols, std::size_t log_mod)
       : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)},
         data_(rows * cols, 0) {}
 
-  explicit spir_matrix(std::uint64_t n, std::uint32_t log_mod) : spir_matrix(1, n, log_mod) {}
+  explicit spir_matrix(std::size_t n, std::size_t log_mod) : spir_matrix(1, n, log_mod) {}
 
-  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t rows, std::uint64_t cols, std::uint32_t log_mod)
+  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::size_t rows, std::size_t cols, std::size_t log_mod)
       : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_{std::move(data)} {}
 
-  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::uint64_t n, std::uint32_t log_mod)
+  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::size_t n, std::size_t log_mod)
       : spir_matrix(std::move(data), 1, n, log_mod) {}
 
 
-  void set(std::uint64_t i, std::uint64_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
+  void set(std::size_t i, std::size_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
 
-  void set(std::uint64_t i, std::uint64_t x) { data_[i] = x & mask_; }
+  void set(std::size_t i, std::uint64_t x) { data_[i] = x & mask_; }
 
-  auto get(std::uint64_t i, std::uint64_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
+  auto get(std::size_t i, std::size_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
 
-  auto get(std::uint64_t i) const -> std::uint64_t { return data_[i]; }
+  auto get(std::size_t i) const -> std::uint64_t { return data_[i]; }
 
 
   auto span() -> std::span<std::uint64_t> { return data_; }
@@ -54,7 +54,7 @@ public:
   auto row(std::size_t i) const -> std::span<const std::uint64_t> { return std::span{data_}.subspan(i * c_, c_); }
 
 
-  auto dimensions() const -> std::tuple<std::uint64_t, std::uint64_t> { return std::make_tuple(r_, c_); }
+  auto dimensions() const -> std::tuple<std::size_t, std::size_t> { return std::make_tuple(r_, c_); }
 
 
   template <typename URBG>
@@ -113,8 +113,8 @@ public:
     auto dst = out.span();
 
   #pragma omp parallel for schedule(static)
-    for (std::uint64_t i = 0; i < r_; ++i) {
-      for (std::uint64_t j = 0; j < c_; ++j) {
+    for (std::size_t i = 0; i < r_; ++i) {
+      for (std::size_t j = 0; j < c_; ++j) {
         dst[j * r_ + i] = src[i * c_ + j];
       }
     }
@@ -129,10 +129,11 @@ public:
   }
 
 private:
-  std::uint64_t r_{0};
-  std::uint64_t c_{0};
+  std::size_t r_{0};
+  std::size_t c_{0};
 
-  std::uint32_t log_mod_{0};
+  std::size_t log_mod_{0};
+
   std::uint64_t mask_{0};
 
   std::vector<std::uint64_t> data_; // row-major flat storage

@@ -76,13 +76,13 @@ public:
 
     spir_matrix ans{spir_config_.sqrt_N, spir_config_.log_q};
 
-    std::uint32_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
-    std::uint32_t rles_per_batch = rles_per_col / spir_config_.batch_size;
-    std::uint32_t remaining_rles = rles_per_col % spir_config_.batch_size;
+    std::size_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
+    std::size_t rles_per_batch = rles_per_col / spir_config_.batch_size;
+    std::size_t remaining_rles = rles_per_col % spir_config_.batch_size;
 
     for (std::size_t i = 0; i < spir_config_.batch_size; ++i) {
-      std::uint32_t start_idx = i * rles_per_batch;
-      std::uint32_t count = rles_per_batch;
+      std::size_t start_idx = i * rles_per_batch;
+      std::size_t count = rles_per_batch;
 
       if (i < remaining_rles) {
         start_idx += i;
@@ -91,8 +91,8 @@ public:
         start_idx += remaining_rles;
       }
 
-      partitioned_mat_vec(DB_, qu_mat.row(i), ans.span(), spir_config_.log_q, start_idx, count,
-                          spir_config_.rle_blocks);
+      partitioned_mat_vec(
+          DB_, qu_mat.row(i), ans.span(), spir_config_.log_q, start_idx, count, spir_config_.rle_blocks);
     }
 
     return ans;
@@ -108,9 +108,22 @@ public:
 
     try {
       cereal::BinaryOutputArchive archive{of};
-      archive(DB_, metadata_.index, metadata_.labels, skim_config_.k, skim_config_.s, skim_config_.t,
-              spir_config_.n, spir_config_.sigma, spir_config_.log_p, spir_config_.log_q, spir_config_.batch_size,
-              spir_config_.block_len, spir_config_.rle_blocks, spir_config_.sqrt_N, spir_config_.seed, hint_c_);
+      archive(DB_,
+              metadata_.index,
+              metadata_.labels,
+              skim_config_.k,
+              skim_config_.s,
+              skim_config_.t,
+              spir_config_.n,
+              spir_config_.sigma,
+              spir_config_.log_p,
+              spir_config_.log_q,
+              spir_config_.batch_size,
+              spir_config_.block_len,
+              spir_config_.rle_blocks,
+              spir_config_.sqrt_N,
+              spir_config_.seed,
+              hint_c_);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};
     }
@@ -130,8 +143,13 @@ private:
 };
 
 
-[[nodiscard]] auto make_server(skimdb&& db, unsigned int log_p, unsigned int log_q, std::size_t n, double sigma,
-                               std::size_t batch_size = 1, std::uint64_t seed = std::random_device{}())
+[[nodiscard]] auto make_server(skimdb&& db,
+                               std::size_t log_p,
+                               std::size_t log_q,
+                               std::size_t n,
+                               double sigma,
+                               std::size_t batch_size = 1,
+                               std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server(...)"};
 
@@ -242,7 +260,7 @@ private:
 
 class spir_client_state {
 public:
-  using rng_type = std::mt19937_64;
+  using rng_type = spir_common_rng_t;
 
   explicit spir_client_state(skimdb_parameters skim_config, skimdb_metadata skim_metadata,
                              spirdb_parameters spir_config, spir_matrix hint_c,
@@ -299,7 +317,7 @@ public:
     spir_matrix e{spir_config_.sqrt_N, spir_config_.log_q};
     e.fill(rng_, dist);
 
-    std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
+    std::size_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
 
     auto qu = mat_vec(A_, s, spir_config_.log_q);
     qu.add(e);
@@ -382,7 +400,7 @@ private:
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
 #pragma omp parallel for simd schedule(static)
-      for (std::uint64_t i = 0; i < spir_config_.rle_blocks; ++i) {
+      for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
         dst[i * 3] = static_cast<std::uint8_t>((d_data[i] >> 16) & 0xFFull);
         dst[i * 3 + 1] = static_cast<std::uint8_t>((d_data[i] >> 8) & 0xFFull);
         dst[i * 3 + 2] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);
