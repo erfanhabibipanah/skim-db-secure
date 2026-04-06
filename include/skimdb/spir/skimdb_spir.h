@@ -289,6 +289,19 @@ public:
     return std::make_pair(i_row, i_col);
   }
 
+  [[nodiscard]] auto row_to_partition(std::uint64_t i_row) const -> std::uint64_t {
+    std::uint64_t rle_idx = i_row / spir_config_.rle_blocks;
+    std::uint64_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
+    std::uint64_t rles_per_batch = rles_per_col / spir_config_.batch_size;
+    std::uint64_t remaining_rles = rles_per_col % spir_config_.batch_size;
+
+    if (rle_idx < remaining_rles * (rles_per_batch + 1)) {
+      return rle_idx / (rles_per_batch + 1);
+    } else {
+      return (rle_idx - remaining_rles * (rles_per_batch + 1)) / rles_per_batch + remaining_rles;
+    }
+  }
+
 
   [[nodiscard]] auto prepare_query(std::uint64_t i_col) -> spirdb_query_state {
     LogFun lf{"spir_client_state::prepare_query(...)"};
@@ -328,6 +341,14 @@ public:
     qu.add(e);
 
     return spirdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)};
+  }
+
+
+  void update_batch(spirdb_query_state& batch_state, std::uint64_t i_batch, std::uint64_t i_col) {
+    LogFun lf{"spir_client_state::update_batch(...)", spdlog::level::trace};
+
+    std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
+    batch_state.qu_vec.set(i_batch, i_col, batch_state.qu_vec.get(i_batch, i_col) + delta);
   }
 
 

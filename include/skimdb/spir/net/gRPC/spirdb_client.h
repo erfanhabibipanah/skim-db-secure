@@ -4,6 +4,7 @@
 #include <expected>
 #include <generator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include <grpcpp/grpcpp.h>
