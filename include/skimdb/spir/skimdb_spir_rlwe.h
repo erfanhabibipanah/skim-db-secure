@@ -306,7 +306,7 @@ inline auto compute_hint_ntt(
                     auto rle = db.get_rle_in_col(rle_row, col_idx);
                     std::uint64_t val = 0;
 
-                    switch (db.get_block_len()) {
+                    switch (db.block_size()) {
                     case 1: {
                         auto ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
                         if (rle_offset < rle.size() * 2) {

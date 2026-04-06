@@ -10,7 +10,9 @@
 #include <format>
 #include <fstream>
 #include <generator>
+#include <optional>
 #include <random>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,12 +23,10 @@
 
 #include <dgpp/uniform_rejection.hpp>
 
-#include <parallel_hashmap/phmap.h>
-#include <parallel_hashmap/phmap_dump.h>
-
 #include <skimdb/detail/skimdb_logger.h>
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/detail/skimdb_encoding.h>
+#include <skimdb/detail/skimdb_util.h>
 #include <skimdb/skimdb.h>
 
 #include "skimdb_spir_matrix.h"
@@ -82,13 +82,13 @@ public:
 
     spir_matrix ans{spir_config_.sqrt_N, spir_config_.log_q};
 
-    std::uint32_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
-    std::uint32_t rles_per_batch = rles_per_col / spir_config_.batch_size;
-    std::uint32_t remaining_rles = rles_per_col % spir_config_.batch_size;
+    std::size_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
+    std::size_t rles_per_batch = rles_per_col / spir_config_.batch_size;
+    std::size_t remaining_rles = rles_per_col % spir_config_.batch_size;
 
-    for (std::uint64_t i = 0; i < spir_config_.batch_size; ++i) {
-      std::uint32_t start_idx = i * rles_per_batch;
-      std::uint32_t count = rles_per_batch;
+    for (std::size_t i = 0; i < spir_config_.batch_size; ++i) {
+      std::size_t start_idx = i * rles_per_batch;
+      std::size_t count = rles_per_batch;
 
       if (i < remaining_rles) {
         start_idx += i;
@@ -106,21 +106,22 @@ public:
 
 
   auto save(const fs::path& path) const -> std::expected<std::uintmax_t, std::string> {
-    std::ofstream os{path, std::ios::binary};
-    if (!os) {
+    std::ofstream of{path, std::ios::binary};
+
+    if (!of) {
       return std::unexpected{"could not create file"};
     }
 
     try {
-      cereal::BinaryOutputArchive archive{os};
+      cereal::BinaryOutputArchive archive{of};
       archive(DB_, metadata_.index, metadata_.labels, skim_config_.k, skim_config_.s, skim_config_.t,
               spir_config_.n, spir_config_.sigma, spir_config_.log_p, spir_config_.log_q, spir_config_.batch_size,
-              spir_config_.block_len, spir_config_.rle_blocks, spir_config_.sqrt_N, spir_config_.seed, hint_c_);
-    } catch (...) {
-      return std::unexpected{"serialization failed"};
+              spir_config_.block_size, spir_config_.rle_blocks, spir_config_.sqrt_N, spir_config_.seed, hint_c_);
+    } catch (const std::exception& e) {
+      return std::unexpected{std::format("serialization failed {}", e.what())};
     }
 
-    os.close();
+    of.close();
 
     return fs::file_size(path);
   }
@@ -136,7 +137,7 @@ private:
 
 
 [[nodiscard]] auto make_server(skimdb&& db, unsigned int log_p, unsigned int log_q, std::size_t n, double sigma,
-                               std::uint32_t batch_size = 1, std::uint64_t seed = std::random_device{}())
+                               std::size_t batch_size = 1, std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server(...)"};
 
@@ -156,8 +157,8 @@ private:
   auto [k, s, t] = db.parameters();
   auto db_parts = std::move(db).explode();
 
-  std::uint64_t kmers = db_parts.data.size();
-  std::uint64_t max_rle = 0;
+  auto kmers = db_parts.data.size();
+  std::size_t max_rle = 0;
 
   for (const auto& entry : db_parts.data) {
     max_rle = std::max(max_rle, entry.length());
@@ -167,15 +168,14 @@ private:
     return std::unexpected{"empty skimdb index"};
   }
 
-  std::uint32_t block_len = log_p / 8;
-  std::uint64_t rle_blocks = 2 * max_rle / block_len + ((2 * max_rle % block_len) ? 1 : 0);
-  std::uint64_t min_blocks = kmers * rle_blocks;
+  std::size_t block_size = log_p / 8;
+  std::size_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
 
   g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
 
-  double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
-  auto rles_per_side = static_cast<std::uint64_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
-  std::uint64_t sqrt_N = rles_per_side * rle_blocks;
+  double min_side = std::ceil(std::sqrt(static_cast<double>(kmers * rle_blocks)));
+  auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
+  std::size_t sqrt_N = rles_per_side * rle_blocks;
 
   g_log->info("spir matrix dimension sqrt(N) = {}", sqrt_N);
 
@@ -191,12 +191,12 @@ private:
                               .log_p = log_p,
                               .log_q = log_q,
                               .batch_size = batch_size,
-                              .block_len = block_len,
+                              .block_size = block_size,
                               .rle_blocks = rle_blocks,
                               .sqrt_N = sqrt_N,
                               .seed = seed};
 
-  skimdb_matrix DB{std::move(db_parts.data), block_len, rle_blocks, sqrt_N};
+  skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
   skimdb_metadata metadata{.index = std::move(db_parts.index), .labels = std::move(db_parts.labels)};
 
   // compute hint_c = DB * A
@@ -209,7 +209,7 @@ private:
 
 #ifdef SKIMDB_USE_RLWE
 [[nodiscard]] auto make_server_rlwe(skimdb&& db, unsigned int log_p, unsigned int log_q,
-                                    std::uint64_t poly_degree, std::uint32_t batch_size = 1,
+                                    std::uint64_t poly_degree, std::size_t batch_size = 1,
                                     std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server_rlwe(...)"};
@@ -230,8 +230,8 @@ private:
   auto [k, s, t] = db.parameters();
   auto db_parts = std::move(db).explode();
 
-  std::uint64_t kmers = db_parts.data.size();
-  std::uint64_t max_rle = 0;
+  auto kmers = db_parts.data.size();
+  std::size_t max_rle = 0;
   for (const auto& entry : db_parts.data) {
     max_rle = std::max(max_rle, entry.length());
   }
@@ -240,15 +240,14 @@ private:
     return std::unexpected{"empty skimdb index"};
   }
 
-  std::uint32_t block_len = log_p / 8;
-  std::uint64_t rle_blocks = 2 * max_rle / block_len + ((2 * max_rle % block_len) ? 1 : 0);
-  std::uint64_t min_blocks = kmers * rle_blocks;
+  std::size_t block_size = log_p / 8;
+  std::size_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
 
   g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
 
-  double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
-  std::uint64_t rles_per_side = static_cast<std::uint64_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
-  std::uint64_t sqrt_N = rles_per_side * rle_blocks;
+  double min_side = std::ceil(std::sqrt(static_cast<double>(kmers * rle_blocks)));
+  auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
+  std::size_t sqrt_N = rles_per_side * rle_blocks;
 
   g_log->info("spir matrix dimension sqrt(N) = {}, poly_degree = {}", sqrt_N, poly_degree);
 
@@ -262,10 +261,10 @@ private:
 
   skimdb_parameters skim_conf{k, s, t};
   double sigma = seal::util::seal_he_std_parms_error_std_dev;
-  spirdb_parameters spir_conf{n, sigma, log_p, log_q, batch_size, block_len, rle_blocks, sqrt_N, seed};
+  spirdb_parameters spir_conf{n, sigma, log_p, log_q, batch_size, block_size, rle_blocks, sqrt_N, seed};
 
-  skimdb_matrix DB{std::move(db_parts.data), block_len, rle_blocks, sqrt_N};
-  skimdb_metadata metadata{std::move(db_parts.index), std::move(db_parts.labels)};
+  skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
+  skimdb_metadata metadata{.index = std::move(db_parts.index), .labels = std::move(db_parts.labels)};
 
   g_log->info("precomputing RLWE hint matrix via NTT...");
   auto hint_c = rlwe::compute_hint_ntt(ctx, key, DB, a_seeds, num_seeds, sqrt_N, rle_blocks);
@@ -291,14 +290,14 @@ private:
     cereal::BinaryInputArchive archive(is);
 
     skimdb_matrix DB;
-    phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index;
+    skimdb::kmer_index index;
     std::vector<std::string> labels;
     skimdb_parameters skim_conf{};
     spirdb_parameters spir_conf{};
     spir_matrix hint_c;
 
     archive(DB, index, labels, skim_conf.k, skim_conf.s, skim_conf.t, spir_conf.n, spir_conf.sigma, spir_conf.log_p,
-            spir_conf.log_q, spir_conf.batch_size, spir_conf.block_len, spir_conf.rle_blocks, spir_conf.sqrt_N,
+            spir_conf.log_q, spir_conf.batch_size, spir_conf.block_size, spir_conf.rle_blocks, spir_conf.sqrt_N,
             spir_conf.seed, hint_c);
 
     skimdb_metadata metadata{.index = std::move(index), .labels = std::move(labels)};
@@ -353,32 +352,46 @@ public:
 
 
   [[nodiscard]] auto is_valid_kmer(const std::string& str) const -> bool {
-    auto kmer = detail::kmer_to_uint32(str);
+    auto kmer = detail::kmer_to_binary(str);
     return detail::is_valid(str, skim_config_.k) && detail::is_syncmer(kmer, skim_config_.k, skim_config_.s, skim_config_.t);
   }
 
-  [[nodiscard]] auto kmer_to_position(const std::string& str) const -> std::expected<std::pair<std::uint64_t, std::uint64_t>, std::string> {
+
+  [[nodiscard]] auto kmer_to_position(const std::string& s) const -> std::optional<std::pair<std::size_t, std::size_t>> {
     LogFun lf{"spir_client_state::kmer_to_position(...)"};
 
-    auto kmer = detail::kmer_to_uint32(str);
-    auto iter = skim_metadata_.index.find(kmer);
+    auto kmer = detail::kmer_to_binary(s);
+    auto res = skim_metadata_.index.find(kmer);
 
-    if (iter == skim_metadata_.index.end()) {
-      return std::unexpected{
-        // If the k‑mer is valid but absent from the skimdb index, the k‑mer has no associated labels
-        std::format("kmer {} not found in skimdb index", str)
-      };
+    if (!res.has_value()) {
+      // if the k‑mer is valid but absent from the skimdb index, the k‑mer has no associated labels
+      return std::nullopt;
     }
 
-    std::uint64_t target_rle = static_cast<std::uint64_t>(iter->second) * spir_config_.rle_blocks;
-    std::uint64_t i_col = target_rle / spir_config_.sqrt_N;
-    std::uint64_t i_row = target_rle % spir_config_.sqrt_N;
+    auto pos = res.value();
+
+    std::size_t target_rle = pos * spir_config_.rle_blocks;
+    std::size_t i_col = target_rle / spir_config_.sqrt_N;
+    std::size_t i_row = target_rle % spir_config_.sqrt_N;
 
     return std::make_pair(i_row, i_col);
   }
 
+  [[nodiscard]] auto row_to_partition(std::size_t i_row) const -> std::size_t {
+    std::size_t rle_idx = i_row / spir_config_.rle_blocks;
+    std::size_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
+    std::size_t rles_per_batch = rles_per_col / spir_config_.batch_size;
+    std::size_t remaining_rles = rles_per_col % spir_config_.batch_size;
 
-  [[nodiscard]] auto prepare_query(std::uint64_t i_col) -> spirdb_query_state {
+    if (rle_idx < remaining_rles * (rles_per_batch + 1)) {
+      return rle_idx / (rles_per_batch + 1);
+    } else {
+      return (rle_idx - remaining_rles * (rles_per_batch + 1)) / rles_per_batch + remaining_rles;
+    }
+  }
+
+
+  [[nodiscard]] auto prepare_query(std::size_t i_col) -> spirdb_query_state {
     LogFun lf{"spir_client_state::prepare_query(...)"};
 
     spir_matrix s{spir_config_.n, spir_config_.log_q};
@@ -388,8 +401,7 @@ public:
     spir_matrix e{spir_config_.sqrt_N, spir_config_.log_q};
     e.fill(rng_, dist);
 
-    std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
-
+    spir_data_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
     auto qu = mat_vec(A_, s, spir_config_.log_q);
     qu.add(e);
     qu.set(i_col, qu.get(i_col) + delta);
@@ -421,7 +433,7 @@ public:
 
 #ifdef SKIMDB_USE_RLWE
   [[nodiscard]] auto prepare_query_hybrid(const std::string& str)
-      -> std::expected<std::pair<std::uint64_t, spirdb_query_state>, std::string> {
+      -> std::expected<std::pair<std::size_t, spirdb_query_state>, std::string> {
     LogFun lf{"spir_client_state::prepare_query_hybrid(...)"};
 
     if (!rlwe_ctx_ || !rlwe_key_) {
@@ -435,7 +447,7 @@ public:
 
     auto [i_row, i_col] = *pos;
 
-    std::vector<std::uint64_t> pt_data(spir_config_.sqrt_N, 0);
+    std::vector<spir_data_t> pt_data(spir_config_.sqrt_N, 0);
     pt_data[i_col] = 1;
 
     auto qu = rlwe::prepare_query_hybrid(
@@ -447,7 +459,7 @@ public:
   }
 
 
-  [[nodiscard]] auto result_hybrid(const spir_matrix& ans, const spirdb_query_state& query, std::uint64_t i_row)
+  [[nodiscard]] auto result_hybrid(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row)
       -> std::generator<const std::string&> {
     LogFun lf{"spir_client_state::result_hybrid(...)"};
 
@@ -466,7 +478,15 @@ public:
 #endif
 
 
-  [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::uint64_t i_row)
+  void update_batch(spirdb_query_state& batch_state, std::size_t i_batch, std::size_t i_col) {
+    LogFun lf{"spir_client_state::update_batch(...)", spdlog::level::trace};
+
+    spir_data_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
+    batch_state.qu_vec.set(i_batch, i_col, batch_state.qu_vec.get(i_batch, i_col) + delta);
+  }
+
+
+  [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row)
       -> std::generator<const std::string&> {
     LogFun lf{"spir_client_state::result(...)"};
 
@@ -484,41 +504,41 @@ public:
   }
 
 private:
-  auto m_recover_(std::span<const std::uint64_t> d_data) -> detail::encoding {
+  auto m_recover_(std::span<const spir_data_t> d_data) -> detail::encoding {
     std::vector<std::uint16_t> rle_data;
 
-    switch (spir_config_.block_len) {
+    switch (spir_config_.block_size) {
     case 1: {
-      std::uint64_t out_len = spir_config_.rle_blocks / 2;
+      std::size_t out_len = spir_config_.rle_blocks / 2;
       rle_data.resize(out_len);
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
 #pragma omp parallel for simd schedule(static)
-      for (std::uint64_t i = 0; i < spir_config_.rle_blocks; ++i) {
+      for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
         dst[i] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);
       }
 
       break;
     }
     case 2: {
-      std::uint64_t out_len = spir_config_.rle_blocks;
+      std::size_t out_len = spir_config_.rle_blocks;
       rle_data.resize(out_len);
       std::uint16_t* dst = rle_data.data();
 
 #pragma omp parallel for simd schedule(static)
-      for (std::uint64_t i = 0; i < out_len; ++i) {
+      for (std::size_t i = 0; i < out_len; ++i) {
         dst[i] = static_cast<std::uint16_t>(d_data[i] & 0xFFFFull);
       }
 
       break;
     }
     case 3: {
-      std::uint64_t out_len = spir_config_.rle_blocks * 3 / 2 + ((spir_config_.rle_blocks * 3 % 2) ? 1 : 0);
+      std::size_t out_len = spir_config_.rle_blocks * 3 / 2 + ((spir_config_.rle_blocks * 3 % 2) ? 1 : 0);
       rle_data.resize(out_len);
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
 #pragma omp parallel for simd schedule(static)
-      for (std::uint64_t i = 0; i < spir_config_.rle_blocks; ++i) {
+      for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
         dst[i * 3] = static_cast<std::uint8_t>((d_data[i] >> 16) & 0xFFull);
         dst[i * 3 + 1] = static_cast<std::uint8_t>((d_data[i] >> 8) & 0xFFull);
         dst[i * 3 + 2] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);

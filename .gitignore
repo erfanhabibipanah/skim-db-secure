@@ -5,3 +5,6 @@ build/
 release/
 tests/test.skimdb
 local/
+*.xlsx
+*.csv
+generate_report.py

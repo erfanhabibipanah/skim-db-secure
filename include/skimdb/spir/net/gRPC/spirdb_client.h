@@ -4,6 +4,7 @@
 #include <expected>
 #include <generator>
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include <grpcpp/grpcpp.h>
@@ -47,7 +48,7 @@ public:
       return std::unexpected{meta_status.error_message()};
     }
 
-    phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index;
+    skimdb::index index;
 
     for (const auto& kidx : meta_ans.index()) {
       index[kidx.first] = kidx.second;
@@ -90,7 +91,7 @@ public:
                                 .log_p = spir_ans.log_p(),
                                 .log_q = spir_ans.log_q(),
                                 .batch_size = spir_ans.batch_size(),
-                                .block_len = spir_ans.block_len(),
+                                .block_size = spir_ans.block_size(),
                                 .rle_blocks = spir_ans.rle_blocks(),
                                 .sqrt_N = spir_ans.sqrt_n(),
                                 .seed = spir_ans.seed()};
@@ -167,13 +168,14 @@ public:
       co_return;
     }
 
-    auto pos = state_->kmer_to_position(s);
+    auto res = state_->kmer_to_position(s);
 
-    if (!pos) {
+    if (!res.has_value()) {
       co_return;
     }
 
-    auto query_state = state_->prepare_query(pos->second);
+    auto pos = res.value();
+    auto query_state = state_->prepare_query(pos.second);
     auto qu_data = query_state.qu_vec.span();
 
     grpc::ClientContext ctx;
