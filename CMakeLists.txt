@@ -61,9 +61,9 @@ CPMAddPackage(
 )
 
 CPMAddPackage(
-    NAME phmap
-    GITHUB_REPOSITORY greg7mdp/parallel-hashmap
-    VERSION 2.0.0
+    NAME bbhash
+    GIT_REPOSITORY https://gitlab.com/SCoRe-Group/bbhash.git
+    GIT_TAG main
 )
 
 CPMAddPackage(
@@ -98,7 +98,7 @@ target_link_libraries(skimdb INTERFACE
     dgpp
     fastxrd
     fmtextra
-    phmap
+    bbhash
     roaring
     TBB::tbb
 )

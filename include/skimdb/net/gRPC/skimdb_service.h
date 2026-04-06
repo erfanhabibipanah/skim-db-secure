@@ -17,8 +17,7 @@
 #include "proto/skimdb.grpc.pb.h"
 
 
-namespace skim {
-namespace rpc {
+namespace skim::rpc {
 
 class SkimDBService final : public SkimDB::Service {
 public:
@@ -61,7 +60,6 @@ private:
   skimdb db_;
 };
 
-} // namespace rpc
-} // namespace skim
+} // namespace skim::rpc
 
 #endif // SKIMDB_SERVICE_H

@@ -11,7 +11,6 @@
 #ifndef SKIMDB_SOLVERS_H
 #define SKIMDB_SOLVERS_H
 
-#include <cstdint>
 #include <ranges>
 #include <vector>
 
@@ -43,7 +42,7 @@ inline void greedy_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std
     auto& B = bitmaps[i];
 
     // this could be better expressed with ranges, but would be slower :(
-    std::uint64_t curr_dist{0};
+    std::size_t curr_dist{0};
     std::size_t curr_pos{0};
 
     for (std::size_t j = i + 1; j < i + w; ++j) {

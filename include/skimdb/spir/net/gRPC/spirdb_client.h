@@ -7,6 +7,8 @@
 #include <optional>
 #include <utility>
 
+#include <google/protobuf/empty.pb.h>
+
 #include <grpcpp/grpcpp.h>
 
 #include <skimdb/detail/skimdb_logger.h>
@@ -28,54 +30,54 @@ public:
 
     g_log->debug("fetching db parameters from server...");
 
-    grpc::ClientContext ctx1;
-    DbParametersRequest db_req;
     DbParametersReply db_ans;
-    grpc::Status db_status = stub_->GetDbParameters(&ctx1, db_req, &db_ans);
-
-    if (!db_status.ok()) {
-      return std::unexpected{db_status.error_message()};
+    if (auto res = m_unary_rpc_(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, DbParametersReply* reply) {
+            return stub_->GetDbParameters(ctx, req, reply);
+          }, google::protobuf::Empty{}, db_ans);
+        !res) {
+      return std::unexpected{res.error()};
     }
 
     g_log->debug("fetching db metadata from server...");
 
-    grpc::ClientContext ctx2;
-    DbMetadataRequest meta_req;
     DbMetadataReply meta_ans;
-    grpc::Status meta_status = stub_->GetDbMetadata(&ctx2, meta_req, &meta_ans);
-
-    if (!meta_status.ok()) {
-      return std::unexpected{meta_status.error_message()};
+    if (auto res = m_unary_rpc_(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, DbMetadataReply* reply) {
+            return stub_->GetDbMetadata(ctx, req, reply);
+          }, google::protobuf::Empty{}, meta_ans);
+        !res) {
+      return std::unexpected{res.error()};
     }
 
-    phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index;
-
-    for (const auto& kidx : meta_ans.index()) {
-      index[kidx.first] = kidx.second;
-    }
+    skimdb::kmer_index index;
+    const std::string& buffer = meta_ans.index();
+    std::istringstream is(buffer, std::ios::binary);
+    cereal::BinaryInputArchive ar(is);
+    ar(index);
 
     std::vector<std::string> labels{meta_ans.labels().begin(), meta_ans.labels().end()};
 
     g_log->debug("fetching spir parameters from server...");
 
-    grpc::ClientContext ctx3;
-    SpirParametersRequest spir_req;
     SpirParametersReply spir_ans;
-    grpc::Status spir_status = stub_->GetSpirParameters(&ctx3, spir_req, &spir_ans);
-
-    if (!spir_status.ok()) {
-      return std::unexpected{spir_status.error_message()};
+    if (auto res = m_unary_rpc_(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirParametersReply* reply) {
+            return stub_->GetSpirParameters(ctx, req, reply);
+          }, google::protobuf::Empty{}, spir_ans);
+        !res) {
+      return std::unexpected{res.error()};
     }
 
     g_log->debug("fetching spir hint from server...");
 
-    grpc::ClientContext ctx4;
-    SpirHintRequest hint_req;
     SpirHintReply hint_ans;
-    grpc::Status hint_status = stub_->GetSpirHint(&ctx4, hint_req, &hint_ans);
-
-    if (!hint_status.ok()) {
-      return std::unexpected{hint_status.error_message()};
+    if (auto res = m_unary_rpc_(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirHintReply* reply) {
+            return stub_->GetSpirHint(ctx, req, reply);
+          }, google::protobuf::Empty{}, hint_ans);
+        !res) {
+      return std::unexpected{res.error()};
     }
 
     std::vector<std::uint64_t> hint_data{hint_ans.hint_c().begin(), hint_ans.hint_c().end()};
@@ -146,8 +148,18 @@ public:
   }
 
 private:
-    std::optional<spir_client_state> state_; // client state (initialized on setup)
-    std::unique_ptr<SpirDB::Stub> stub_;
+  template <typename RpcFn, typename Request, typename Reply>
+  auto m_unary_rpc_(RpcFn&& rpc, const Request& req, Reply& reply) -> std::expected<void, std::string> {
+    grpc::ClientContext ctx;
+    grpc::Status status = rpc(&ctx, req, &reply);
+    if (!status.ok()) {
+      return std::unexpected{status.error_message()};
+    }
+    return {};
+  };
+
+  std::optional<spir_client_state> state_; // client state (initialized on setup)
+  std::unique_ptr<SpirDB::Stub> stub_;
 };
 
 } // namespace skim::spir::rpc

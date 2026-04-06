@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-#include <parallel_hashmap/phmap.h>
+#include <skimdb/skimdb.h>
 
 #include "skimdb_spir_matrix.h"
 
@@ -18,18 +18,18 @@ using spir_common_rng_t = std::mt19937_64;
 
 
 struct skimdb_metadata {
-  phmap::parallel_flat_hash_map<std::uint32_t, std::uint64_t> index; // kmer to row index map
-  std::vector<std::string> labels;                                   // annotated labels
+  skimdb::kmer_index index;        // kmer to row index map
+  std::vector<std::string> labels; // annotated labels
 };
 
 struct spirdb_parameters {
   std::uint64_t n; // LWE dimension
   double sigma;    // LWE error distribution stddev
 
-  std::uint32_t log_p; // plaintext modulus
-  std::uint32_t log_q; // ciphertext modulus
+  std::size_t log_p; // plaintext modulus
+  std::size_t log_q; // ciphertext modulus
 
-  std::uint32_t batch_size; // number of qu vectors which can be processed in one batch
+  std::size_t batch_size; // number of qu vectors which can be processed in one batch
 
   std::uint32_t block_len;  // bytes of plaintext data we can pack into one block
   std::uint64_t rle_blocks; // number of blocks needed per RLE encoding

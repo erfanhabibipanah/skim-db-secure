@@ -1,6 +1,7 @@
 #ifndef SKIMDB_ENCODING_H
 #define SKIMDB_ENCODING_H
 
+#include <cstddef>
 #include <cstdint>
 #include <generator>
 #include <span>
@@ -39,7 +40,7 @@ public:
   explicit encoding(std::vector<std::uint16_t> blocks)
     : blocks_{std::move(blocks)} {}
 
-  void push(std::uint64_t idx) {
+  void push(std::size_t idx) {
     if (idx < next_seq_) { return; }
 
     if (idx == next_seq_) {
@@ -59,14 +60,14 @@ public:
       return;
     }
 
-    std::uint64_t gap = idx - next_seq_;
+    std::size_t gap = idx - next_seq_;
 
     while (gap > 0) {
       if (!blocks_.empty() && get_block_encoding(blocks_.back()) == g_encoding_zero_run) {
         std::uint16_t cur = blocks_.back() & g_count_mask;
         auto space = static_cast<std::size_t>(g_max_run - cur);
         if (space > 0) {
-          std::uint64_t take = (gap < space) ? gap : space;
+          std::size_t take = (gap < space) ? gap : space;
           cur = static_cast<std::uint16_t>(cur + take);
           blocks_.back() = static_cast<std::uint16_t>(g_run_of_zeros_flag | cur);
           gap -= take;
@@ -86,7 +87,7 @@ public:
   void attempt_compress() {
     std::vector<std::uint16_t> compressed;
 
-    for (std::uint64_t i = 0, end = blocks_.size(); i < end; ++i) {
+    for (std::size_t i = 0, end = blocks_.size(); i < end; ++i) {
       std::uint16_t block = blocks_[i];
       std::uint16_t type = get_block_encoding(block);
 
@@ -96,11 +97,11 @@ public:
         std::uint16_t literal = 1 << 15;
         std::uint64_t inserted = count;
 
-        for (std::uint64_t bit = 0; bit < count; ++bit) {
+        for (std::size_t bit = 0; bit < count; ++bit) {
           literal |= (type == g_encoding_one_run) ? (1u << (14 - bit)) : 0;
         }
 
-        std::uint64_t j = i + 1;
+        std::size_t j = i + 1;
 
         while (inserted < 15) {
           if (j >= blocks_.size()) {
@@ -114,7 +115,7 @@ public:
           std::uint16_t next_count = next_block & g_count_mask;
 
           if (inserted + next_count < 16) {
-            for (std::uint64_t bit = 0; bit < next_count; ++bit) {
+            for (std::size_t bit = 0; bit < next_count; ++bit) {
               literal |= (next_type == g_encoding_one_run) ? (1u << (14 - (inserted + bit))) : 0;
             }
 
@@ -128,8 +129,8 @@ public:
 
             ++j;
           } else {
-            std::uint64_t can_take = 15 - inserted;
-            for (std::uint64_t bit = 0; bit < can_take; ++bit) {
+            std::size_t can_take = 15 - inserted;
+            for (std::size_t bit = 0; bit < can_take; ++bit) {
               literal |= (next_type == g_encoding_one_run) ? (1u << (14 - (inserted + bit))) : 0;
             }
 
@@ -151,25 +152,25 @@ public:
     blocks_ = std::move(compressed);
   }
 
-  [[nodiscard]] auto select_idxs() const -> std::generator<std::uint64_t> {
-    std::uint64_t pos = 0;
+  [[nodiscard]] auto select_idxs() const -> std::generator<std::size_t> {
+    std::size_t pos = 0;
     for (auto block : blocks_) {
       switch (get_block_encoding(block)) {
         case g_encoding_uncompressed: {
           std::uint16_t val = block & g_literal_mask;
-          for (std::uint64_t bit = 0; bit < 15; ++bit) {
+          for (std::size_t bit = 0; bit < 15; ++bit) {
             if (val & (1u << (14 - bit))) { co_yield pos + bit; }
           }
           pos += 15;
           break;
         }
         case g_encoding_zero_run: {
-          pos += static_cast<std::uint64_t>(block & g_count_mask);
+          pos += static_cast<std::size_t>(block & g_count_mask);
           break;
         }
         case g_encoding_one_run: {
-          auto num_ones = static_cast<std::uint64_t>(block & g_count_mask);
-          for (std::uint64_t i = 0; i < num_ones; ++i) { co_yield pos + i; }
+          auto num_ones = static_cast<std::size_t>(block & g_count_mask);
+          for (std::size_t i = 0; i < num_ones; ++i) { co_yield pos + i; }
           pos += num_ones;
           break;
         }
@@ -182,7 +183,7 @@ public:
 
   [[nodiscard]] auto length() const noexcept -> std::size_t { return blocks_.size(); }
 
-  [[nodiscard]] auto get(std::uint64_t i) const noexcept -> std::uint16_t { return blocks_[i]; }
+  [[nodiscard]] auto get(std::size_t i) const noexcept -> std::uint16_t { return blocks_[i]; }
 
   [[nodiscard]] auto span() const noexcept -> std::span<const std::uint16_t> {
     return {blocks_.data(), blocks_.size()};
