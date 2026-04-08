@@ -170,7 +170,7 @@ private:
   auto db_parts = std::move(db).explode();
 
   auto kmers = db_parts.data.size();
-  std::uint64_t max_rle = 0;
+  std::size_t max_rle = 0;
 
   for (const auto& entry : db_parts.data) {
     max_rle = std::max(max_rle, entry.length());
@@ -180,15 +180,15 @@ private:
     return std::unexpected{"empty skimdb index"};
   }
 
-  std::uint32_t block_size = log_p / 8;
-  std::uint64_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
-  std::uint64_t min_blocks = kmers * rle_blocks;
+  std::size_t block_size = log_p / 8;
+  std::size_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
+  std::size_t min_blocks = kmers * rle_blocks;
 
   g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
 
   double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
-  auto rles_per_side = static_cast<std::uint64_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
-  std::uint64_t sqrt_N = rles_per_side * rle_blocks;
+  auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
+  std::size_t sqrt_N = rles_per_side * rle_blocks;
 
   g_log->info("spir matrix dimension sqrt(N) = {}", sqrt_N);
 
@@ -306,11 +306,11 @@ public:
     return std::make_pair(i_row, i_col);
   }
 
-  [[nodiscard]] auto row_to_partition(std::uint64_t i_row) const -> std::uint64_t {
-    std::uint64_t rle_idx = i_row / spir_config_.rle_blocks;
-    std::uint64_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
-    std::uint64_t rles_per_batch = rles_per_col / spir_config_.batch_size;
-    std::uint64_t remaining_rles = rles_per_col % spir_config_.batch_size;
+  [[nodiscard]] auto row_to_partition(std::size_t i_row) const -> std::size_t {
+    std::size_t rle_idx = i_row / spir_config_.rle_blocks;
+    std::size_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
+    std::size_t rles_per_batch = rles_per_col / spir_config_.batch_size;
+    std::size_t remaining_rles = rles_per_col % spir_config_.batch_size;
 
     if (rle_idx < remaining_rles * (rles_per_batch + 1)) {
       return rle_idx / (rles_per_batch + 1);
@@ -361,7 +361,7 @@ public:
   }
 
 
-  void update_batch(spirdb_query_state& batch_state, std::uint64_t i_batch, std::uint64_t i_col) {
+  void update_batch(spirdb_query_state& batch_state, std::size_t i_batch, std::size_t i_col) {
     LogFun lf{"spir_client_state::update_batch(...)", spdlog::level::trace};
 
     std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
