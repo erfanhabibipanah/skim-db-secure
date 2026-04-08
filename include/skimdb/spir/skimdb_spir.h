@@ -119,7 +119,7 @@ public:
               spir_config_.log_p,
               spir_config_.log_q,
               spir_config_.batch_size,
-              spir_config_.block_len,
+              spir_config_.block_size,
               spir_config_.rle_blocks,
               spir_config_.sqrt_N,
               spir_config_.seed,
@@ -180,8 +180,8 @@ private:
     return std::unexpected{"empty skimdb index"};
   }
 
-  std::uint32_t block_len = log_p / 8;
-  std::uint64_t rle_blocks = 2 * max_rle / block_len + ((2 * max_rle % block_len) ? 1 : 0);
+  std::uint32_t block_size = log_p / 8;
+  std::uint64_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
   std::uint64_t min_blocks = kmers * rle_blocks;
 
   g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
@@ -204,12 +204,12 @@ private:
                               .log_p = log_p,
                               .log_q = log_q,
                               .batch_size = batch_size,
-                              .block_len = block_len,
+                              .block_size = block_size,
                               .rle_blocks = rle_blocks,
                               .sqrt_N = sqrt_N,
                               .seed = seed};
 
-  skimdb_matrix DB{std::move(db_parts.data), block_len, rle_blocks, sqrt_N};
+  skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
   skimdb_metadata metadata{.index = std::move(db_parts.index), .labels = std::move(db_parts.labels)};
 
   // compute hint_c = DB * A
@@ -239,7 +239,7 @@ private:
     spir_matrix hint_c;
 
     archive(DB, index, labels, skim_conf.k, skim_conf.s, skim_conf.t, spir_conf.n, spir_conf.sigma, spir_conf.log_p,
-            spir_conf.log_q, spir_conf.batch_size, spir_conf.block_len, spir_conf.rle_blocks, spir_conf.sqrt_N,
+            spir_conf.log_q, spir_conf.batch_size, spir_conf.block_size, spir_conf.rle_blocks, spir_conf.sqrt_N,
             spir_conf.seed, hint_c);
 
     skimdb_metadata metadata{.index = std::move(index), .labels = std::move(labels)};
@@ -286,7 +286,7 @@ public:
     return detail::is_valid(str, skim_config_.k) && detail::is_syncmer(kmer, skim_config_.k, skim_config_.s, skim_config_.t);
   }
 
-  [[nodiscard]] auto kmer_to_position(const std::string& s) const -> std::expected<std::pair<std::size_t, std::size_t>, std::string> {
+  [[nodiscard]] auto kmer_to_position(const std::string& s) const -> std::optional<std::pair<std::size_t, std::size_t>> {
     LogFun lf{"spir_client_state::kmer_to_position(...)"};
 
     auto kmer = detail::kmer_to_binary(s);
@@ -294,7 +294,7 @@ public:
 
     if (!res.has_value()) {
       // if the k‑mer is valid but absent from the skimdb index, the k‑mer has no associated labels
-      return std::unexpected{std::format("kmer {} not found in skimdb index", s)};
+      return std::nullopt;
     }
 
     auto pos = res.value();
@@ -390,7 +390,7 @@ private:
   auto m_recover_(std::span<const std::uint64_t> d_data) -> detail::encoding {
     std::vector<std::uint16_t> rle_data;
 
-    switch (spir_config_.block_len) {
+    switch (spir_config_.block_size) {
     case 1: {
       std::size_t out_len = spir_config_.rle_blocks / 2;
       rle_data.resize(out_len);

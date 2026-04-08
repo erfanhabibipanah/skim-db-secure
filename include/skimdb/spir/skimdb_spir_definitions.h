@@ -1,6 +1,7 @@
 #ifndef SKIMDB_SPIR_DEFINITIONS_H
 #define SKIMDB_SPIR_DEFINITIONS_H
 
+#include <cstddef>
 #include <cstdint>
 #include <random>
 #include <string>
@@ -23,17 +24,17 @@ struct skimdb_metadata {
 };
 
 struct spirdb_parameters {
-  std::uint64_t n; // LWE dimension
-  double sigma;    // LWE error distribution stddev
+  std::size_t n;  // LWE dimension
+  double sigma;   // LWE error distribution stddev
 
   std::size_t log_p; // plaintext modulus
   std::size_t log_q; // ciphertext modulus
 
   std::size_t batch_size; // number of qu vectors which can be processed in one batch
 
-  std::uint32_t block_len;  // bytes of plaintext data we can pack into one block
-  std::uint64_t rle_blocks; // number of blocks needed per RLE encoding
-  std::uint64_t sqrt_N;     // matrix side length (blocks of data)
+  std::size_t block_size; // bytes of plaintext data we can pack into one block
+  std::size_t rle_blocks; // number of blocks needed per RLE encoding
+  std::size_t sqrt_N;     // matrix side length (blocks of data)
 
   std::uint64_t seed; // seed for matrix A
 };

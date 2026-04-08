@@ -93,7 +93,7 @@ public:
                                 .log_p = spir_ans.log_p(),
                                 .log_q = spir_ans.log_q(),
                                 .batch_size = spir_ans.batch_size(),
-                                .block_len = spir_ans.block_len(),
+                                .block_size = spir_ans.block_size(),
                                 .rle_blocks = spir_ans.rle_blocks(),
                                 .sqrt_N = spir_ans.sqrt_n(),
                                 .seed = spir_ans.seed()};
@@ -105,10 +105,14 @@ public:
     return {};
   }
 
+  auto ready() const -> bool {
+    return state_.has_value();
+  }
+
   auto query(const std::string& s) -> std::generator<const std::string&> {
     LogFun lf{"SpirDBClient::query(...)"};
 
-    if (!state_.has_value()) {
+    if (!ready()) {
       g_log->error("client not initialized! call setup() first...");
       co_return;
     }
@@ -118,13 +122,15 @@ public:
       co_return;
     }
 
-    auto pos = state_->kmer_to_position(s);
-
-    if (!pos) {
+    auto res = state_->kmer_to_position(s);
+    if (!res.has_value()) {
+      // valid kmer not found in index -> result is empty
       co_return;
     }
 
-    auto query_state = state_->prepare_query(pos->second);
+    auto& pos = res.value();
+
+    auto query_state = state_->prepare_query(pos.second);
     auto qu_data = query_state.qu_vec.span();
 
     grpc::ClientContext ctx;
@@ -144,7 +150,7 @@ public:
     auto pir_params = state_->spir_parameters();
     spir_matrix ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
 
-    co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos->first));
+    co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos.first));
   }
 
 private:
