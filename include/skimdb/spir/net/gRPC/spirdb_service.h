@@ -69,14 +69,28 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status GetSpirHint(grpc::ServerContext* context, const google::protobuf::Empty*, SpirHintReply* reply) override {
+  // TODO: temporary measure to allow for testing with larger databases. Need to better optimize streaming large hint matrices
+  grpc::Status GetSpirHint(grpc::ServerContext* context, const google::protobuf::Empty*, grpc::ServerWriter<SpirHintRow>* writer) override {
     LogFun lf{"SpirDBService::GetSpirHint(...)", spdlog::level::debug};
     g_log->trace("serving spir hint request from {}...", context->peer());
 
-    const auto& hint_c = state_.hint_c();
-    const auto data = hint_c.span();
+    SpirHintRow row;
 
-    reply->mutable_hint_c()->Assign(data.begin(), data.end());
+    const auto& hint_c = state_.hint_c();
+    auto [rows, _] = hint_c.dimensions();
+
+    for (std::size_t r = 0; r < rows; ++r) {
+      if (context->IsCancelled()) {
+        return grpc::Status::CANCELLED;
+      }
+
+      const auto data = hint_c.row(r);
+      row.mutable_hint_row()->Assign(data.begin(), data.end());
+
+      if (!writer->Write(row)) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, "failed to write spir hint row");
+      }
+    }
 
     return grpc::Status::OK;
   }

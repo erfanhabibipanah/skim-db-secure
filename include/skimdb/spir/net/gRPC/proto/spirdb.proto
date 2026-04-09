@@ -34,8 +34,8 @@ message SpirParametersReply {
   uint64 seed       = 9;
 }
 
-message SpirHintReply {
-  repeated uint64 hint_c = 1;
+message SpirHintRow {
+  repeated uint64 hint_row = 1;
 }
 
 message QueryRequest {
@@ -50,7 +50,7 @@ service SpirDB {
   rpc GetDbParameters(google.protobuf.Empty) returns (DbParametersReply);
   rpc GetDbMetadata(google.protobuf.Empty) returns (DbMetadataReply);
   rpc GetSpirParameters(google.protobuf.Empty) returns (SpirParametersReply);
-  rpc GetSpirHint(google.protobuf.Empty) returns (SpirHintReply);
+  rpc GetSpirHint(google.protobuf.Empty) returns (stream SpirHintRow);
 
   rpc Query(QueryRequest) returns (QueryReply);
   rpc BatchQuery(QueryRequest) returns (QueryReply);

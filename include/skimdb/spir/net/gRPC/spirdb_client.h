@@ -36,7 +36,7 @@ public:
             return stub_->GetDbParameters(ctx, req, reply);
           }, google::protobuf::Empty{}, db_ans);
         !res) {
-      return std::unexpected{res.error()};
+      return std::unexpected{res.error().error_message()};
     }
 
     g_log->debug("fetching db metadata from server...");
@@ -47,7 +47,7 @@ public:
             return stub_->GetDbMetadata(ctx, req, reply);
           }, google::protobuf::Empty{}, meta_ans);
         !res) {
-      return std::unexpected{res.error()};
+      return std::unexpected{res.error().error_message()};
     }
 
     skimdb::kmer_index index;
@@ -66,21 +66,24 @@ public:
             return stub_->GetSpirParameters(ctx, req, reply);
           }, google::protobuf::Empty{}, spir_ans);
         !res) {
-      return std::unexpected{res.error()};
+      return std::unexpected{res.error().error_message()};
     }
 
     g_log->debug("fetching spir hint from server...");
 
-    SpirHintReply hint_ans;
-    if (auto res = m_unary_rpc_(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirHintReply* reply) {
-            return stub_->GetSpirHint(ctx, req, reply);
-          }, google::protobuf::Empty{}, hint_ans);
-        !res) {
-      return std::unexpected{res.error()};
-    }
+    std::vector<std::uint64_t> hint_data;
 
-    std::vector<std::uint64_t> hint_data{hint_ans.hint_c().begin(), hint_ans.hint_c().end()};
+    if (auto res = m_unary_stream_rpc_<google::protobuf::Empty, SpirHintRow>(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req) {
+            return stub_->GetSpirHint(ctx, req);
+          }, 
+          google::protobuf::Empty{},
+          [&](const SpirHintRow& row) {
+            hint_data.insert(hint_data.end(), row.hint_row().begin(), row.hint_row().end());
+          });
+        !res) {
+      return std::unexpected{res.error().error_message()};
+    }
 
     g_log->debug("initializing client state...");
 
@@ -155,14 +158,33 @@ public:
 
 private:
   template <typename RpcFn, typename Request, typename Reply>
-  auto m_unary_rpc_(RpcFn&& rpc, const Request& req, Reply& reply) -> std::expected<void, std::string> {
+  auto m_unary_rpc_(RpcFn&& rpc, const Request& req, Reply& reply) -> std::expected<void, grpc::Status> {
     grpc::ClientContext ctx;
     grpc::Status status = rpc(&ctx, req, &reply);
     if (!status.ok()) {
-      return std::unexpected{status.error_message()};
+      return std::unexpected{status};
     }
     return {};
   };
+
+  template <typename Request, typename Reply, typename StreamFn, typename OnMessage>
+  auto m_unary_stream_rpc_(StreamFn&& create_reader, const Request& req, OnMessage&& on_message) -> std::expected<void, grpc::Status> {
+    grpc::ClientContext ctx;
+
+    auto reader = create_reader(&ctx, req);
+    Reply reply;
+
+    while (reader->Read(&reply)) {
+      on_message(reply);
+    }
+
+    grpc::Status status = reader->Finish();
+    if (!status.ok()) {
+      return std::unexpected{status};
+    }
+
+    return {};
+  }
 
   std::optional<spir_client_state> state_; // client state (initialized on setup)
   std::unique_ptr<SpirDB::Stub> stub_;
