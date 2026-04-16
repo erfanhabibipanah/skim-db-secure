@@ -35,7 +35,6 @@ target_compile_options(skimdb_tooling_flags INTERFACE
     # Release
     $<$<CONFIG:Release>:
         -O3
-        -march=native
         -ffast-math
         -funroll-loops
     >
