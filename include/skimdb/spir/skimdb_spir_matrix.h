@@ -281,6 +281,14 @@ void partitioned_mat_vec1(const skimdb_matrix& mat,
   }
 }
 
+template<std::size_t N>
+inline void inner(std::uint64_t* __restrict__ out, const std::uint16_t* __restrict__ rle,
+                  std::uint64_t vec_val, std::uint64_t mask) {
+  for (std::size_t i = 0; i < N; ++i) {
+    out[i] += (static_cast<std::uint64_t>(rle[i]) * vec_val) & mask;
+  }
+}
+
 void partitioned_mat_vec2(const skimdb_matrix& mat,
                           std::span<const std::uint64_t> vec,
                           std::span<std::uint64_t> dst,
@@ -305,9 +313,17 @@ void partitioned_mat_vec2(const skimdb_matrix& mat,
 
       auto vec_val = vec[j];
 
+      switch (len) {
+      case 2: inner<2>(out, rle_ptr, vec_val, mask); break;
+      case 4: inner<4>(out, rle_ptr, vec_val, mask); break;
+      case 8: inner<8>(out, rle_ptr, vec_val, mask); break;
+      default:
+        [[unlikely]] {
 #pragma omp simd
-      for (std::size_t i = 0; i < len; ++i) {
-        out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+          for (std::size_t i = 0; i < len; ++i) {
+            out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+          }
+        }
       }
     }
   }
