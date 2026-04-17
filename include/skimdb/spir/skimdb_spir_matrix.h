@@ -314,9 +314,15 @@ void partitioned_mat_vec2(const skimdb_matrix& mat,
       auto vec_val = vec[j];
 
       switch (len) {
-      case 2: inner<2>(out, rle_ptr, vec_val, mask); break;
-      case 4: inner<4>(out, rle_ptr, vec_val, mask); break;
-      case 8: inner<8>(out, rle_ptr, vec_val, mask); break;
+      case 2:
+        inner<2>(out, rle_ptr, vec_val, mask);
+        break;
+      case 4:
+        inner<4>(out, rle_ptr, vec_val, mask);
+        break;
+      case 8:
+        inner<8>(out, rle_ptr, vec_val, mask);
+        break;
       default:
         [[unlikely]] {
 #pragma omp simd
