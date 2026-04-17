@@ -270,7 +270,7 @@ public:
         spir_config_{std::move(spir_config)},
         A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
         hint_c_{std::move(hint_c)},
-        rng_{seed} {
+        main_seed_{seed} {
     spir_common_rng_t rng{spir_config_.seed};
     A_.fill(rng);
   }
@@ -283,10 +283,12 @@ public:
 
   [[nodiscard]] auto is_valid_kmer(const std::string& str) const -> bool {
     auto kmer = detail::kmer_to_binary(str);
-    return detail::is_valid(str, skim_config_.k) && detail::is_syncmer(kmer, skim_config_.k, skim_config_.s, skim_config_.t);
+    return detail::is_valid(str, skim_config_.k) &&
+           detail::is_syncmer(kmer, skim_config_.k, skim_config_.s, skim_config_.t);
   }
 
-  [[nodiscard]] auto kmer_to_position(const std::string& s) const -> std::optional<std::pair<std::size_t, std::size_t>> {
+  [[nodiscard]] auto kmer_to_position(const std::string& s) const
+      -> std::optional<std::pair<std::size_t, std::size_t>> {
     LogFun lf{"spir_client_state::kmer_to_position(...)"};
 
     auto kmer = detail::kmer_to_binary(s);
@@ -323,12 +325,14 @@ public:
   [[nodiscard]] auto prepare_query(std::size_t i_col) -> spirdb_query_state {
     LogFun lf{"spir_client_state::prepare_query(...)"};
 
+    auto& rng = m_get_rng_();
+
     spir_matrix s{spir_config_.n, spir_config_.log_q};
-    s.fill(rng_);
+    s.fill(rng);
 
     dgpp::uniform_rejection dist{spir_config_.sigma};
     spir_matrix e{spir_config_.sqrt_N, spir_config_.log_q};
-    e.fill(rng_, dist);
+    e.fill(rng, dist);
 
     std::size_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
 
@@ -343,12 +347,14 @@ public:
   [[nodiscard]] auto new_batch() -> spirdb_query_state {
     LogFun lf{"spir_client_state::new_batch(...)"};
 
+    auto& rng = m_get_rng_();
+
     spir_matrix s{spir_config_.batch_size, spir_config_.n, spir_config_.log_q};
-    s.fill(rng_);
+    s.fill(rng);
 
     dgpp::uniform_rejection dist{spir_config_.sigma};
     spir_matrix e{spir_config_.batch_size, spir_config_.sqrt_N, spir_config_.log_q};
-    e.fill(rng_, dist);
+    e.fill(rng, dist);
 
     spir_matrix qu{spir_config_.batch_size, spir_config_.sqrt_N, spir_config_.log_q};
 
@@ -368,7 +374,7 @@ public:
     batch_state.qu_vec.set(i_batch, i_col, batch_state.qu_vec.get(i_batch, i_col) + delta);
   }
 
-  
+
   [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row)
       -> std::generator<const std::string&> {
     LogFun lf{"spir_client_state::result(...)"};
@@ -387,6 +393,16 @@ public:
   }
 
 private:
+  auto m_make_local_seed_() -> std::uint64_t {
+    auto tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
+    return main_seed_ ^ (tid * 0x9e3779b97f4a7c15ULL); // Fibonacci hashing
+  }
+
+  auto m_get_rng_() -> spir_common_rng_t& {
+    thread_local spir_common_rng_t rng(m_make_local_seed_());
+    return rng;
+  }
+
   auto m_recover_(std::span<const std::uint64_t> d_data) -> detail::encoding {
     std::vector<std::uint16_t> rle_data;
 
@@ -396,7 +412,6 @@ private:
       rle_data.resize(out_len);
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
-#pragma omp parallel for simd schedule(static)
       for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
         dst[i] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);
       }
@@ -408,7 +423,6 @@ private:
       rle_data.resize(out_len);
       std::uint16_t* dst = rle_data.data();
 
-#pragma omp parallel for simd schedule(static)
       for (std::size_t i = 0; i < out_len; ++i) {
         dst[i] = static_cast<std::uint16_t>(d_data[i] & 0xFFFFull);
       }
@@ -420,7 +434,6 @@ private:
       rle_data.resize(out_len);
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
-#pragma omp parallel for simd schedule(static)
       for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
         dst[i * 3] = static_cast<std::uint8_t>((d_data[i] >> 16) & 0xFFull);
         dst[i * 3 + 1] = static_cast<std::uint8_t>((d_data[i] >> 8) & 0xFFull);
@@ -447,7 +460,7 @@ private:
   spir_matrix A_;      // matrix A
   spir_matrix hint_c_; // hint matrix from server
 
-  rng_type rng_;
+  std::uint64_t main_seed_;
 };
 
 } // namespace skim::spir
