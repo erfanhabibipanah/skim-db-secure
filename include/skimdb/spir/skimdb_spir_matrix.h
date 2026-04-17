@@ -334,13 +334,10 @@ void partitioned_mat_vec3(const skimdb_matrix& mat,
       const std::size_t full_blocks = len / 3;
       auto vec_val = vec[j];
 
-#pragma omp simd
       for (std::size_t i = 0; i < full_blocks; ++i) {
         partition_dst[i] +=
             (static_cast<std::uint64_t>(rle_ptr[i * 3]) << 16 | static_cast<std::uint64_t>(rle_ptr[i * 3 + 1]) << 8 |
-             static_cast<std::uint64_t>(rle_ptr[i * 3 + 2])) *
-                vec_val &
-            mask;
+             static_cast<std::uint64_t>(rle_ptr[i * 3 + 2])) * vec_val & mask;
       }
 
       if (full_blocks * 3 < len) {
@@ -384,9 +381,11 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
     }
   }
 
+  auto* __restrict__ out = dst.data();
+
 #pragma omp parallel for simd schedule(static)
   for (std::size_t i = 0; i < dst.size(); ++i) {
-    dst[i] &= mask;
+    out[i] &= mask;
   }
 }
 
