@@ -184,7 +184,7 @@ private:
   std::size_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
   std::size_t min_blocks = kmers * rle_blocks;
 
-  g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
+  g_log->info("skimdb contains {} kmers, requires {} block(s) per RLE", kmers, rle_blocks);
 
   double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
   auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
@@ -213,7 +213,7 @@ private:
   skimdb_metadata metadata{.index = std::move(db_parts.index), .labels = std::move(db_parts.labels)};
 
   // compute hint_c = DB * A
-  g_log->info("precomputing hint matrix DB * A...");
+  g_log->info("precomputing hint matrix DB * A, be patient...");
   auto hint_c = mat_mul(DB, A, log_q, rle_blocks);
 
   return spir_server_state{std::move(DB), std::move(metadata), std::move(skim_conf), std::move(spir_conf), std::move(hint_c)};
@@ -244,7 +244,7 @@ private:
 
     skimdb_metadata metadata{.index = std::move(index), .labels = std::move(labels)};
 
-    g_log->info("serever state loaded with spir paramaters sqrt_N: {}, log_p: {}, log_q: {}, n: {}, and sigma: {}",
+    g_log->info("server state loaded, (sqrt_N={}, log_p={}, log_q={}, n={}, sigma={})",
                 spir_conf.sqrt_N, spir_conf.log_p, spir_conf.log_q, spir_conf.n, spir_conf.sigma);
 
     return spir_server_state{std::move(DB),

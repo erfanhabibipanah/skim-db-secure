@@ -259,21 +259,23 @@ void partitioned_mat_vec1(const skimdb_matrix& mat,
                           std::size_t rle_blocks) {
   std::size_t m_cols = 0;
   std::tie(std::ignore, m_cols) = mat.dimensions();
+
   const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
 #pragma omp parallel for schedule(static)
   for (std::size_t p = start; p < start + count; ++p) {
-    std::span<std::uint64_t> partition_dst = dst.subspan(p * rle_blocks, rle_blocks);
+    std::span<std::uint64_t> out = dst.subspan(p * rle_blocks, rle_blocks);
 
     for (std::size_t j = 0; j < m_cols; ++j) {
       auto rle = mat.rle_in_col(p, j);
+
       const auto* rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
       const std::size_t len = rle.size() * 2;
+
       auto vec_val = vec[j];
 
-#pragma omp simd
       for (std::size_t i = 0; i < len; ++i) {
-        partition_dst[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+        out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
       }
     }
   }
@@ -288,21 +290,23 @@ void partitioned_mat_vec2(const skimdb_matrix& mat,
                           std::size_t rle_blocks) {
   std::size_t m_cols = 0;
   std::tie(std::ignore, m_cols) = mat.dimensions();
+
   const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
 #pragma omp parallel for schedule(static)
   for (std::size_t p = start; p < start + count; ++p) {
-    std::span<std::uint64_t> partition_dst = dst.subspan(p * rle_blocks, rle_blocks);
+    std::span<std::uint64_t> out = dst.subspan(p * rle_blocks, rle_blocks);
 
     for (std::size_t j = 0; j < m_cols; ++j) {
       auto rle = mat.rle_in_col(p, j);
+
       const std::uint16_t* rle_ptr = rle.data();
       const std::size_t len = rle.size();
+
       auto vec_val = vec[j];
 
-#pragma omp simd
       for (std::size_t i = 0; i < len; ++i) {
-        partition_dst[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+        out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
       }
     }
   }
