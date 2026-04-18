@@ -6,3 +6,4 @@ release/
 tests/test.skimdb
 tests/test.spir
 local/
+build.log

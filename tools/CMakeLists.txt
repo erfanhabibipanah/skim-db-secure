@@ -37,6 +37,9 @@ target_compile_options(skimdb_tooling_flags INTERFACE
         -O3
         -ffast-math
         -funroll-loops
+        -Rpass=loop-vectorize              # report successfully vectorized loops
+        -Rpass-missed=loop-vectorize       # report failed vectorization with reason
+        -Rpass-analysis=loop-vectorize     # extra detail on why it failed
     >
 )
 

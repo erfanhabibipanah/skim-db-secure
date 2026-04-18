@@ -15,6 +15,17 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/")
 
+include(CheckCXXSourceCompiles)
+
+check_cxx_source_compiles("
+    void foo(int* __restrict__ a, int* __restrict__ b) { *a = *b; }
+    int main() { return 0; }
+" HAVE_RESTRICT)
+
+if(NOT HAVE_RESTRICT)
+    message(FATAL_ERROR "Compiler does not support __restrict__")
+endif()
+
 # -------------------------------------------------------------------
 # Dependencies
 # -------------------------------------------------------------------

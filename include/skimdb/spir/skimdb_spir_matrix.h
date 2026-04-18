@@ -250,6 +250,16 @@ private:
 };
 
 
+template <std::size_t N, typename T>
+inline void partitioned_mat_vec_inner(std::uint64_t* __restrict__ out,
+                                      const T* __restrict__ rle,
+                                      std::uint64_t vec_val,
+                                      std::uint64_t mask) {
+  for (std::size_t i = 0; i < N; ++i) {
+    out[i] += (static_cast<std::uint64_t>(rle[i]) * vec_val) & mask;
+  }
+}
+
 void partitioned_mat_vec1(const skimdb_matrix& mat,
                           std::span<const std::uint64_t> vec,
                           std::span<std::uint64_t> dst,
@@ -264,28 +274,33 @@ void partitioned_mat_vec1(const skimdb_matrix& mat,
 
 #pragma omp parallel for schedule(static)
   for (std::size_t p = start; p < start + count; ++p) {
-    std::span<std::uint64_t> out = dst.subspan(p * rle_blocks, rle_blocks);
+    auto* __restrict__ out = dst.subspan(p * rle_blocks, rle_blocks).data();
 
     for (std::size_t j = 0; j < m_cols; ++j) {
       auto rle = mat.rle_in_col(p, j);
 
-      const auto* rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
+      const auto* __restrict__ rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
       const std::size_t len = rle.size() * 2;
 
       auto vec_val = vec[j];
 
-      for (std::size_t i = 0; i < len; ++i) {
-        out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+      switch (len) {
+      case 2:
+        partitioned_mat_vec_inner<2>(out, rle_ptr, vec_val, mask);
+        break;
+      case 4:
+        partitioned_mat_vec_inner<4>(out, rle_ptr, vec_val, mask);
+        break;
+      case 8:
+        partitioned_mat_vec_inner<8>(out, rle_ptr, vec_val, mask);
+        break;
+      default:
+#pragma omp simd
+        for (std::size_t i = 0; i < len; ++i) {
+          out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+        }
       }
     }
-  }
-}
-
-template<std::size_t N>
-inline void inner(std::uint64_t* __restrict__ out, const std::uint16_t* __restrict__ rle,
-                  std::uint64_t vec_val, std::uint64_t mask) {
-  for (std::size_t i = 0; i < N; ++i) {
-    out[i] += (static_cast<std::uint64_t>(rle[i]) * vec_val) & mask;
   }
 }
 
@@ -315,23 +330,34 @@ void partitioned_mat_vec2(const skimdb_matrix& mat,
 
       switch (len) {
       case 2:
-        inner<2>(out, rle_ptr, vec_val, mask);
+        partitioned_mat_vec_inner<2>(out, rle_ptr, vec_val, mask);
         break;
       case 4:
-        inner<4>(out, rle_ptr, vec_val, mask);
+        partitioned_mat_vec_inner<4>(out, rle_ptr, vec_val, mask);
         break;
       case 8:
-        inner<8>(out, rle_ptr, vec_val, mask);
+        partitioned_mat_vec_inner<8>(out, rle_ptr, vec_val, mask);
         break;
       default:
-        [[unlikely]] {
 #pragma omp simd
-          for (std::size_t i = 0; i < len; ++i) {
-            out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
-          }
+        for (std::size_t i = 0; i < len; ++i) {
+          out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
         }
       }
     }
+  }
+}
+
+inline auto load24(const std::uint8_t* p) -> std::uint32_t {
+  std::uint32_t val = 0;
+  std::memcpy(&val, p, 3);
+
+  if constexpr (std::endian::native == std::endian::little) {
+    // on LITTLE ENDIAN we get [b0, b1, b2, 0]
+    // we want b0<<16 | b1<<8 | b2
+    return std::byteswap(val) >> 8;
+  } else {
+    return val >> 8; // order correct, drop padding byte
   }
 }
 
@@ -344,37 +370,42 @@ void partitioned_mat_vec3(const skimdb_matrix& mat,
                           std::size_t rle_blocks) {
   std::size_t m_cols = 0;
   std::tie(std::ignore, m_cols) = mat.dimensions();
+
   const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
 #pragma omp parallel for schedule(static)
   for (std::size_t p = start; p < start + count; ++p) {
-    std::span<std::uint64_t> partition_dst = dst.subspan(p * rle_blocks, rle_blocks);
+    auto* __restrict__ out = dst.subspan(p * rle_blocks, rle_blocks).data();
 
     for (std::size_t j = 0; j < m_cols; ++j) {
       auto rle = mat.rle_in_col(p, j);
-      const auto* rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
+
+      const auto* __restrict__ rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
+
       const std::size_t len = rle.size() * 2;
       const std::size_t full_blocks = len / 3;
+
       auto vec_val = vec[j];
 
       for (std::size_t i = 0; i < full_blocks; ++i) {
-        partition_dst[i] +=
-            (static_cast<std::uint64_t>(rle_ptr[i * 3]) << 16 | static_cast<std::uint64_t>(rle_ptr[i * 3 + 1]) << 8 |
-             static_cast<std::uint64_t>(rle_ptr[i * 3 + 2])) * vec_val & mask;
+        out[i] += (static_cast<std::uint64_t>(load24(rle_ptr + i * 3)) * vec_val) & mask;
       }
 
       if (full_blocks * 3 < len) {
         std::uint64_t val = 0;
-        for (std::size_t i = 0; i < 3; ++i) {
-          val = (full_blocks * 3 + i < len) ? (val << 8) | rle_ptr[full_blocks * 3 + i] : (val << 8);
+        const std::size_t rem = len - full_blocks * 3;
+
+        for (std::size_t k = 0; k < rem; ++k) {
+          val = (val << 8) | rle_ptr[full_blocks * 3 + k];
         }
-        partition_dst[full_blocks] += (val * vec_val) & mask;
+        val <<= (3 - rem) * 8;
+
+        out[full_blocks] += (val * vec_val) & mask;
       }
     }
   }
 }
 
-// TODO: looks overly complicated - this is also what we would like to offload to GPU
 void partitioned_mat_vec(const skimdb_matrix& mat,
                          std::span<const std::uint64_t> vec,
                          std::span<std::uint64_t> dst,
@@ -405,9 +436,10 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
   }
 
   auto* __restrict__ out = dst.data();
+  auto end = dst.size();
 
 #pragma omp parallel for simd schedule(static)
-  for (std::size_t i = 0; i < dst.size(); ++i) {
+  for (std::size_t i = 0; i < end; ++i) {
     out[i] &= mask;
   }
 }
