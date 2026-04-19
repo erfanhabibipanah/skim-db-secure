@@ -281,7 +281,8 @@ inline auto compute_hint_ntt(
         a_transpose(ctx_data, As[i]);
     }
 
-    spir_matrix hint{sqrt_N, n_lwe, log_q};
+    // hint only needs poly_degree columns (per-seed contributions are summed into one poly)
+    spir_matrix hint{sqrt_N, poly_degree, log_q};
 
     auto rns_size = poly_degree * num_moduli;
     std::vector<std::uint64_t> accum(rns_size);
@@ -303,7 +304,7 @@ inline auto compute_hint_ntt(
             for (std::size_t j_mod = 0; j_mod < num_moduli; ++j_mod) {
                 for (std::uint64_t z = 0; z < stop; ++z) {
                     std::uint64_t col_idx = seed_idx * poly_degree + z;
-                    auto rle = db.get_rle_in_col(rle_row, col_idx);
+                    auto rle = db.rle_in_col(rle_row, col_idx);
                     std::uint64_t val = 0;
 
                     switch (db.block_size()) {

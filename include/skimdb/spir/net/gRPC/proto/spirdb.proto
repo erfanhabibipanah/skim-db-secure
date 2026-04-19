@@ -3,7 +3,7 @@ syntax = "proto3";
 
 package skim.spir;
 
-message DbParametersRequest { }
+import "google/protobuf/empty.proto";
 
 message DbParametersReply {
   uint64 k = 1;
@@ -11,23 +11,21 @@ message DbParametersReply {
   uint64 t = 3;
 }
 
-message DbMetadataRequest { }
-
 message DbMetadataReply {
-  map<uint32, uint64> index = 1;
+  bytes index               = 1;
   repeated string labels    = 2;
 }
-
-message SpirParametersRequest { }
 
 message SpirParametersReply {
   uint64 n          = 1;
   double sigma      = 2;
 
-  uint32 log_p      = 3;
-  uint32 log_q      = 4;
+  // std::size_t
+  uint64 log_p      = 3;
+  uint64 log_q      = 4;
 
-  uint32 batch_size = 5;
+  // std::size_t
+  uint64 batch_size = 5;
 
   uint32 block_size = 6;
   uint64 rle_blocks = 7;
@@ -36,10 +34,8 @@ message SpirParametersReply {
   uint64 seed       = 9;
 }
 
-message SpirHintRequest { }
-
-message SpirHintReply {
-  repeated uint64 hint_c = 1;
+message SpirHintRow {
+  repeated uint64 hint_row = 1;
 }
 
 message QueryRequest {
@@ -51,10 +47,11 @@ message QueryReply {
 }
 
 service SpirDB {
-  rpc GetDbParameters(DbParametersRequest) returns (DbParametersReply);
-  rpc GetDbMetadata(DbMetadataRequest) returns (DbMetadataReply);
-  rpc GetSpirParameters(SpirParametersRequest) returns (SpirParametersReply);
-  rpc GetSpirHint(SpirHintRequest) returns (SpirHintReply);
+  rpc GetDbParameters(google.protobuf.Empty) returns (DbParametersReply);
+  rpc GetDbMetadata(google.protobuf.Empty) returns (DbMetadataReply);
+  rpc GetSpirParameters(google.protobuf.Empty) returns (SpirParametersReply);
+  rpc GetSpirHint(google.protobuf.Empty) returns (stream SpirHintRow);
+
   rpc Query(QueryRequest) returns (QueryReply);
   rpc BatchQuery(QueryRequest) returns (QueryReply);
 }

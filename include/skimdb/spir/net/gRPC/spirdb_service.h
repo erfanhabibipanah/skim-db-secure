@@ -5,6 +5,8 @@
 #include <utility>
 #include <vector>
 
+#include <google/protobuf/empty.pb.h>
+
 #include <grpcpp/grpcpp.h>
 
 #include <skimdb/detail/skimdb_logger.h>
@@ -19,7 +21,7 @@ class SpirDBService final : public SpirDB::Service {
 public:
   explicit SpirDBService(spir_server_state&& state) : state_(std::move(state)) { g_log->debug("rpc service created!"); }
 
-  grpc::Status GetDbParameters(grpc::ServerContext* context, const DbParametersRequest*,
+  grpc::Status GetDbParameters(grpc::ServerContext* context, const google::protobuf::Empty*,
                                DbParametersReply* reply) override {
     LogFun lf{"SpirDBService::GetDbParameters(...)", spdlog::level::debug};
     g_log->trace("serving db parameters request from {}...", context->peer());
@@ -33,20 +35,21 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status GetDbMetadata(grpc::ServerContext* context, const DbMetadataRequest*, DbMetadataReply* reply) override {
+  grpc::Status GetDbMetadata(grpc::ServerContext* context, const google::protobuf::Empty*, DbMetadataReply* reply) override {
     LogFun lf{"SpirDBService::GetDbMetadata(...)", spdlog::level::debug};
     g_log->trace("serving db metadata request from {}...", context->peer());
 
-    for (const auto& kidx : state_.skim_metadata().index) {
-      (*reply->mutable_index())[kidx.first] = kidx.second;
-    }
+    std::ostringstream os(std::ios::binary);
+    cereal::BinaryOutputArchive ar(os);
+    ar(state_.skim_metadata().index);
+    *reply->mutable_index() = std::move(os).str();
 
     reply->mutable_labels()->Assign(state_.skim_metadata().labels.begin(), state_.skim_metadata().labels.end());
 
     return grpc::Status::OK;
   }
 
-  grpc::Status GetSpirParameters(grpc::ServerContext* context, const SpirParametersRequest*,
+  grpc::Status GetSpirParameters(grpc::ServerContext* context, const google::protobuf::Empty*,
                                  SpirParametersReply* reply) override {
     LogFun lf{"SpirDBService::GetSpirParameters(...)", spdlog::level::debug};
     g_log->trace("serving spir parameters request from {}...", context->peer());
@@ -66,14 +69,28 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status GetSpirHint(grpc::ServerContext* context, const SpirHintRequest*, SpirHintReply* reply) override {
+  // TODO: temporary measure to allow for testing with larger databases. Need to better optimize streaming large hint matrices
+  grpc::Status GetSpirHint(grpc::ServerContext* context, const google::protobuf::Empty*, grpc::ServerWriter<SpirHintRow>* writer) override {
     LogFun lf{"SpirDBService::GetSpirHint(...)", spdlog::level::debug};
     g_log->trace("serving spir hint request from {}...", context->peer());
 
-    const auto& hint_c = state_.hint_c();
-    const auto data = hint_c.span();
+    SpirHintRow row;
 
-    reply->mutable_hint_c()->Assign(data.begin(), data.end());
+    const auto& hint_c = state_.hint_c();
+    auto [rows, _] = hint_c.dimensions();
+
+    for (std::size_t r = 0; r < rows; ++r) {
+      if (context->IsCancelled()) {
+        return grpc::Status::CANCELLED;
+      }
+
+      const auto data = hint_c.row(r);
+      row.mutable_hint_row()->Assign(data.begin(), data.end());
+
+      if (!writer->Write(row)) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, "failed to write spir hint row");
+      }
+    }
 
     return grpc::Status::OK;
   }

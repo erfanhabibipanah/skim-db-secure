@@ -4,7 +4,9 @@
 build/
 release/
 tests/test.skimdb
+tests/test.spir
 local/
 *.xlsx
 *.csv
 generate_report.py
+build.log

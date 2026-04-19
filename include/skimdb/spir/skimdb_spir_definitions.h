@@ -29,8 +29,11 @@ struct spirdb_parameters {
   std::size_t n;  // LWE dimension
   double sigma;   // LWE error distribution stddev
 
-  std::size_t log_p;  // plaintext modulus
-  std::size_t log_q;  // ciphertext modulus
+
+
+  std::size_t log_p; // plaintext modulus
+  std::size_t log_q; // ciphertext modulus
+
 
   std::size_t batch_size; // number of qu vectors which can be processed in one batch
 

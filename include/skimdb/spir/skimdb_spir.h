@@ -97,8 +97,8 @@ public:
         start_idx += remaining_rles;
       }
 
-      partitioned_mat_vec(DB_, qu_mat.row(i), ans.span(), spir_config_.log_q, start_idx, count,
-                          spir_config_.rle_blocks);
+      partitioned_mat_vec(
+          DB_, qu_mat.row(i), ans.span(), spir_config_.log_q, start_idx, count, spir_config_.rle_blocks);
     }
 
     return ans;
@@ -114,9 +114,22 @@ public:
 
     try {
       cereal::BinaryOutputArchive archive{of};
-      archive(DB_, metadata_.index, metadata_.labels, skim_config_.k, skim_config_.s, skim_config_.t,
-              spir_config_.n, spir_config_.sigma, spir_config_.log_p, spir_config_.log_q, spir_config_.batch_size,
-              spir_config_.block_size, spir_config_.rle_blocks, spir_config_.sqrt_N, spir_config_.seed, hint_c_);
+      archive(DB_,
+              metadata_.index,
+              metadata_.labels,
+              skim_config_.k,
+              skim_config_.s,
+              skim_config_.t,
+              spir_config_.n,
+              spir_config_.sigma,
+              spir_config_.log_p,
+              spir_config_.log_q,
+              spir_config_.batch_size,
+              spir_config_.block_size,
+              spir_config_.rle_blocks,
+              spir_config_.sqrt_N,
+              spir_config_.seed,
+              hint_c_);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};
     }
@@ -136,8 +149,13 @@ private:
 };
 
 
-[[nodiscard]] auto make_server(skimdb&& db, unsigned int log_p, unsigned int log_q, std::size_t n, double sigma,
-                               std::size_t batch_size = 1, std::uint64_t seed = std::random_device{}())
+[[nodiscard]] auto make_server(skimdb&& db,
+                               std::size_t log_p,
+                               std::size_t log_q,
+                               std::size_t n,
+                               double sigma,
+                               std::size_t batch_size = 1,
+                               std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server(...)"};
 
@@ -170,10 +188,11 @@ private:
 
   std::size_t block_size = log_p / 8;
   std::size_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
+  std::size_t min_blocks = kmers * rle_blocks;
 
   g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
 
-  double min_side = std::ceil(std::sqrt(static_cast<double>(kmers * rle_blocks)));
+  double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
   auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
   std::size_t sqrt_N = rles_per_side * rle_blocks;
 
@@ -318,7 +337,7 @@ private:
 
 class spir_client_state {
 public:
-  using rng_type = std::mt19937_64;
+  using rng_type = spir_common_rng_t;
 
   explicit spir_client_state(skimdb_parameters skim_config, skimdb_metadata skim_metadata,
                              spirdb_parameters spir_config, spir_matrix hint_c,
@@ -355,7 +374,6 @@ public:
     auto kmer = detail::kmer_to_binary(str);
     return detail::is_valid(str, skim_config_.k) && detail::is_syncmer(kmer, skim_config_.k, skim_config_.s, skim_config_.t);
   }
-
 
   [[nodiscard]] auto kmer_to_position(const std::string& s) const -> std::optional<std::pair<std::size_t, std::size_t>> {
     LogFun lf{"spir_client_state::kmer_to_position(...)"};
@@ -402,6 +420,7 @@ public:
     e.fill(rng_, dist);
 
     spir_data_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
+
     auto qu = mat_vec(A_, s, spir_config_.log_q);
     qu.add(e);
     qu.set(i_col, qu.get(i_col) + delta);
@@ -442,7 +461,7 @@ public:
 
     auto pos = kmer_to_position(str);
     if (!pos) {
-      return std::unexpected{pos.error()};
+      return std::unexpected{"kmer not found"};
     }
 
     auto [i_row, i_col] = *pos;

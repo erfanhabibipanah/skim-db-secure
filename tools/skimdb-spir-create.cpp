@@ -3,6 +3,7 @@
 #include <string>
 
 #include <cxxopts.hpp>
+#include <fmtextra/fmt_extra.h>
 #include <fmtextra/prompted_input.h>
 
 #include <spdlog/spdlog.h>
@@ -113,7 +114,10 @@ auto main(int argc, char* argv[]) -> int {
   if (!save_res) {
     log->error("could not save server state: {}", save_res.error());
     return -1;
+  } else {
+    log->info("server state saved, size: {}B ({})", save_res.value(), as_fsize{save_res.value()});
   }
+
 
   log->info("done!");
 

@@ -7,6 +7,8 @@
 #include <optional>
 #include <utility>
 
+#include <google/protobuf/empty.pb.h>
+
 #include <grpcpp/grpcpp.h>
 
 #include <skimdb/detail/skimdb_logger.h>
@@ -28,57 +30,60 @@ public:
 
     g_log->debug("fetching db parameters from server...");
 
-    grpc::ClientContext ctx1;
-    DbParametersRequest db_req;
     DbParametersReply db_ans;
-    grpc::Status db_status = stub_->GetDbParameters(&ctx1, db_req, &db_ans);
-
-    if (!db_status.ok()) {
-      return std::unexpected{db_status.error_message()};
+    if (auto res = m_unary_rpc_(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, DbParametersReply* reply) {
+            return stub_->GetDbParameters(ctx, req, reply);
+          }, google::protobuf::Empty{}, db_ans);
+        !res) {
+      return std::unexpected{res.error().error_message()};
     }
 
     g_log->debug("fetching db metadata from server...");
 
-    grpc::ClientContext ctx2;
-    DbMetadataRequest meta_req;
     DbMetadataReply meta_ans;
-    grpc::Status meta_status = stub_->GetDbMetadata(&ctx2, meta_req, &meta_ans);
-
-    if (!meta_status.ok()) {
-      return std::unexpected{meta_status.error_message()};
+    if (auto res = m_unary_rpc_(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, DbMetadataReply* reply) {
+            return stub_->GetDbMetadata(ctx, req, reply);
+          }, google::protobuf::Empty{}, meta_ans);
+        !res) {
+      return std::unexpected{res.error().error_message()};
     }
 
-    skimdb::index index;
-
-    for (const auto& kidx : meta_ans.index()) {
-      index[kidx.first] = kidx.second;
-    }
+    skimdb::kmer_index index;
+    const std::string& buffer = meta_ans.index();
+    std::istringstream is(buffer, std::ios::binary);
+    cereal::BinaryInputArchive ar(is);
+    ar(index);
 
     std::vector<std::string> labels{meta_ans.labels().begin(), meta_ans.labels().end()};
 
     g_log->debug("fetching spir parameters from server...");
 
-    grpc::ClientContext ctx3;
-    SpirParametersRequest spir_req;
     SpirParametersReply spir_ans;
-    grpc::Status spir_status = stub_->GetSpirParameters(&ctx3, spir_req, &spir_ans);
-
-    if (!spir_status.ok()) {
-      return std::unexpected{spir_status.error_message()};
+    if (auto res = m_unary_rpc_(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirParametersReply* reply) {
+            return stub_->GetSpirParameters(ctx, req, reply);
+          }, google::protobuf::Empty{}, spir_ans);
+        !res) {
+      return std::unexpected{res.error().error_message()};
     }
 
     g_log->debug("fetching spir hint from server...");
 
-    grpc::ClientContext ctx4;
-    SpirHintRequest hint_req;
-    SpirHintReply hint_ans;
-    grpc::Status hint_status = stub_->GetSpirHint(&ctx4, hint_req, &hint_ans);
+    std::vector<std::uint64_t> hint_data;
 
-    if (!hint_status.ok()) {
-      return std::unexpected{hint_status.error_message()};
+    if (auto res = m_unary_stream_rpc_<google::protobuf::Empty, SpirHintRow>(
+          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req) {
+            return stub_->GetSpirHint(ctx, req);
+          }, 
+          google::protobuf::Empty{},
+          [&](const SpirHintRow& row) {
+            hint_data.insert(hint_data.end(), row.hint_row().begin(), row.hint_row().end());
+          });
+        !res) {
+      return std::unexpected{res.error().error_message()};
     }
-
-    std::vector<std::uint64_t> hint_data{hint_ans.hint_c().begin(), hint_ans.hint_c().end()};
 
     g_log->debug("initializing client state...");
 
@@ -103,10 +108,13 @@ public:
     return {};
   }
 
+  auto ready() const -> bool {
+    return state_.has_value();
+  }
 
 #ifdef SKIMDB_USE_RLWE
   void init_rlwe() {
-    if (!state_.has_value()) {
+    if (!ready()) {
       g_log->error("client not initialized! call setup() first.");
       return;
     }
@@ -120,7 +128,7 @@ public:
   auto query_hybrid(const std::string& s) -> std::generator<const std::string&> {
     LogFun lf{"SpirDBClient::query_hybrid(...)"};
 
-    if (!state_.has_value()) {
+    if (!ready()) {
       g_log->error("client not initialized! call setup() first.");
       co_return;
     }
@@ -155,10 +163,11 @@ public:
   }
 #endif
 
+
   auto query(const std::string& s) -> std::generator<const std::string&> {
     LogFun lf{"SpirDBClient::query(...)"};
 
-    if (!state_.has_value()) {
+    if (!ready()) {
       g_log->error("client not initialized! call setup() first...");
       co_return;
     }
@@ -169,12 +178,12 @@ public:
     }
 
     auto res = state_->kmer_to_position(s);
-
     if (!res.has_value()) {
       co_return;
     }
 
-    auto pos = res.value();
+    auto& pos = res.value();
+
     auto query_state = state_->prepare_query(pos.second);
     auto qu_data = query_state.qu_vec.span();
 
@@ -195,16 +204,44 @@ public:
     auto pir_params = state_->spir_parameters();
     spir_matrix ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
 
-    co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos->first));
+    co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos.first));
   }
 
 private:
-    std::optional<spir_client_state> state_; // client state (initialized on setup)
+  template <typename RpcFn, typename Request, typename Reply>
+  auto m_unary_rpc_(RpcFn&& rpc, const Request& req, Reply& reply) -> std::expected<void, grpc::Status> {
+    grpc::ClientContext ctx;
+    grpc::Status status = rpc(&ctx, req, &reply);
+    if (!status.ok()) {
+      return std::unexpected{status};
+    }
+    return {};
+  };
 
+  template <typename Request, typename Reply, typename StreamFn, typename OnMessage>
+  auto m_unary_stream_rpc_(StreamFn&& create_reader, const Request& req, OnMessage&& on_message) -> std::expected<void, grpc::Status> {
+    grpc::ClientContext ctx;
+
+    auto reader = create_reader(&ctx, req);
+    Reply reply;
+
+    while (reader->Read(&reply)) {
+      on_message(reply);
+    }
+
+    grpc::Status status = reader->Finish();
+    if (!status.ok()) {
+      return std::unexpected{status};
+    }
+
+    return {};
+  }
+
+  std::optional<spir_client_state> state_;
+  std::unique_ptr<SpirDB::Stub> stub_;
 #ifdef SKIMDB_USE_RLWE
-    bool rlwe_mode_ = false;
+  bool rlwe_mode_ = false;
 #endif
-    std::unique_ptr<SpirDB::Stub> stub_;
 };
 
 } // namespace skim::spir::rpc

@@ -18,8 +18,7 @@ usage() {
 DIR=$(pwd)/release
 CMAKE_CALL="../"
 
-
-while getopts "Tgshvdj:r:" arg; do
+while getopts "Tgshvdj:r:l" arg; do
   case $arg in
     h)
       usage
@@ -37,6 +36,9 @@ while getopts "Tgshvdj:r:" arg; do
     r)
       RPATH="$OPTARG"
       CMAKE_CALL="$CMAKE_CALL -DCMAKE_BUILD_RPATH=$RPATH -DCMAKE_INSTALL_RPATH=$RPATH"
+      ;;
+    l)
+      BUILD_LOG=1
       ;;
     T)
       CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_TOOLS=ON"
@@ -70,5 +72,11 @@ export CMAKE_POLICY_VERSION_MINIMUM=3.5
 
 cd build/
 cmake $CMAKE_CALL -DCMAKE_INSTALL_PREFIX=$DIR
-make -j $JOBS $VERBOSE
+
+if [ -n "$BUILD_LOG" ]; then
+  make -j $JOBS $VERBOSE 2>&1 | tee ../build.log
+else
+  make -j $JOBS $VERBOSE
+fi
+
 make install

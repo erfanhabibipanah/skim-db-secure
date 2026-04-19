@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,14 +56,24 @@ inline auto load_f2l(const fs::path& path) {
     return std::make_pair(names, labels);
   }
 
-  std::string name;
-  std::string id;
+  std::string line;
+  while (std::getline(f, line)) {
+    std::istringstream iss(line);
 
-  while (!f.eof()) {
-    f >> name;
-    std::getline(f, id);
+    std::string name;
+    if (!(iss >> name)) {
+        continue;
+    }
+
+    std::string label;
+    std::getline(iss >> std::ws, label);
+
+    if (label.empty()) {
+      continue;
+    }
+
     names.push_back(name);
-    labels.push_back(id);
+    labels.push_back(label);
   }
 
   return std::make_pair(names, labels);

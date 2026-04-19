@@ -35,9 +35,12 @@ target_compile_options(skimdb_tooling_flags INTERFACE
     # Release
     $<$<CONFIG:Release>:
         -O3
-        -march=native
         -ffast-math
         -funroll-loops
+#       clang only
+#        -Rpass=loop-vectorize              # report successfully vectorized loops
+#        -Rpass-missed=loop-vectorize       # report failed vectorization with reason
+#        -Rpass-analysis=loop-vectorize     # extra detail on why it failed
     >
 )
 
