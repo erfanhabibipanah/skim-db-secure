@@ -387,6 +387,7 @@ void partitioned_mat_vec3(const skimdb_matrix& mat,
 
       auto vec_val = vec[j];
 
+      // probably not vectorized
       for (std::size_t i = 0; i < full_blocks; ++i) {
         out[i] += (static_cast<std::uint64_t>(load24(rle_ptr + i * 3)) * vec_val) & mask;
       }
@@ -395,6 +396,7 @@ void partitioned_mat_vec3(const skimdb_matrix& mat,
         std::uint64_t val = 0;
         const std::size_t rem = len - full_blocks * 3;
 
+        // probably not vectorized
         for (std::size_t k = 0; k < rem; ++k) {
           val = (val << 8) | rle_ptr[full_blocks * 3 + k];
         }

@@ -11,6 +11,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/detail/skimdb_logger.h>
 #include <skimdb/spir/skimdb_spir.h>
 
@@ -19,7 +20,7 @@
 
 namespace skim::spir::rpc {
 
-class SpirDBClient final {
+class SpirDBClient {
 public:
   explicit SpirDBClient(std::shared_ptr<grpc::Channel> channel) : stub_(SpirDB::NewStub(channel)) {
     g_log->debug("rpc client created!");
@@ -31,10 +32,12 @@ public:
     g_log->debug("fetching db parameters from server...");
 
     DbParametersReply db_ans;
-    if (auto res = m_unary_rpc_(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, DbParametersReply* reply) {
-            return stub_->GetDbParameters(ctx, req, reply);
-          }, google::protobuf::Empty{}, db_ans);
+
+    if (auto res = m_unary_rpc_([this](grpc::ClientContext* ctx,
+                                       const google::protobuf::Empty& req,
+                                       DbParametersReply* reply) { return stub_->GetDbParameters(ctx, req, reply); },
+                                google::protobuf::Empty{},
+                                db_ans);
         !res) {
       return std::unexpected{res.error().error_message()};
     }
@@ -42,17 +45,21 @@ public:
     g_log->debug("fetching db metadata from server...");
 
     DbMetadataReply meta_ans;
-    if (auto res = m_unary_rpc_(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, DbMetadataReply* reply) {
-            return stub_->GetDbMetadata(ctx, req, reply);
-          }, google::protobuf::Empty{}, meta_ans);
+
+    if (auto res = m_unary_rpc_([this](grpc::ClientContext* ctx,
+                                       const google::protobuf::Empty& req,
+                                       DbMetadataReply* reply) { return stub_->GetDbMetadata(ctx, req, reply); },
+                                google::protobuf::Empty{},
+                                meta_ans);
         !res) {
       return std::unexpected{res.error().error_message()};
     }
 
     skimdb::kmer_index index;
+
     const std::string& buffer = meta_ans.index();
     std::istringstream is(buffer, std::ios::binary);
+
     cereal::BinaryInputArchive ar(is);
     ar(index);
 
@@ -61,10 +68,13 @@ public:
     g_log->debug("fetching spir parameters from server...");
 
     SpirParametersReply spir_ans;
+
     if (auto res = m_unary_rpc_(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirParametersReply* reply) {
-            return stub_->GetSpirParameters(ctx, req, reply);
-          }, google::protobuf::Empty{}, spir_ans);
+            [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirParametersReply* reply) {
+              return stub_->GetSpirParameters(ctx, req, reply);
+            },
+            google::protobuf::Empty{},
+            spir_ans);
         !res) {
       return std::unexpected{res.error().error_message()};
     }
@@ -74,13 +84,13 @@ public:
     std::vector<std::uint64_t> hint_data;
 
     if (auto res = m_unary_stream_rpc_<google::protobuf::Empty, SpirHintRow>(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req) {
-            return stub_->GetSpirHint(ctx, req);
-          }, 
-          google::protobuf::Empty{},
-          [&](const SpirHintRow& row) {
-            hint_data.insert(hint_data.end(), row.hint_row().begin(), row.hint_row().end());
-          });
+            [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req) {
+              return stub_->GetSpirHint(ctx, req);
+            },
+            google::protobuf::Empty{},
+            [&](const SpirHintRow& row) {
+              hint_data.insert(hint_data.end(), row.hint_row().begin(), row.hint_row().end());
+            });
         !res) {
       return std::unexpected{res.error().error_message()};
     }
@@ -108,9 +118,7 @@ public:
     return {};
   }
 
-  auto ready() const -> bool {
-    return state_.has_value();
-  }
+  auto ready() const -> bool { return state_.has_value(); }
 
   auto query(const std::string& s) -> std::generator<const std::string&> {
     LogFun lf{"SpirDBClient::query(...)"};
@@ -156,14 +164,23 @@ public:
     co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos.first));
   }
 
+  auto skim_parameters() -> std::optional<skimdb_parameters> {
+    if (state_.has_value()) {
+      return state_.value().skim_parameters();
+    }
+    return std::nullopt;
+  }
+
 private:
   template <typename RpcFn, typename Request, typename Reply>
   auto m_unary_rpc_(RpcFn&& rpc, const Request& req, Reply& reply) -> std::expected<void, grpc::Status> {
     grpc::ClientContext ctx;
     grpc::Status status = rpc(&ctx, req, &reply);
+
     if (!status.ok()) {
       return std::unexpected{status};
     }
+
     return {};
   };
 
@@ -179,6 +196,7 @@ private:
     }
 
     grpc::Status status = reader->Finish();
+
     if (!status.ok()) {
       return std::unexpected{status};
     }

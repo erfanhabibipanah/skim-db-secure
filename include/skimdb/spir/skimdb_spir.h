@@ -368,7 +368,7 @@ public:
     batch_state.qu_vec.set(i_batch, i_col, batch_state.qu_vec.get(i_batch, i_col) + delta);
   }
 
-  
+
   [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row)
       -> std::generator<const std::string&> {
     LogFun lf{"spir_client_state::result(...)"};
