@@ -79,7 +79,8 @@ public:
     std::size_t n = data_.size();
     const auto* src = mat.data_.data();
 
-  #pragma omp parallel for simd schedule(static)
+    // vectorization does not work
+#pragma omp parallel for schedule(static)
     for (std::size_t i = 0; i < n; ++i) {
       dst[i] = (dst[i] + src[i]) & mask_;
     }
@@ -95,7 +96,8 @@ public:
     std::size_t n = data_.size();
     std::uint64_t half_delta = (log_delta == 0) ? 0ull : (1ull << (log_delta - 1));
 
-  #pragma omp parallel for simd schedule(static)
+    // vectorization does not work
+#pragma omp parallel for schedule(static)
     for (std::size_t i = 0; i < n; ++i) {
       dst[i] = ((dst[i] + half_delta) & mask_) >> log_delta;
     }
@@ -440,7 +442,8 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
   auto* __restrict__ out = dst.data();
   auto end = dst.size();
 
-#pragma omp parallel for simd schedule(static)
+  // vectorization does not work
+#pragma omp parallel for schedule(static)
   for (std::size_t i = 0; i < end; ++i) {
     out[i] &= mask;
   }

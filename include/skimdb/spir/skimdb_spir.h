@@ -409,6 +409,7 @@ private:
     switch (spir_config_.block_size) {
     case 1: {
       std::size_t out_len = spir_config_.rle_blocks / 2;
+
       rle_data.resize(out_len);
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
@@ -420,6 +421,7 @@ private:
     }
     case 2: {
       std::size_t out_len = spir_config_.rle_blocks;
+
       rle_data.resize(out_len);
       std::uint16_t* dst = rle_data.data();
 
@@ -431,11 +433,12 @@ private:
     }
     case 3: {
       std::size_t out_len = spir_config_.rle_blocks * 3 / 2 + ((spir_config_.rle_blocks * 3 % 2) ? 1 : 0);
+
       rle_data.resize(out_len);
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
       for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
-        dst[i * 3] = static_cast<std::uint8_t>((d_data[i] >> 16) & 0xFFull);
+        dst[i * 3 + 0] = static_cast<std::uint8_t>((d_data[i] >> 16) & 0xFFull);
         dst[i * 3 + 1] = static_cast<std::uint8_t>((d_data[i] >> 8) & 0xFFull);
         dst[i * 3 + 2] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);
       }
