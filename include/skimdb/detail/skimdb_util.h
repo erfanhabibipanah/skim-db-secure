@@ -40,6 +40,57 @@ void load(Archive& ar, roaring::Roaring& bitmap) {
 } // namespace cereal
 
 
+namespace skim {
+
+class kmer_distribution {
+public:
+  using result_type = std::string;
+
+  struct param_type {
+    std::size_t k;
+    friend auto operator==(const param_type&, const param_type&) -> bool = default;
+  };
+
+  kmer_distribution() = default;
+  explicit kmer_distribution(std::size_t k) : params_{k} {}
+  explicit kmer_distribution(const param_type& p) : params_{p} {}
+
+  [[nodiscard]] auto param() const noexcept { return params_; }
+  void param(const param_type& p) noexcept { params_ = p; }
+
+  [[nodiscard]] auto k() const noexcept { return params_.k; }
+
+  void reset() noexcept {}
+
+  template <typename URBG>
+  auto operator()(URBG& g) -> result_type {
+    return (*this)(g, params_);
+  }
+
+  template <typename URBG>
+  auto operator()(URBG& g, const param_type& p) -> result_type {
+    std::string s;
+    s.resize(p.k);
+
+    std::uniform_int_distribution<int> dist(0, 3);
+
+    for (std::size_t i = 0; i < p.k; ++i) {
+      s[i] = alphabet_[dist(g)];
+    }
+
+    return s;
+  }
+
+  friend auto operator==(const kmer_distribution&, const kmer_distribution&) -> bool = default;
+
+private:
+  param_type params_{0};
+  static constexpr std::array<char, 4> alphabet_{'A', 'C', 'G', 'T'};
+};
+
+} // namespace skim
+
+
 namespace skim::detail {
 
 namespace fs = std::filesystem;

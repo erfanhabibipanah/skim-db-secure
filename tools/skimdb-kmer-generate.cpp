@@ -18,52 +18,7 @@
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
-
-class kmer_distribution {
-public:
-  using result_type = std::string;
-
-  struct param_type {
-    std::size_t k;
-    friend bool operator==(const param_type&, const param_type&) = default;
-  };
-
-  kmer_distribution() = default;
-  explicit kmer_distribution(std::size_t k) : params_{k} {}
-  explicit kmer_distribution(const param_type& p) : params_{p} {}
-
-  [[nodiscard]] param_type param() const noexcept { return params_; }
-  void param(const param_type& p) noexcept { params_ = p; }
-
-  [[nodiscard]] std::size_t k() const noexcept { return params_.k; }
-
-  void reset() noexcept {}
-
-  template <typename URBG>
-  auto operator()(URBG& g) -> result_type {
-    return (*this)(g, params_);
-  }
-
-  template <typename URBG>
-  result_type operator()(URBG& g, const param_type& p) {
-    std::string s;
-    s.resize(p.k);
-
-    std::uniform_int_distribution<int> dist(0, 3);
-
-    for (std::size_t i = 0; i < p.k; ++i) {
-      s[i] = alphabet_[dist(g)];
-    }
-
-    return s;
-  }
-
-  friend bool operator==(const kmer_distribution&, const kmer_distribution&) = default;
-
-private:
-  param_type params_{0};
-  static constexpr char alphabet_[4] = {'A', 'C', 'G', 'T'};
-};
+#include <skimdb/detail/skimdb_util.h>
 
 
 auto random_kmers(std::size_t k, std::int64_t seed) -> std::generator<std::string> {
@@ -72,7 +27,7 @@ auto random_kmers(std::size_t k, std::int64_t seed) -> std::generator<std::strin
   }
 
   std::mt19937 rng(seed);
-  kmer_distribution dist(k);
+  skim::kmer_distribution dist(k);
 
   while (true) {
     co_yield dist(rng);
