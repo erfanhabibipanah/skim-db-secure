@@ -1,5 +1,3 @@
-#include "skimdb/detail/skimdb_definitions.h"
-#include <array>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -10,6 +8,7 @@
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
+#include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/spir/net/gRPC/spirdb_client.h>
 
 

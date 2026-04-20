@@ -259,6 +259,7 @@ inline void partitioned_mat_vec_inner(std::uint64_t* __restrict__ out,
                                       std::uint64_t mask) {
   for (std::size_t i = 0; i < N; ++i) {
     out[i] += (static_cast<std::uint64_t>(rle[i]) * vec_val) & mask;
+    out[i] &= mask;
   }
 }
 
@@ -300,6 +301,7 @@ void partitioned_mat_vec1(const skimdb_matrix& mat,
 #pragma omp simd
         for (std::size_t i = 0; i < len; ++i) {
           out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+          out[i] &= mask;
         }
       }
     }
@@ -344,6 +346,7 @@ void partitioned_mat_vec2(const skimdb_matrix& mat,
 #pragma omp simd
         for (std::size_t i = 0; i < len; ++i) {
           out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+          out[i] &= mask;
         }
       }
     }
@@ -392,6 +395,7 @@ void partitioned_mat_vec3(const skimdb_matrix& mat,
       // probably not vectorized
       for (std::size_t i = 0; i < full_blocks; ++i) {
         out[i] += (static_cast<std::uint64_t>(load24(rle_ptr + i * 3)) * vec_val) & mask;
+        out[i] &= mask;
       }
 
       if (full_blocks * 3 < len) {
@@ -405,6 +409,7 @@ void partitioned_mat_vec3(const skimdb_matrix& mat,
         val <<= (3 - rem) * 8;
 
         out[full_blocks] += (val * vec_val) & mask;
+        out[full_blocks] &= mask;
       }
     }
   }
@@ -437,15 +442,6 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
       g_log->error("impossible case, block size {}", mat.block_size());
       break;
     }
-  }
-
-  auto* __restrict__ out = dst.data();
-  auto end = dst.size();
-
-  // vectorization does not work
-#pragma omp parallel for schedule(static)
-  for (std::size_t i = 0; i < end; ++i) {
-    out[i] &= mask;
   }
 }
 
