@@ -16,12 +16,12 @@
 #include "detail/skimdb_definitions.h"
 #include "detail/skimdb_logger.h"
 #include "detail/skimdb_util.h"
+
 #include "skimdb.h"
-#include "skimdb_solvers.h"
 
 
 namespace skim {
-
+  
 namespace fs = std::filesystem;
 
 class builder final {

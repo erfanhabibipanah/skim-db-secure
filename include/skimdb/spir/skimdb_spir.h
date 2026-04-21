@@ -21,12 +21,12 @@
 
 #include <dgpp/uniform_rejection.hpp>
 
-#include <skimdb/detail/skimdb_logger.h>
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/detail/skimdb_encoding.h>
+#include <skimdb/detail/skimdb_logger.h>
+#include <skimdb/detail/skimdb_util.h>
 #include <skimdb/skimdb.h>
 
-#include "skimdb/detail/skimdb_util.h"
 #include "skimdb_spir_matrix.h"
 #include "skimdb_spir_definitions.h"
 
@@ -34,6 +34,14 @@
 namespace skim::spir {
 
 namespace fs = std::filesystem;
+
+struct spir_config {
+  std::string metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
+  std::string hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
+};
+
+spir_config g_config;
+
 
 class spir_server_state final {
 public:
