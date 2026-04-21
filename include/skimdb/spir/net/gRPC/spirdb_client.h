@@ -77,7 +77,7 @@ public:
 
     if (fs::exists(metadata_path)) {
       g_log->debug("client metadata found locally, initializing client state...");
-      
+
       auto res = load_client(skim_conf, spir_conf, metadata_root);
       if (!res) {
         return std::unexpected{res.error()};

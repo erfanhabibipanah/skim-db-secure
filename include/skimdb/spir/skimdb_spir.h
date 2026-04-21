@@ -37,22 +37,20 @@ namespace skim::spir {
 
 namespace fs = std::filesystem;
 
-struct spir_config {
-  std::string metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
-  std::string hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
+
+struct spir_runtime_config {
+  std::string server_temp_dir{".skimdb-server"};    // path to directory where server stores temp data
+  std::string client_metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
+  std::string client_hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
 };
 
-spir_config g_config;
+spir_runtime_config g_spir_config;
 
 
 class spir_server_state final {
 public:
-  explicit spir_server_state(skimdb_matrix&& DB,
-                             skimdb_parameters&& skim_config,
-                             spirdb_parameters&& spir_config)
-    : DB_{std::move(DB)},
-      skim_config_{std::move(skim_config)},
-      spir_config_{std::move(spir_config)} {}
+  explicit spir_server_state(skimdb_matrix&& DB, skimdb_parameters&& skim_config, spirdb_parameters&& spir_config)
+      : DB_{std::move(DB)}, skim_config_{std::move(skim_config)}, spir_config_{std::move(spir_config)} {}
 
   [[nodiscard]] auto skim_parameters() const -> const skimdb_parameters& { return skim_config_; }
 
@@ -146,7 +144,6 @@ private:
                                std::size_t n,
                                double sigma,
                                std::size_t batch_size = 1,
-                               fs::path client_metadata_root = {},
                                std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server(...)"};
@@ -186,6 +183,7 @@ private:
 
   double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
   auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
+
   std::size_t sqrt_N = rles_per_side * rle_blocks;
 
   skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
@@ -202,7 +200,10 @@ private:
   auto hint_c = mat_mul(DB, A, log_q, rle_blocks);
 
   g_log->info("generating client metadata...");
-  fs::path temp_metadata_path = client_metadata_root / "temp.client";
+
+  std::string rand_name = std::to_string(std::random_device{}());
+  fs::path temp_metadata_path = fs::path(g_spir_config.server_temp_dir) / rand_name;
+
   {
     std::ofstream os{temp_metadata_path, std::ios::binary};
     if (!os) {
@@ -212,8 +213,9 @@ private:
     cereal::BinaryOutputArchive archive{os};
     archive(db_parts.index, db_parts.labels, hint_c);
   }
-  
+
   auto hash_res = sha256_file(temp_metadata_path);
+
   if (!hash_res) {
     return std::unexpected{hash_res.error()};
   }
@@ -221,7 +223,7 @@ private:
   std::string metadata_hash = hash_res.value();
 
   std::error_code ec;
-  fs::rename(temp_metadata_path, fs::path(client_metadata_root) / (metadata_hash + ".client"), ec);
+  fs::rename(temp_metadata_path, fs::path(g_spir_config.server_temp_dir) / (metadata_hash + ".client"), ec);
   if (ec) {
     return std::unexpected{"could not rename client metadata"};
   }
@@ -261,16 +263,29 @@ private:
     skimdb_parameters skim_conf{};
     spirdb_parameters spir_conf{};
 
-    archive(DB, skim_conf.k, skim_conf.s, skim_conf.t, spir_conf.n, spir_conf.sigma, spir_conf.log_p,
-            spir_conf.log_q, spir_conf.batch_size, spir_conf.block_size, spir_conf.rle_blocks, spir_conf.sqrt_N,
-            spir_conf.seed, spir_conf.metadata_hash);
+    archive(DB,
+            skim_conf.k,
+            skim_conf.s,
+            skim_conf.t,
+            spir_conf.n,
+            spir_conf.sigma,
+            spir_conf.log_p,
+            spir_conf.log_q,
+            spir_conf.batch_size,
+            spir_conf.block_size,
+            spir_conf.rle_blocks,
+            spir_conf.sqrt_N,
+            spir_conf.seed,
+            spir_conf.metadata_hash);
 
     g_log->info("server state loaded, (sqrt_N={}, log_p={}, log_q={}, n={}, sigma={})",
-                spir_conf.sqrt_N, spir_conf.log_p, spir_conf.log_q, spir_conf.n, spir_conf.sigma);
+                spir_conf.sqrt_N,
+                spir_conf.log_p,
+                spir_conf.log_q,
+                spir_conf.n,
+                spir_conf.sigma);
 
-    return spir_server_state{std::move(DB),
-                             std::move(skim_conf),
-                             std::move(spir_conf)};
+    return spir_server_state{std::move(DB), std::move(skim_conf), std::move(spir_conf)};
   } catch (...) {
     return std::unexpected{"deserialization failed"};
   }
@@ -284,12 +299,12 @@ public:
   explicit spir_client_state(skimdb_parameters skim_config, skimdb_metadata skim_metadata,
                              spirdb_parameters spir_config, spir_matrix hint_c,
                              std::uint64_t seed = std::random_device{}())
-      : skim_config_{std::move(skim_config)},
-        skim_metadata_{std::move(skim_metadata)},
-        spir_config_{std::move(spir_config)},
-        A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
-        hint_c_{std::move(hint_c)},
-        main_seed_{seed} {
+    : skim_config_{std::move(skim_config)},
+      skim_metadata_{std::move(skim_metadata)},
+      spir_config_{std::move(spir_config)},
+      A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
+      hint_c_{std::move(hint_c)},
+      main_seed_{seed} {
     spir_common_rng_t rng{spir_config_.seed};
     A_.fill(rng);
   }

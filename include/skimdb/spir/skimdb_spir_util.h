@@ -5,7 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
-#include <ios> 
+#include <ios>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -33,7 +33,8 @@ auto sha256_file(const fs::path& path) -> std::expected<std::string, std::string
     return std::unexpected{"EVP_DigestInit_ex failed"};
   }
 
-  std::vector<char> buffer(8192); // increase buffer size
+  std::vector<char> buffer(1024 * 1024 * 1024);
+
   while (file) {
     file.read(buffer.data(), buffer.size());
     std::streamsize bytes = file.gcount();
@@ -44,11 +45,13 @@ auto sha256_file(const fs::path& path) -> std::expected<std::string, std::string
 
   unsigned char digest[EVP_MAX_MD_SIZE];
   unsigned int digest_len = 0;
+
   EVP_DigestFinal_ex(ctx, digest, &digest_len);
   EVP_MD_CTX_free(ctx);
 
   std::ostringstream oss;
   oss << std::hex << std::setfill('0');
+
   for (unsigned i = 0; i < digest_len; ++i) {
     oss << std::setw(2) << static_cast<unsigned>(digest[i]);
   }
