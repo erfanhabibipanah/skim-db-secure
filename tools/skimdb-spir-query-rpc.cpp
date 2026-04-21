@@ -14,6 +14,7 @@
 
 auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
+  std::string client_metadata_dir = "";
   bool verbose = false;
 
   try {
@@ -21,6 +22,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("m,meta_dir", "directory for client metadata", cxxopts::value<std::string>(client_metadata_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");
 
@@ -39,6 +41,11 @@ auto main(int argc, char* argv[]) -> int {
   auto log = spdlog::stdout_color_mt("skimdb-spir-query-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
+  if (client_metadata_dir.empty()) {
+    log->info("client metadata directory not specified! using local directory as default...");
+    client_metadata_dir = ".";
+  }
+
   log->info("connecting to {}...", addr);
 
   grpc::ChannelArguments args;
@@ -55,7 +62,7 @@ auto main(int argc, char* argv[]) -> int {
   skim::spir::rpc::SpirDBClient client{channel};
   log->info("connection established, preparing for queries...");
 
-  auto success = client.setup();
+  auto success = client.setup(client_metadata_dir);
   if (!success) {
     log->error("rpc setup failed: {}", success.error());
     return -1;

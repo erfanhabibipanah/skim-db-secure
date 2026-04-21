@@ -20,13 +20,15 @@
 
 namespace skim::spir::rpc {
 
+namespace fs = std::filesystem;
+
 class SpirDBClient {
 public:
   explicit SpirDBClient(std::shared_ptr<grpc::Channel> channel) : stub_(SpirDB::NewStub(channel)) {
     g_log->debug("rpc client created!");
   }
 
-  auto setup() -> std::expected<void, std::string> {
+  auto setup(const std::string& metadata_root) -> std::expected<void, std::string> {
     LogFun lf{"SpirDBClient::setup(...)"};
 
     g_log->debug("fetching db parameters from server...");
@@ -42,28 +44,7 @@ public:
       return std::unexpected{res.error().error_message()};
     }
 
-    g_log->debug("fetching db metadata from server...");
-
-    DbMetadataReply meta_ans;
-
-    if (auto res = m_unary_rpc_([this](grpc::ClientContext* ctx,
-                                       const google::protobuf::Empty& req,
-                                       DbMetadataReply* reply) { return stub_->GetDbMetadata(ctx, req, reply); },
-                                google::protobuf::Empty{},
-                                meta_ans);
-        !res) {
-      return std::unexpected{res.error().error_message()};
-    }
-
-    skimdb::kmer_index index;
-
-    const std::string& buffer = meta_ans.index();
-    std::istringstream is(buffer, std::ios::binary);
-
-    cereal::BinaryInputArchive ar(is);
-    ar(index);
-
-    std::vector<std::string> labels{meta_ans.labels().begin(), meta_ans.labels().end()};
+    skimdb_parameters skim_conf{.k = db_ans.k(), .s = db_ans.s(), .t = db_ans.t()};
 
     g_log->debug("fetching spir parameters from server...");
 
@@ -79,28 +60,6 @@ public:
       return std::unexpected{res.error().error_message()};
     }
 
-    g_log->debug("fetching spir hint from server...");
-
-    std::vector<std::uint64_t> hint_data;
-
-    if (auto res = m_unary_stream_rpc_<google::protobuf::Empty, SpirHintRow>(
-            [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req) {
-              return stub_->GetSpirHint(ctx, req);
-            },
-            google::protobuf::Empty{},
-            [&](const SpirHintRow& row) {
-              hint_data.insert(hint_data.end(), row.hint_row().begin(), row.hint_row().end());
-            });
-        !res) {
-      return std::unexpected{res.error().error_message()};
-    }
-
-    g_log->debug("initializing client state...");
-
-    skimdb_parameters skim_conf{.k = db_ans.k(), .s = db_ans.s(), .t = db_ans.t()};
-
-    skimdb_metadata skim_meta{.index = std::move(index), .labels = std::move(labels)};
-
     spirdb_parameters spir_conf{.n = spir_ans.n(),
                                 .sigma = spir_ans.sigma(),
                                 .log_p = spir_ans.log_p(),
@@ -109,13 +68,27 @@ public:
                                 .block_size = spir_ans.block_size(),
                                 .rle_blocks = spir_ans.rle_blocks(),
                                 .sqrt_N = spir_ans.sqrt_n(),
-                                .seed = spir_ans.seed()};
+                                .seed = spir_ans.seed(),
+                                .metadata_hash = spir_ans.metadata_hash()};
 
-    spir_matrix hint_c{std::move(hint_data), spir_ans.sqrt_n(), spir_ans.n(), spir_ans.log_p()};
+    g_log->debug("searching for client metadata...");
 
-    state_.emplace(std::move(skim_conf), std::move(skim_meta), std::move(spir_conf), std::move(hint_c));
+    fs::path metadata_path = fs::path(metadata_root) / (spir_conf.metadata_hash + ".client");
 
-    return {};
+    if (fs::exists(metadata_path)) {
+      g_log->debug("client metadata found locally, initializing client state...");
+      
+      auto res = load_client(skim_conf, spir_conf, metadata_root);
+      if (!res) {
+        return std::unexpected{res.error()};
+      }
+
+      state_ = std::move(res.value());
+      return {};
+    } else {
+      // TODO: implement metadata fetching (e.g. via FTP) if not found locally
+      return std::unexpected{"client metadata not found ... FTP download not implemented yet"};
+    }
   }
 
   auto ready() const -> bool { return state_.has_value(); }
@@ -171,7 +144,7 @@ public:
     return std::nullopt;
   }
 
-private:
+protected:
   template <typename RpcFn, typename Request, typename Reply>
   auto m_unary_rpc_(RpcFn&& rpc, const Request& req, Reply& reply) -> std::expected<void, grpc::Status> {
     grpc::ClientContext ctx;
@@ -183,26 +156,6 @@ private:
 
     return {};
   };
-
-  template <typename Request, typename Reply, typename StreamFn, typename OnMessage>
-  auto m_unary_stream_rpc_(StreamFn&& create_reader, const Request& req, OnMessage&& on_message) -> std::expected<void, grpc::Status> {
-    grpc::ClientContext ctx;
-
-    auto reader = create_reader(&ctx, req);
-    Reply reply;
-
-    while (reader->Read(&reply)) {
-      on_message(reply);
-    }
-
-    grpc::Status status = reader->Finish();
-
-    if (!status.ok()) {
-      return std::unexpected{status};
-    }
-
-    return {};
-  }
 
   std::optional<spir_client_state> state_; // client state (initialized on setup)
   std::unique_ptr<SpirDB::Stub> stub_;

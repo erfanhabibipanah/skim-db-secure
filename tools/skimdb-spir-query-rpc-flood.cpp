@@ -42,6 +42,7 @@ void run_query(skim::spir::rpc::SpirDBClient& client, unsigned int l) {
 
 auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
+  std::string client_metadata_dir = "";
   unsigned int nt = 1;
   unsigned int l = 100000;
 
@@ -50,6 +51,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("m,meta_dir", "directory for client metadata", cxxopts::value<std::string>(client_metadata_dir))
       ("t,threads", "number of query threads", cxxopts::value<unsigned int>(nt)->default_value(std::to_string(nt)))
       ("l", "sample size per thread", cxxopts::value<unsigned int>(l)->default_value(std::to_string(l)))
       ("h,help", "print this help");
@@ -85,7 +87,7 @@ auto main(int argc, char* argv[]) -> int {
   skim::spir::rpc::SpirDBClient client{channel};
   mlog->info("connection established, preparing for queries...");
 
-  auto res = client.setup();
+  auto res = client.setup(client_metadata_dir);
 
   if (!res) {
     mlog->error("rpc setup failed: {}", res.error());

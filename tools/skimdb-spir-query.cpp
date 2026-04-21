@@ -18,6 +18,7 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
+  std::string client_metadata_dir = "";
   bool verbose = false;
 
   try {
@@ -25,6 +26,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("i,input", "spir database to query", cxxopts::value<std::string>(in))
+      ("m,meta_dir", "directory for client metadata", cxxopts::value<std::string>(client_metadata_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");
 
@@ -48,6 +50,11 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  if (client_metadata_dir.empty()) {
+    log->info("client metadata directory not specified! using local directory as default...");
+    client_metadata_dir = ".";
+  }
+
   log->info("loading spir db from {}...", in);
 
   fs::path dir{in};
@@ -69,8 +76,14 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("creating client...");
 
-  skim::spir::spir_client_state client_state{server_state.skim_parameters(), server_state.skim_metadata(),
-                                             server_state.spir_parameters(), server_state.hint_c()};
+  fs::path client_metadata_file = fs::path(client_metadata_dir) / (server_state.spir_parameters().metadata_hash + ".client");
+  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), server_state.spir_parameters(), client_metadata_dir);
+  if (!client_setup) {
+    log->error("could not create client: {}", client_setup.error());
+    return -1;
+  }
+
+  auto client_state = client_setup.value();
 
   log->info("client ready for queries...");
 
