@@ -18,7 +18,7 @@ auto mlog = spdlog::stdout_color_mt("skimdb-spir-query-rpc-flood");
 void run_query(skim::spir::rpc::SpirDBClient& client, unsigned int l) {
   skim::skimdb_parameters param = client.skim_parameters().value();
 
-  mlog->info("running thread {} wirh l={}...", std::this_thread::get_id(), l);
+  mlog->info("running thread {} with l={}...", std::this_thread::get_id(), l);
 
   std::mt19937 rng(std::random_device{}());
   skim::kmer_distribution dist{param.k};
@@ -92,10 +92,19 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  std::vector<std::jthread> threads(nt);
+  {
+    std::vector<std::jthread> threads(nt);
 
-  for (auto& t : threads) {
-    t = std::jthread(run_query, std::ref(client), l);
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (auto& t : threads) {
+      t = std::jthread(run_query, std::ref(client), l);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+
+    mlog->info("total throughput: {:.2f}", static_cast<double>(nt * l) / elapsed.count());
   }
 
   mlog->info("done!");
