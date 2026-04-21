@@ -20,7 +20,7 @@ namespace fs = std::filesystem;
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
   std::string out = "";
-  std::string client_metadata_dir = "";
+  std::string cache_dir = "";
   unsigned int logp = 22;
   unsigned int logq = 64;
   unsigned int batch_size = 1;
@@ -33,11 +33,11 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "input skimdb database file", cxxopts::value<std::string>(in))
       ("o,output", "output file for server state", cxxopts::value<std::string>(out))
-      ("m,meta_dir", "directory for client metadata", cxxopts::value<std::string>(client_metadata_dir))
+      ("c,cache-dir", "directory for temporary data", cxxopts::value<std::string>(cache_dir))
       ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
       ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
-      ("b,batch_size", "batch size", cxxopts::value<unsigned int>(batch_size)->default_value(std::to_string(batch_size)))
-      ("n", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
+      ("b,batch-size", "batch size", cxxopts::value<unsigned int>(batch_size)->default_value(std::to_string(batch_size)))
+      ("n,secret-size", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
       ("s,sigma", "variance of error distribution", cxxopts::value<double>(sigma)->default_value(std::to_string(sigma)))
       ("h,help", "print this help");
 
@@ -73,10 +73,12 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  if (client_metadata_dir.empty()) {
-    log->info("client metadata directory not specified! using local directory as default...");
-    client_metadata_dir = ".";
+  if (cache_dir.empty()) {
+    log->info("server metadata directory not specified! using local directory as default...");
+    cache_dir = ".";
   }
+
+  skim::spir::g_spir_config.server_temp_dir = cache_dir;
 
   log->info("loading index from {}...", in);
 
@@ -90,7 +92,7 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("building spir server state...");
 
-  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma, batch_size, client_metadata_dir);
+  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma, batch_size);
 
   if (!setup) {
     log->error("could not setup server state: {}", setup.error());
@@ -108,7 +110,6 @@ auto main(int argc, char* argv[]) -> int {
   } else {
     log->info("server state saved, size: {}B ({})", save_res.value(), as_fsize{save_res.value()});
   }
-
 
   log->info("done!");
 

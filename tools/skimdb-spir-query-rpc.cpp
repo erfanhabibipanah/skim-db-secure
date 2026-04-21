@@ -1,4 +1,4 @@
-#include <cstdlib>
+#include "skimdb/spir/skimdb_spir.h"
 #include <iostream>
 #include <string>
 
@@ -14,7 +14,7 @@
 
 auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
-  std::string client_metadata_dir = "";
+  std::string cache_dir = "";
   bool verbose = false;
 
   try {
@@ -22,7 +22,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
-      ("m,meta_dir", "directory for client metadata", cxxopts::value<std::string>(client_metadata_dir))
+      ("c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");
 
@@ -41,30 +41,21 @@ auto main(int argc, char* argv[]) -> int {
   auto log = spdlog::stdout_color_mt("skimdb-spir-query-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
-  if (client_metadata_dir.empty()) {
-    log->info("client metadata directory not specified! using local directory as default...");
-    client_metadata_dir = ".";
+  if (cache_dir.empty()) {
+    log->info("client cache directory not specified! using local directory as default...");
+    cache_dir = ".";
   }
+
+  skim::spir::g_spir_config.client_hint_c_dir = cache_dir;
+  skim::spir::g_spir_config.client_metadata_dir = cache_dir;
 
   log->info("connecting to {}...", addr);
 
-  grpc::ChannelArguments args;
-  args.SetMaxReceiveMessageSize(-1);
-  args.SetMaxSendMessageSize(-1);
+  skim::spir::rpc::SpirDBClient client{addr};
 
-  auto channel = grpc::CreateCustomChannel(addr, grpc::InsecureChannelCredentials(), args);
-
-  if (!channel->WaitForConnected(std::chrono::system_clock::now() + std::chrono::seconds(5))) {
-    log->error("unable to connect to {}!", addr);
-    return -1;
-  }
-
-  skim::spir::rpc::SpirDBClient client{channel};
-  log->info("connection established, preparing for queries...");
-
-  auto success = client.setup(client_metadata_dir);
-  if (!success) {
-    log->error("rpc setup failed: {}", success.error());
+  auto res = client.setup();
+  if (!res) {
+    log->error("rpc setup failed: {}", res.error());
     return -1;
   }
 

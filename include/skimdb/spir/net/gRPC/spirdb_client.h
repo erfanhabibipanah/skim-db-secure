@@ -24,12 +24,26 @@ namespace fs = std::filesystem;
 
 class SpirDBClient {
 public:
-  explicit SpirDBClient(std::shared_ptr<grpc::Channel> channel) : stub_(SpirDB::NewStub(channel)) {
-    g_log->debug("rpc client created!");
+  explicit SpirDBClient(const std::string& addr = "127.0.0.1:50051") {
+    grpc::ChannelArguments args;
+
+    args.SetMaxReceiveMessageSize(-1);
+    args.SetMaxSendMessageSize(-1);
+
+    channel_ = grpc::CreateCustomChannel(addr, grpc::InsecureChannelCredentials(), args);
+
+    if (!channel_->WaitForConnected(std::chrono::system_clock::now() +
+                                    std::chrono::seconds(g_spir_config.grpc_timeout))) {
+      stub_ = SpirDB::NewStub(channel_);
+    }
   }
 
-  auto setup(const std::string& metadata_root) -> std::expected<void, std::string> {
+  auto setup() -> std::expected<void, std::string> {
     LogFun lf{"SpirDBClient::setup(...)"};
+
+    if ((!channel_) || (channel_->GetState(false) != GRPC_CHANNEL_READY)) {
+      return std::unexpected{"connection not established"};
+    }
 
     g_log->debug("fetching db parameters from server...");
 
@@ -73,12 +87,12 @@ public:
 
     g_log->debug("searching for client metadata...");
 
-    fs::path metadata_path = fs::path(metadata_root) / (spir_conf.metadata_hash + ".client");
+    fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / (spir_conf.metadata_hash + ".client");
 
     if (fs::exists(metadata_path)) {
       g_log->debug("client metadata found locally, initializing client state...");
 
-      auto res = load_client(skim_conf, spir_conf, metadata_root);
+      auto res = load_client(skim_conf, spir_conf, g_spir_config.client_metadata_dir);
       if (!res) {
         return std::unexpected{res.error()};
       }
@@ -158,6 +172,8 @@ protected:
   };
 
   std::optional<spir_client_state> state_; // client state (initialized on setup)
+
+  std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<SpirDB::Stub> stub_;
 };
 

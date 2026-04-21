@@ -39,6 +39,7 @@ namespace fs = std::filesystem;
 
 
 struct spir_runtime_config {
+  unsigned int grpc_timeout{5};                     // gRPC connection timeout
   std::string server_temp_dir{".skimdb-server"};    // path to directory where server stores temp data
   std::string client_metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
   std::string client_hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
@@ -503,7 +504,7 @@ private:
 [[nodiscard]] auto load_client(skimdb_parameters skim_config,
                                spirdb_parameters spir_config,
                                const std::string& client_metadata_root,
-                               std::uint64_t seed = std::random_device{}()) 
+                               std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_client_state, std::string> {
   LogFun lf{"load_client(...)"};
 
