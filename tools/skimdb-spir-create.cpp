@@ -20,9 +20,10 @@ namespace fs = std::filesystem;
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
   std::string out = "";
+  std::string client_metadata_dir = "";
   unsigned int logp = 22;
   unsigned int logq = 64;
-  unsigned int batch_size = 10;
+  unsigned int batch_size = 1;
   std::size_t n = 1923;
   double sigma = 271.65;
 
@@ -32,6 +33,7 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "input skimdb database file", cxxopts::value<std::string>(in))
       ("o,output", "output file for server state", cxxopts::value<std::string>(out))
+      ("m,meta_dir", "directory for client metadata", cxxopts::value<std::string>(client_metadata_dir))
       ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
       ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
       ("b,batch_size", "batch size", cxxopts::value<unsigned int>(batch_size)->default_value(std::to_string(batch_size)))
@@ -71,6 +73,11 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  if (client_metadata_dir.empty()) {
+    log->info("client metadata directory not specified! using local directory as default...");
+    client_metadata_dir = ".";
+  }
+
   log->info("loading index from {}...", in);
 
   skim::skimdb db;
@@ -83,7 +90,7 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("building spir server state...");
 
-  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma, batch_size);
+  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma, batch_size, client_metadata_dir);
 
   if (!setup) {
     log->error("could not setup server state: {}", setup.error());

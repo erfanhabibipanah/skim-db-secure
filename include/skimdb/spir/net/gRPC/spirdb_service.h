@@ -1,6 +1,7 @@
 #ifndef SPIRDB_SERVICE_H
 #define SPIRDB_SERVICE_H
 
+#include <algorithm>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -35,20 +36,6 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status GetDbMetadata(grpc::ServerContext* context, const google::protobuf::Empty*, DbMetadataReply* reply) override {
-    LogFun lf{"SpirDBService::GetDbMetadata(...)", spdlog::level::debug};
-    g_log->trace("serving db metadata request from {}...", context->peer());
-
-    std::ostringstream os(std::ios::binary);
-    cereal::BinaryOutputArchive ar(os);
-    ar(state_.skim_metadata().index);
-    *reply->mutable_index() = std::move(os).str();
-
-    reply->mutable_labels()->Assign(state_.skim_metadata().labels.begin(), state_.skim_metadata().labels.end());
-
-    return grpc::Status::OK;
-  }
-
   grpc::Status GetSpirParameters(grpc::ServerContext* context, const google::protobuf::Empty*,
                                  SpirParametersReply* reply) override {
     LogFun lf{"SpirDBService::GetSpirParameters(...)", spdlog::level::debug};
@@ -65,32 +52,7 @@ public:
     reply->set_rle_blocks(spir_params.rle_blocks);
     reply->set_sqrt_n(spir_params.sqrt_N);
     reply->set_seed(spir_params.seed);
-
-    return grpc::Status::OK;
-  }
-
-  // TODO: temporary measure to allow for testing with larger databases. Need to better optimize streaming large hint matrices
-  grpc::Status GetSpirHint(grpc::ServerContext* context, const google::protobuf::Empty*, grpc::ServerWriter<SpirHintRow>* writer) override {
-    LogFun lf{"SpirDBService::GetSpirHint(...)", spdlog::level::debug};
-    g_log->trace("serving spir hint request from {}...", context->peer());
-
-    SpirHintRow row;
-
-    const auto& hint_c = state_.hint_c();
-    auto [rows, _] = hint_c.dimensions();
-
-    for (std::size_t r = 0; r < rows; ++r) {
-      if (context->IsCancelled()) {
-        return grpc::Status::CANCELLED;
-      }
-
-      const auto data = hint_c.row(r);
-      row.mutable_hint_row()->Assign(data.begin(), data.end());
-
-      if (!writer->Write(row)) {
-        return grpc::Status(grpc::StatusCode::INTERNAL, "failed to write spir hint row");
-      }
-    }
+    reply->set_metadata_hash(spir_params.metadata_hash);
 
     return grpc::Status::OK;
   }
