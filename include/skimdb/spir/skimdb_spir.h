@@ -543,11 +543,12 @@ private:
 
 [[nodiscard]] auto load_client(skimdb_parameters skim_config,
                                spirdb_parameters spir_config,
-                               const fs::path& metadata_path,
-                               const fs::path& hint_c_path,
                                std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_client_state, std::string> {
   LogFun lf{"load_client(...)"};
+
+  fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / spir_config.metadata_hash;
+  fs::path hint_c_path = fs::path(g_spir_config.client_hint_c_dir) / spir_config.hint_c_hash;
 
   g_log->debug("loading client metadata from {}...", metadata_path.string());
   skimdb_metadata skim_metadata;

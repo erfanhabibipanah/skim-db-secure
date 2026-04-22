@@ -94,7 +94,7 @@ public:
     if (fs::exists(metadata_path) && fs::exists(hint_c_path)) {
       g_log->debug("client metadata and hint_c found locally, initializing client state...");
 
-      auto res = load_client(skim_conf, spir_conf, metadata_path, hint_c_path);
+      auto res = load_client(skim_conf, spir_conf);
       if (!res) {
         return std::unexpected{res.error()};
       }

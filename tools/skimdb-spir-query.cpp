@@ -78,11 +78,8 @@ auto main(int argc, char* argv[]) -> int {
 
 
   log->info("creating client...");
-
-  fs::path metadata_path = fs::path(skim::spir::g_spir_config.client_metadata_dir) / server_state.spir_parameters().metadata_hash;
-  fs::path hint_c_path = fs::path(skim::spir::g_spir_config.client_hint_c_dir) / server_state.spir_parameters().hint_c_hash;
   
-  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), server_state.spir_parameters(), metadata_path, hint_c_path);
+  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), server_state.spir_parameters());
 
   if (!client_setup) {
     log->error("could not create client: {}", client_setup.error());
