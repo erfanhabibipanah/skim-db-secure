@@ -53,6 +53,7 @@ public:
     reply->set_sqrt_n(spir_params.sqrt_N);
     reply->set_seed(spir_params.seed);
     reply->set_metadata_hash(spir_params.metadata_hash);
+    reply->set_hint_c_hash(spir_params.hint_c_hash);
 
     return grpc::Status::OK;
   }

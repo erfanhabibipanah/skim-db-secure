@@ -122,7 +122,8 @@ public:
               spir_config_.rle_blocks,
               spir_config_.sqrt_N,
               spir_config_.seed,
-              spir_config_.metadata_hash);
+              spir_config_.metadata_hash,
+              spir_config_.hint_c_hash);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};
     }
@@ -200,36 +201,73 @@ private:
   g_log->info("precomputing hint matrix DB * A, be patient...");
   auto hint_c = mat_mul(DB, A, log_q, rle_blocks);
 
-  g_log->info("generating client metadata...");
-
-  std::string rand_name = std::to_string(std::random_device{}());
-  fs::path temp_metadata_path = fs::path(g_spir_config.server_temp_dir) / rand_name;
-
+  g_log->info("saving client metadata...");
+  std::string metadata_hash;
+  
   {
-    std::ofstream os{temp_metadata_path, std::ios::binary};
-    if (!os) {
-      return std::unexpected{"could not create client metadata"};
+    std::string rand_name = std::to_string(std::random_device{}());
+    fs::path temp_metadata_path = fs::path(g_spir_config.server_temp_dir) / rand_name;
+
+    {
+      std::ofstream os{temp_metadata_path, std::ios::binary};
+      if (!os) {
+        return std::unexpected{"could not create client metadata"};
+      }
+
+      cereal::BinaryOutputArchive archive{os};
+      archive(db_parts.index, db_parts.labels);
     }
 
-    cereal::BinaryOutputArchive archive{os};
-    archive(db_parts.index, db_parts.labels, hint_c);
+    auto hash_res = sha256_file(temp_metadata_path);
+
+    if (!hash_res) {
+      return std::unexpected{hash_res.error()};
+    }
+
+    metadata_hash = hash_res.value();
+
+    std::error_code ec;
+    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_temp_dir) / metadata_hash, ec);
+    if (ec) {
+      return std::unexpected{"could not rename client metadata"};
+    }
+
+    g_log->info("client metadata generated with hash {}", metadata_hash);
   }
 
-  auto hash_res = sha256_file(temp_metadata_path);
+  g_log->info("saving hint_c...");
+  std::string hint_c_hash;
 
-  if (!hash_res) {
-    return std::unexpected{hash_res.error()};
+  {
+    std::string rand_name = std::to_string(std::random_device{}());
+    fs::path temp_metadata_path = fs::path(g_spir_config.server_temp_dir) / rand_name;
+
+    {
+      std::ofstream os{temp_metadata_path, std::ios::binary};
+      if (!os) {
+        return std::unexpected{"could not create hint_c"};
+      }
+
+      cereal::BinaryOutputArchive archive{os};
+      archive(hint_c);
+    }
+
+    auto hash_res = sha256_file(temp_metadata_path);
+
+    if (!hash_res) {
+      return std::unexpected{hash_res.error()};
+    }
+
+    hint_c_hash = hash_res.value();
+
+    std::error_code ec;
+    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_temp_dir) / hint_c_hash, ec);
+    if (ec) {
+      return std::unexpected{"could not rename hint_c"};
+    }
+
+    g_log->info("hint_c generated with hash {}", hint_c_hash);
   }
-
-  std::string metadata_hash = hash_res.value();
-
-  std::error_code ec;
-  fs::rename(temp_metadata_path, fs::path(g_spir_config.server_temp_dir) / (metadata_hash + ".client"), ec);
-  if (ec) {
-    return std::unexpected{"could not rename client metadata"};
-  }
-
-  g_log->info("client metadata generated with hash {}", metadata_hash);
 
   g_log->info("constructing server state...");
 
@@ -243,7 +281,8 @@ private:
                               .rle_blocks = rle_blocks,
                               .sqrt_N = sqrt_N,
                               .seed = seed,
-                              .metadata_hash = metadata_hash};
+                              .metadata_hash = metadata_hash,
+                              .hint_c_hash = hint_c_hash};
 
   return spir_server_state{std::move(DB), std::move(skim_conf), std::move(spir_conf)};
 }
@@ -277,7 +316,8 @@ private:
             spir_conf.rle_blocks,
             spir_conf.sqrt_N,
             spir_conf.seed,
-            spir_conf.metadata_hash);
+            spir_conf.metadata_hash,
+            spir_conf.hint_c_hash);
 
     g_log->info("server state loaded, (sqrt_N={}, log_p={}, log_q={}, n={}, sigma={})",
                 spir_conf.sqrt_N,
@@ -503,31 +543,55 @@ private:
 
 [[nodiscard]] auto load_client(skimdb_parameters skim_config,
                                spirdb_parameters spir_config,
-                               const std::string& client_metadata_root,
+                               const fs::path& metadata_path,
+                               const fs::path& hint_c_path,
                                std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_client_state, std::string> {
   LogFun lf{"load_client(...)"};
 
-  std::ifstream is{fs::path(client_metadata_root) / (spir_config.metadata_hash + ".client"), std::ios::binary};
-  if (!is) {
-    return std::unexpected{"could not open file"};
+  g_log->debug("loading client metadata from {}...", metadata_path.string());
+  skimdb_metadata skim_metadata;
+
+  {
+    std::ifstream is{metadata_path, std::ios::binary};
+    if (!is) {
+      return std::unexpected{"could not open metadata file"};
+    }
+
+    try {
+      cereal::BinaryInputArchive archive(is);
+
+      skimdb::kmer_index index;
+      std::vector<std::string> labels;
+
+      archive(index, labels);
+
+      skim_metadata = skimdb_metadata{.index = std::move(index), .labels = std::move(labels)};
+    } catch (...) {
+      return std::unexpected{"deserialization failed"};
+    }
   }
 
-  try {
-    cereal::BinaryInputArchive archive(is);
+  g_log->debug("loading hint_c from {}...", hint_c_path.string());
+  spir_matrix hint_c;
 
-    skimdb::kmer_index index;
-    std::vector<std::string> labels;
-    spir_matrix hint_c;
+  {
+    std::ifstream is{hint_c_path, std::ios::binary};
+    if (!is) {
+      return std::unexpected{"could not open hint_c file"};
+    }
 
-    archive(index, labels, hint_c);
+    try {
+      cereal::BinaryInputArchive archive(is);
 
-    skimdb_metadata skim_meta{.index = std::move(index), .labels = std::move(labels)};
-
-    return spir_client_state{std::move(skim_config), std::move(skim_meta), std::move(spir_config), std::move(hint_c), seed};
-  } catch (...) {
-    return std::unexpected{"deserialization failed"};
+      archive(hint_c);
+    } catch (...) {
+      return std::unexpected{"deserialization failed"};
+    }
   }
+
+  g_log->debug("constructing client state...");
+  return spir_client_state{std::move(skim_config), std::move(skim_metadata), std::move(spir_config), std::move(hint_c), seed};  
 }
 
 } // namespace skim::spir
