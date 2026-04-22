@@ -5,9 +5,9 @@
 #include <cxxopts.hpp>
 #include <fmtextra/prompted_input.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb.h>
 #include <skimdb/spir/skimdb_spir.h>
@@ -18,7 +18,7 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
-  std::string client_metadata_dir = "";
+  std::string cache_dir = "";
   bool verbose = false;
 
   try {
@@ -26,7 +26,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("i,input", "spir database to query", cxxopts::value<std::string>(in))
-      ("m,meta_dir", "directory for client metadata", cxxopts::value<std::string>(client_metadata_dir))
+      ("c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");
 
@@ -50,10 +50,13 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  if (client_metadata_dir.empty()) {
-    log->info("client metadata directory not specified! using local directory as default...");
-    client_metadata_dir = ".";
+  if (cache_dir.empty()) {
+    log->info("client cache directory not specified! using local directory...");
+    cache_dir = ".";
   }
+
+  skim::spir::g_spir_config.client_hint_c_dir = cache_dir;
+  skim::spir::g_spir_config.client_metadata_dir = cache_dir;
 
   log->info("loading spir db from {}...", in);
 
@@ -76,8 +79,9 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("creating client...");
 
-  fs::path client_metadata_file = fs::path(client_metadata_dir) / (server_state.spir_parameters().metadata_hash + ".client");
-  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), server_state.spir_parameters(), client_metadata_dir);
+  fs::path path = fs::path(skim::spir::g_spir_config.client_metadata_dir) / (server_state.spir_parameters().metadata_hash + ".client");
+  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), server_state.spir_parameters(), path);
+
   if (!client_setup) {
     log->error("could not create client: {}", client_setup.error());
     return -1;

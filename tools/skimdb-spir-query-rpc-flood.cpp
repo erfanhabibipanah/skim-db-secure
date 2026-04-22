@@ -51,7 +51,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
-      ("c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))
+      ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
       ("t,threads", "number of query threads", cxxopts::value<unsigned int>(nt)->default_value(std::to_string(nt)))
       ("l", "sample size per thread", cxxopts::value<unsigned int>(l)->default_value(std::to_string(l)))
       ("h,help", "print this help");
@@ -72,7 +72,7 @@ auto main(int argc, char* argv[]) -> int {
   skim::g_log->set_level(spdlog::level::warn);
 
   if (cache_dir.empty()) {
-    mlog->info("client cache directory not specified! using local directory as default...");
+    mlog->info("client cache directory not specified! using local directory...");
     cache_dir = ".";
   }
 
