@@ -1,7 +1,11 @@
 #ifndef SPIRDB_CLIENT_H
 #define SPIRDB_CLIENT_H
 
+#include <chrono>
 #include <expected>
+#include <filesystem>
+#include <format>
+#include <fstream>
 #include <generator>
 #include <memory>
 #include <optional>
@@ -32,8 +36,8 @@ public:
 
     channel_ = grpc::CreateCustomChannel(addr, grpc::InsecureChannelCredentials(), args);
 
-    if (!channel_->WaitForConnected(std::chrono::system_clock::now() +
-                                    std::chrono::seconds(g_spir_config.grpc_timeout))) {
+    if (channel_->WaitForConnected(std::chrono::system_clock::now() +
+                                   std::chrono::seconds(g_spir_config.grpc_connect_timeout))) {
       stub_ = SpirDB::NewStub(channel_);
     }
   }
@@ -41,7 +45,7 @@ public:
   auto setup() -> std::expected<void, std::string> {
     LogFun lf{"SpirDBClient::setup(...)"};
 
-    if ((!channel_) || (channel_->GetState(false) != GRPC_CHANNEL_READY)) {
+    if (channel_->GetState(false) != GRPC_CHANNEL_READY) {
       return std::unexpected{"connection not established"};
     }
 
@@ -92,19 +96,34 @@ public:
     fs::path hint_c_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.hint_c_hash;
 
     if (fs::exists(metadata_path) && fs::exists(hint_c_path)) {
-      g_log->debug("client metadata and hint_c found locally, initializing client state...");
+      g_log->debug("client metadata and hint_c found locally");
+    } else {
+      g_log->debug("downloading client metadata and hint_c from server...");
 
-      auto res = load_client(skim_conf, spir_conf);
+      auto res = m_get_data_(g_spir_config.client_metadata_dir, spir_conf.metadata_hash);
+
       if (!res) {
         return std::unexpected{res.error()};
       }
 
-      state_ = std::move(res.value());
-      return {};
-    } else {
-      // TODO: implement metadata fetching (e.g. via FTP) if not found locally
-      return std::unexpected{"client metadata or hint_c not found ... FTP download not implemented yet"};
+      res = m_get_data_(g_spir_config.client_hint_c_dir, spir_conf.hint_c_hash);
+
+      if (!res) {
+        return std::unexpected{res.error()};
+      }
     }
+
+    g_log->debug("loading client state...");
+
+    auto res = load_client(skim_conf, spir_conf);
+
+    if (!res) {
+      return std::unexpected{res.error()};
+    }
+
+    state_ = std::move(res.value());
+
+    return {};
   }
 
   auto ready() const -> bool { return state_.has_value(); }
@@ -173,10 +192,49 @@ protected:
     return {};
   };
 
+  auto m_get_data_(const std::string& dest, const std::string& hash) -> std::expected<void, std::string> {
+    grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(g_spir_config.grpc_download_timeout));
+
+    DataRequest req;
+    req.set_hash(hash);
+
+    auto reader = stub_->DownloadData(&ctx, req);
+
+    fs::path name = fs::path{dest} / fs::path{hash}.filename();
+    std::ofstream of{name, std::ios::binary};
+
+    if (!of) {
+      return std::unexpected{std::format("unable to create {}", name.string())};
+    }
+
+    DataChunk chunk;
+
+    std::uint64_t received = 0;
+
+    while (reader->Read(&chunk)) {
+      of.write(chunk.data().data(), chunk.data().size());
+
+      if (!of) {
+        return std::unexpected{std::format("unable to create {}", name.string())};
+      }
+
+      received += chunk.data().size();
+    }
+
+    grpc::Status status = reader->Finish();
+
+    if (!status.ok()) {
+      return std::unexpected{status.error_message()};
+    }
+
+    return {};
+  }
+
   std::optional<spir_client_state> state_; // client state (initialized on setup)
 
-  std::shared_ptr<grpc::Channel> channel_;
-  std::unique_ptr<SpirDB::Stub> stub_;
+  std::shared_ptr<grpc::Channel> channel_{nullptr};
+  std::unique_ptr<SpirDB::Stub> stub_{nullptr};
 };
 
 } // namespace skim::spir::rpc

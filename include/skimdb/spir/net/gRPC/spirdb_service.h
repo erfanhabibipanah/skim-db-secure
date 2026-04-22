@@ -1,7 +1,6 @@
 #ifndef SPIRDB_SERVICE_H
 #define SPIRDB_SERVICE_H
 
-#include <algorithm>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -54,6 +53,53 @@ public:
     reply->set_seed(spir_params.seed);
     reply->set_metadata_hash(spir_params.metadata_hash);
     reply->set_hint_c_hash(spir_params.hint_c_hash);
+
+    return grpc::Status::OK;
+  }
+
+  grpc::Status DownloadData(grpc::ServerContext* context,
+                            const DataRequest* request,
+                            grpc::ServerWriter<DataChunk>* writer) override {
+    LogFun lf{"SpirDBService::DownloadData(...)"};
+
+    auto hash = request->hash();
+
+    g_log->trace("serving data {} request from {}...", hash, context->peer());
+
+    fs::path path = fs::path{g_spir_config.client_metadata_dir} / fs::path{hash}.filename();
+
+    std:ifstream f{path, std::ios::binary};
+
+    if (!f) {
+      return {grpc::StatusCode::NOT_FOUND, "requested file not found"};
+    }
+
+    std::uint64_t total_size = fs::file_size(path);
+
+    constexpr std::size_t buf_size = 1 << 20; // 1 MB
+
+    std::array<char, buf_size> buff{};
+    std::uint64_t offset{0};
+
+    while (f) {
+      f.read(buff.data(), sizeof(buff));
+      auto n = f.gcount();
+
+      if (n <= 0) {
+        break;
+      }
+
+      DataChunk chunk;
+
+      chunk.set_data(buff.data(), n);
+      chunk.set_offset(offset);
+
+      if (!writer->Write(chunk)) {
+        return {grpc::StatusCode::CANCELLED, "client disconnected"};
+      }
+
+      offset += n;
+    }
 
     return grpc::Status::OK;
   }

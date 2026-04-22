@@ -41,10 +41,22 @@ message QueryReply {
   repeated uint64 ans = 1;
 }
 
+message DataRequest {
+  string hash = 1;
+}
+
+message DataChunk {
+  bytes data = 1;
+  uint64 offset = 2;
+  uint64 total_size = 3;
+}
+
 service SpirDB {
   rpc GetDbParameters(google.protobuf.Empty) returns (DbParametersReply);
   rpc GetSpirParameters(google.protobuf.Empty) returns (SpirParametersReply);
 
   rpc Query(QueryRequest) returns (QueryReply);
   rpc BatchQuery(QueryRequest) returns (QueryReply);
+
+  rpc DownloadData(DataRequest) returns (stream DataChunk);
 }

@@ -39,7 +39,8 @@ namespace fs = std::filesystem;
 
 
 struct spir_runtime_config {
-  unsigned int grpc_timeout{5};                     // gRPC connection timeout
+  unsigned int grpc_connect_timeout{5};             // gRPC connection timeout (seconds)
+  unsigned int grpc_download_timeout{300};          // gRPC data download timeout (seconds)
   std::string server_temp_dir{".skimdb-server"};    // path to directory where server stores temp data
   std::string client_metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
   std::string client_hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
@@ -52,6 +53,7 @@ class spir_server_state final {
 public:
   explicit spir_server_state(skimdb_matrix&& DB, skimdb_parameters&& skim_config, spirdb_parameters&& spir_config)
       : DB_{std::move(DB)}, skim_config_{std::move(skim_config)}, spir_config_{std::move(spir_config)} {}
+
 
   [[nodiscard]] auto skim_parameters() const -> const skimdb_parameters& { return skim_config_; }
 
@@ -203,7 +205,7 @@ private:
 
   g_log->info("saving client metadata...");
   std::string metadata_hash;
-  
+
   {
     std::string rand_name = std::to_string(std::random_device{}());
     fs::path temp_metadata_path = fs::path(g_spir_config.server_temp_dir) / rand_name;
@@ -262,6 +264,7 @@ private:
 
     std::error_code ec;
     fs::rename(temp_metadata_path, fs::path(g_spir_config.server_temp_dir) / hint_c_hash, ec);
+
     if (ec) {
       return std::unexpected{"could not rename hint_c"};
     }
@@ -552,6 +555,7 @@ private:
   fs::path hint_c_path = fs::path(g_spir_config.client_hint_c_dir) / spir_config.hint_c_hash;
 
   g_log->debug("loading client metadata from {}...", metadata_path.string());
+
   skimdb_metadata skim_metadata;
 
   {
@@ -575,6 +579,7 @@ private:
   }
 
   g_log->debug("loading hint_c from {}...", hint_c_path.string());
+
   spir_matrix hint_c;
 
   {
@@ -592,7 +597,9 @@ private:
   }
 
   g_log->debug("constructing client state...");
-  return spir_client_state{std::move(skim_config), std::move(skim_metadata), std::move(spir_config), std::move(hint_c), seed};  
+
+  return spir_client_state{
+      std::move(skim_config), std::move(skim_metadata), std::move(spir_config), std::move(hint_c), seed};
 }
 
 } // namespace skim::spir

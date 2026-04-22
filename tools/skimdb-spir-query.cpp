@@ -76,9 +76,8 @@ auto main(int argc, char* argv[]) -> int {
 
   auto server_state = setup.value();
 
-
   log->info("creating client...");
-  
+
   auto client_setup = skim::spir::load_client(server_state.skim_parameters(), server_state.spir_parameters());
 
   if (!client_setup) {

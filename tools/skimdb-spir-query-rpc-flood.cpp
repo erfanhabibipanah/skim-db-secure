@@ -4,9 +4,9 @@
 
 #include <cxxopts.hpp>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/spir/net/gRPC/spirdb_client.h>

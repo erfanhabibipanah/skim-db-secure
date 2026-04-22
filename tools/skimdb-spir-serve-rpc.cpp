@@ -4,12 +4,13 @@
 
 #include <cxxopts.hpp>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
-#include <skimdb/spir/skimdb_spir.h>
 #include <skimdb/spir/net/gRPC/spirdb_service.h>
+#include <skimdb/spir/skimdb_spir.h>
+
 
 namespace fs = std::filesystem;
 
