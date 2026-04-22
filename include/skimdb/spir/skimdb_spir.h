@@ -272,6 +272,7 @@ private:
   g_log->info("constructing server state...");
 
   skimdb_parameters skim_conf{.k = k, .s = s, .t = t};
+
   spirdb_parameters spir_conf{.n = n,
                               .sigma = sigma,
                               .log_p = log_p,
@@ -584,7 +585,6 @@ private:
 
     try {
       cereal::BinaryInputArchive archive(is);
-
       archive(hint_c);
     } catch (...) {
       return std::unexpected{"deserialization failed"};
