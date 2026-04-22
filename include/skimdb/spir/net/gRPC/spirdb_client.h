@@ -83,16 +83,18 @@ public:
                                 .rle_blocks = spir_ans.rle_blocks(),
                                 .sqrt_N = spir_ans.sqrt_n(),
                                 .seed = spir_ans.seed(),
-                                .metadata_hash = spir_ans.metadata_hash()};
+                                .metadata_hash = spir_ans.metadata_hash(),
+                                .hint_c_hash = spir_ans.hint_c_hash()};
 
     g_log->debug("searching for client metadata...");
 
-    fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / (spir_conf.metadata_hash + ".client");
+    fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.metadata_hash;
+    fs::path hint_c_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.hint_c_hash;
 
-    if (fs::exists(metadata_path)) {
-      g_log->debug("client metadata found locally, initializing client state...");
+    if (fs::exists(metadata_path) && fs::exists(hint_c_path)) {
+      g_log->debug("client metadata and hint_c found locally, initializing client state...");
 
-      auto res = load_client(skim_conf, spir_conf, g_spir_config.client_metadata_dir);
+      auto res = load_client(skim_conf, spir_conf, metadata_path, hint_c_path);
       if (!res) {
         return std::unexpected{res.error()};
       }
@@ -101,7 +103,7 @@ public:
       return {};
     } else {
       // TODO: implement metadata fetching (e.g. via FTP) if not found locally
-      return std::unexpected{"client metadata not found ... FTP download not implemented yet"};
+      return std::unexpected{"client metadata or hint_c not found ... FTP download not implemented yet"};
     }
   }
 
