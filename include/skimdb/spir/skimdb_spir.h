@@ -234,6 +234,7 @@ private:
   g_log->info("constructing server state...");
 
   skimdb_parameters skim_conf{.k = k, .s = s, .t = t};
+
   spirdb_parameters spir_conf{.n = n,
                               .sigma = sigma,
                               .log_p = log_p,
@@ -509,6 +510,7 @@ private:
   LogFun lf{"load_client(...)"};
 
   std::ifstream is{fs::path(client_metadata_root) / (spir_config.metadata_hash + ".client"), std::ios::binary};
+
   if (!is) {
     return std::unexpected{"could not open file"};
   }
@@ -524,7 +526,8 @@ private:
 
     skimdb_metadata skim_meta{.index = std::move(index), .labels = std::move(labels)};
 
-    return spir_client_state{std::move(skim_config), std::move(skim_meta), std::move(spir_config), std::move(hint_c), seed};
+    return spir_client_state{
+        std::move(skim_config), std::move(skim_meta), std::move(spir_config), std::move(hint_c), seed};
   } catch (...) {
     return std::unexpected{"deserialization failed"};
   }

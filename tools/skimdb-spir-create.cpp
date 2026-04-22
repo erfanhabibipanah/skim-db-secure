@@ -74,7 +74,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   if (cache_dir.empty()) {
-    log->info("server metadata directory not specified! using local directory as default...");
+    log->info("server metadata directory not specified! using local directory...");
     cache_dir = ".";
   }
 
