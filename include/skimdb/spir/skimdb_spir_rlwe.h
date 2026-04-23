@@ -143,7 +143,7 @@ public:
             pt[i] = pt_data[i];
         }
 
-        seal::Ciphertext ct(seal::MemoryPoolHandle::Global());
+        seal::Ciphertext ct(seal::MemoryPoolHandle::ThreadLocal());
         encryptor_.preprocess_encrypt_symmetric(ct, a_poly);
         encryptor_.encrypt_symmetric_preprocessed(pt, ct);
 
@@ -163,13 +163,14 @@ public:
         seal::prng_seed_type seal_seed;
         std::copy(seed.begin(), seed.end(), seal_seed.begin());
 
-        seal::DynArray<std::uint64_t> a(seal::MemoryPoolHandle::Global());
+        seal::DynArray<std::uint64_t> a(seal::MemoryPoolHandle::ThreadLocal());
         encryptor_.get_a(a, seal_seed);
         return a;
     }
 
     auto encryptor() -> seal::Encryptor& { return encryptor_; }
     auto keygen() -> seal::KeyGenerator& { return keygen_; }
+    auto secret_key() const -> const seal::SecretKey& { return secret_key_; }
 
 private:
     void truncate_ct(seal::Ciphertext& ct, std::uint64_t size) {
@@ -285,17 +286,19 @@ inline auto compute_hint_ntt(
     spir_matrix hint{sqrt_N, poly_degree, log_q};
 
     auto rns_size = poly_degree * num_moduli;
-    std::vector<std::uint64_t> accum(rns_size);
-    std::vector<std::uint64_t> tmp(rns_size);
-    std::vector<std::uint64_t> row_pt(rns_size);
 
     auto [db_rows, db_cols] = db.dimensions();
+    auto block_sz = db.block_size();
 
+    #pragma omp parallel for schedule(static)
     for (std::uint64_t row = 0; row < db_rows; ++row) {
-        std::fill(accum.begin(), accum.end(), 0);
+        // thread-local buffers
+        std::vector<std::uint64_t> t_accum(rns_size, 0);
+        std::vector<std::uint64_t> t_tmp(rns_size);
+        std::vector<std::uint64_t> t_row_pt(rns_size);
 
         for (std::size_t seed_idx = 0; seed_idx < num_seeds; ++seed_idx) {
-            std::fill(row_pt.begin(), row_pt.end(), 0);
+            std::fill(t_row_pt.begin(), t_row_pt.end(), 0);
 
             std::uint64_t stop = std::min(poly_degree, db_cols - seed_idx * poly_degree);
             std::uint64_t rle_row = row / rle_blocks;
@@ -307,7 +310,7 @@ inline auto compute_hint_ntt(
                     auto rle = db.rle_in_col(rle_row, col_idx);
                     std::uint64_t val = 0;
 
-                    switch (db.block_size()) {
+                    switch (block_sz) {
                     case 1: {
                         auto ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
                         if (rle_offset < rle.size() * 2) {
@@ -334,40 +337,40 @@ inline auto compute_hint_ntt(
                     }
                     }
 
-                    row_pt[j_mod * poly_degree + z] = val % moduli[j_mod].value();
+                    t_row_pt[j_mod * poly_degree + z] = val % moduli[j_mod].value();
                 }
             }
 
             seal::util::ntt_negacyclic_harvey_lazy(
-                seal::util::RNSIter(row_pt.data(), poly_degree),
+                seal::util::RNSIter(t_row_pt.data(), poly_degree),
                 num_moduli,
                 seal::util::iter(ctx_data->small_ntt_tables()));
 
             seal::util::dyadic_product_coeffmod(
                 seal::util::RNSIter(As[seed_idx].begin(), poly_degree),
-                seal::util::ConstRNSIter(row_pt.data(), poly_degree),
+                seal::util::ConstRNSIter(t_row_pt.data(), poly_degree),
                 num_moduli,
                 moduli,
-                seal::util::RNSIter(tmp.data(), poly_degree));
+                seal::util::RNSIter(t_tmp.data(), poly_degree));
 
             for (std::size_t k = 0; k < rns_size; ++k) {
-                accum[k] += tmp[k];
+                t_accum[k] += t_tmp[k];
             }
         }
 
         for (std::size_t j = 0; j < num_moduli; ++j) {
             for (std::uint64_t z = 0; z < poly_degree; ++z) {
-                accum[j * poly_degree + z] %= moduli[j].value();
+                t_accum[j * poly_degree + z] %= moduli[j].value();
             }
         }
 
         seal::util::inverse_ntt_negacyclic_harvey_lazy(
-            seal::util::RNSIter(accum.data(), poly_degree),
+            seal::util::RNSIter(t_accum.data(), poly_degree),
             num_moduli,
             seal::util::iter(ctx_data->small_ntt_tables()));
 
         std::vector<std::uint64_t> row_out(poly_degree);
-        ctx.mod_switch(accum.data(), row_out.data(), poly_degree);
+        ctx.mod_switch(t_accum.data(), row_out.data(), poly_degree);
 
         for (std::uint64_t j = 0; j < poly_degree; ++j) {
             hint.set(row, j, row_out[j]);
@@ -408,21 +411,61 @@ inline auto prepare_query_hybrid(
     spir_matrix qu{sqrt_N, log_q};
     auto qu_data = qu.span();
 
-    for (std::uint64_t i = 0; i < num_seeds; ++i) {
-        std::vector<std::uint64_t> seed(
-            a_seeds.begin() + i * SEAL_SEED_LENGTH,
-            a_seeds.begin() + (i + 1) * SEAL_SEED_LENGTH);
-        auto a_poly = key.get_a_poly(seed);
+    #pragma omp parallel
+    {
+        // each thread gets its own encryptor (SEAL encryptor is not thread-safe)
+        seal::Encryptor enc(ctx.seal_context(), key.secret_key());
 
-        std::uint64_t start = i * poly_degree;
-        std::uint64_t num_slots = std::min(poly_degree, sqrt_N - start);
+        #pragma omp for schedule(static)
+        for (std::uint64_t i = 0; i < num_seeds; ++i) {
+            std::vector<std::uint64_t> seed(
+                a_seeds.begin() + i * SEAL_SEED_LENGTH,
+                a_seeds.begin() + (i + 1) * SEAL_SEED_LENGTH);
 
-        auto ct_bytes = key.encrypt(pt_data + start, num_slots, a_poly);
-        auto lwe_ct = ct_extract_lwe(ctx, ct_bytes, num_slots);
-        auto lwe_data = lwe_ct.span();
+            seal::prng_seed_type seal_seed;
+            std::copy(seed.begin(), seed.end(), seal_seed.begin());
+            seal::DynArray<std::uint64_t> a_poly(seal::MemoryPoolHandle::ThreadLocal());
+            enc.get_a(a_poly, seal_seed);
 
-        for (std::uint64_t j = 0; j < num_slots; ++j) {
-            qu_data[start + j] = lwe_data[j];
+            std::uint64_t start = i * poly_degree;
+            std::uint64_t num_slots = std::min(poly_degree, sqrt_N - start);
+
+            seal::Plaintext pt;
+            pt.resize(num_slots);
+            for (std::uint64_t j = 0; j < num_slots; ++j) {
+                pt[j] = pt_data[start + j];
+            }
+
+            seal::Ciphertext ct(seal::MemoryPoolHandle::ThreadLocal());
+            enc.preprocess_encrypt_symmetric(ct, a_poly);
+            enc.encrypt_symmetric_preprocessed(pt, ct);
+
+            if (num_slots < poly_degree) {
+                // truncate ct
+                auto ctx_data = ctx.seal_context().first_context_data();
+                auto coeff_modulus_size = ctx_data->parms().coeff_modulus().size();
+                auto coeff_count = ctx_data->parms().poly_modulus_degree();
+                seal::DynArray<std::uint64_t> tmp(num_slots * coeff_modulus_size);
+                const auto& orig = ct.dyn_array();
+                for (std::size_t m = 0; m < coeff_modulus_size; ++m) {
+                    for (std::uint64_t j = 0; j < num_slots; ++j) {
+                        tmp[m * num_slots + j] = orig[m * coeff_count + j];
+                    }
+                }
+                ct.set_array(tmp);
+            }
+
+            auto& ct_array = ct.dyn_array();
+            std::size_t sz = ct_array.save_size(seal::compr_mode_type::none);
+            std::vector<std::uint8_t> buf(sz);
+            ct_array.save(reinterpret_cast<seal::seal_byte*>(buf.data()), sz, seal::compr_mode_type::none);
+
+            auto lwe_ct = ct_extract_lwe(ctx, buf, num_slots);
+            auto lwe_data = lwe_ct.span();
+
+            for (std::uint64_t j = 0; j < num_slots; ++j) {
+                qu_data[start + j] = lwe_data[j];
+            }
         }
     }
 

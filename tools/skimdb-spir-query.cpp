@@ -107,15 +107,33 @@ auto main(int argc, char* argv[]) -> int {
     }
 
 #ifdef SKIMDB_USE_RLWE
-    auto query_state = client_state.prepare_query(pos->second);
     if (use_rlwe) {
       auto hybrid = client_state.prepare_query_hybrid(q);
-      if (hybrid) {
-        query_state = std::move(hybrid->second);
+      if (!hybrid) {
+        log->warn("hybrid query failed: {}", hybrid.error());
+        continue;
       }
-    }
-#else
+      auto& query_state = hybrid->second;
+
+      log->info("submitting query...");
+      auto answer = server_state.answer(query_state.qu_vec);
+      if (!answer) { log->warn("could not get answer: {}", answer.error()); continue; }
+      auto answer_vec = answer.value();
+      log->info("recovering result...");
+
+      if (verbose) {
+        log->info("query results:");
+        for (auto label : client_state.result_hybrid(answer_vec, query_state, pos->first)) {
+          log->info("  {}", label);
+        }
+      } else {
+        log->info("got {} label(s)", std::ranges::distance(client_state.result_hybrid(answer_vec, query_state, pos->first)));
+      }
+    } else {
+#endif
     auto query_state = client_state.prepare_query(pos->second);
+#ifdef SKIMDB_USE_RLWE
+    // fall through to standard LWE path below
 #endif
 
     log->info("submitting query...");
@@ -133,31 +151,15 @@ auto main(int argc, char* argv[]) -> int {
 
     if (verbose) {
       log->info("query results:");
-
-#ifdef SKIMDB_USE_RLWE
-      if (use_rlwe) {
-        for (auto label : client_state.result_hybrid(answer_vec, query_state, pos->first)) {
-          log->info("  {}", label);
-        }
-      } else {
-#endif
-        for (auto label : client_state.result(answer_vec, query_state, pos->first)) {
-          log->info("  {}", label);
-        }
-#ifdef SKIMDB_USE_RLWE
+      for (auto label : client_state.result(answer_vec, query_state, pos->first)) {
+        log->info("  {}", label);
       }
-#endif
     } else {
-#ifdef SKIMDB_USE_RLWE
-      if (use_rlwe) {
-        log->info("got {} label(s)", std::ranges::distance(client_state.result_hybrid(answer_vec, query_state, pos->first)));
-      } else {
-#endif
-        log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state, pos->first)));
-#ifdef SKIMDB_USE_RLWE
-      }
-#endif
+      log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state, pos->first)));
     }
+#ifdef SKIMDB_USE_RLWE
+    } // close else from RLWE branch
+#endif
   }
 
   log->info("done!");
