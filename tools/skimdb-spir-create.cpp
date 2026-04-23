@@ -33,7 +33,7 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "input skimdb database file", cxxopts::value<std::string>(in))
       ("o,output", "output file for server state", cxxopts::value<std::string>(out))
-      ("c,cache-dir", "directory for temporary data", cxxopts::value<std::string>(cache_dir))
+      ("c,cache-dir", "server store directory", cxxopts::value<std::string>(cache_dir))
       ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
       ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
       ("b,batch-size", "batch size", cxxopts::value<unsigned int>(batch_size)->default_value(std::to_string(batch_size)))
@@ -74,11 +74,11 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   if (cache_dir.empty()) {
-    log->info("server metadata directory not specified! using local directory...");
+    log->info("server store directory not specified! using local directory...");
     cache_dir = ".";
   }
 
-  skim::spir::g_spir_config.server_temp_dir = cache_dir;
+  skim::spir::g_spir_config.server_store_dir = cache_dir;
 
   log->info("loading index from {}...", in);
 

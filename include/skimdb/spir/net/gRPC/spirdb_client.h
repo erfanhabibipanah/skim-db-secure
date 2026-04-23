@@ -49,7 +49,7 @@ public:
       return std::unexpected{"connection not established"};
     }
 
-    g_log->debug("fetching db parameters from server...");
+    g_log->info("fetching db parameters from server...");
 
     DbParametersReply db_ans;
 
@@ -64,7 +64,7 @@ public:
 
     skimdb_parameters skim_conf{.k = db_ans.k(), .s = db_ans.s(), .t = db_ans.t()};
 
-    g_log->debug("fetching spir parameters from server...");
+    g_log->info("fetching spir parameters from server...");
 
     SpirParametersReply spir_ans;
 
@@ -90,7 +90,7 @@ public:
                                 .metadata_hash = spir_ans.metadata_hash(),
                                 .hint_c_hash = spir_ans.hint_c_hash()};
 
-    g_log->debug("searching for client metadata...");
+    g_log->info("searching for client metadata...");
 
     fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.metadata_hash;
     fs::path hint_c_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.hint_c_hash;
@@ -113,7 +113,7 @@ public:
       }
     }
 
-    g_log->debug("loading client state...");
+    g_log->info("loading client state...");
 
     auto res = load_client(skim_conf, spir_conf);
 

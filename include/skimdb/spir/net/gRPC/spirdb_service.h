@@ -57,16 +57,16 @@ public:
     return grpc::Status::OK;
   }
 
+  // TODO: currently we do not have data consistency check (we may have collision on hash)
   grpc::Status DownloadData(grpc::ServerContext* context,
                             const DataRequest* request,
                             grpc::ServerWriter<DataChunk>* writer) override {
     LogFun lf{"SpirDBService::DownloadData(...)"};
 
     auto hash = request->hash();
+    fs::path path = fs::path{g_spir_config.server_store_dir} / fs::path{hash}.filename();
 
-    g_log->trace("serving data {} request from {}...", hash, context->peer());
-
-    fs::path path = fs::path{g_spir_config.client_metadata_dir} / fs::path{hash}.filename();
+    g_log->trace("serving {} to {}...", path.string(), context->peer());
 
     std::ifstream f{path, std::ios::binary};
 

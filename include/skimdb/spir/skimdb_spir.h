@@ -41,7 +41,7 @@ namespace fs = std::filesystem;
 struct spir_runtime_config {
   unsigned int grpc_connect_timeout{5};             // gRPC connection timeout (seconds)
   unsigned int grpc_download_timeout{300};          // gRPC data download timeout (seconds)
-  std::string server_temp_dir{".skimdb-server"};    // path to directory where server stores temp data
+  std::string server_store_dir{".skimdb-server"};   // path to directory where server stores hint data
   std::string client_metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
   std::string client_hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
 };
@@ -208,7 +208,7 @@ private:
 
   {
     std::string rand_name = std::to_string(std::random_device{}());
-    fs::path temp_metadata_path = fs::path(g_spir_config.server_temp_dir) / rand_name;
+    fs::path temp_metadata_path = fs::path(g_spir_config.server_store_dir) / rand_name;
 
     {
       std::ofstream os{temp_metadata_path, std::ios::binary};
@@ -229,7 +229,7 @@ private:
     metadata_hash = hash_res.value();
 
     std::error_code ec;
-    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_temp_dir) / metadata_hash, ec);
+    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_store_dir) / metadata_hash, ec);
     if (ec) {
       return std::unexpected{"could not rename client metadata"};
     }
@@ -242,7 +242,7 @@ private:
 
   {
     std::string rand_name = std::to_string(std::random_device{}());
-    fs::path temp_metadata_path = fs::path(g_spir_config.server_temp_dir) / rand_name;
+    fs::path temp_metadata_path = fs::path(g_spir_config.server_store_dir) / rand_name;
 
     {
       std::ofstream os{temp_metadata_path, std::ios::binary};
@@ -263,7 +263,7 @@ private:
     hint_c_hash = hash_res.value();
 
     std::error_code ec;
-    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_temp_dir) / hint_c_hash, ec);
+    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_store_dir) / hint_c_hash, ec);
 
     if (ec) {
       return std::unexpected{"could not rename hint_c"};

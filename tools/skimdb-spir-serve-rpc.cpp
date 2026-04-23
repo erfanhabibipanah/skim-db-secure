@@ -18,6 +18,7 @@ namespace fs = std::filesystem;
 auto main(int argc, char* argv[]) -> int {
   std::string in{};
   std::string addr{"0.0.0.0:50051"};
+  std::string cache_dir = "";
 
   try {
     cxxopts::Options options(argv[0]);
@@ -25,6 +26,7 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "spir database to serve", cxxopts::value<std::string>(in))
       ("a,addr", "serve on network:port", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("c,cache-dir", "server store directory", cxxopts::value<std::string>(cache_dir))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -41,6 +43,13 @@ auto main(int argc, char* argv[]) -> int {
   spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-spir-serve-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  if (cache_dir.empty()) {
+    log->info("server store directory not specified! using local directory...");
+    cache_dir = ".";
+  }
+
+  skim::spir::g_spir_config.server_store_dir = cache_dir;
 
   if (in.empty()) {
     log->error("input database not specified!");
