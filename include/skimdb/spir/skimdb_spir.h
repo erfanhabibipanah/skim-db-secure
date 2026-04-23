@@ -323,7 +323,10 @@ private:
             spir_conf.metadata_hash,
             spir_conf.hint_c_hash);
 
-    g_log->info("server state loaded, (sqrt_N={}, log_p={}, log_q={}, n={}, sigma={})",
+    g_log->info("server state loaded, (k={}, s={}, t={}, sqrt_N={}, log_p={}, log_q={}, n={}, sigma={})",
+                skim_conf.k,
+                skim_conf.s,
+                skim_conf.t,
                 spir_conf.sqrt_N,
                 spir_conf.log_p,
                 spir_conf.log_q,

@@ -299,18 +299,6 @@ inline auto total_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std
   return count;
 }
 
-inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t) noexcept -> std::size_t {
-  std::size_t num_kmers = 1ULL << (2 * k);
-
-  if (s == 0 || s >= k) {
-    std::size_t num_palindromes = (1ULL << (2 * (k >> 1))) * ((k + 1) % 2);
-    return static_cast<std::size_t>((num_kmers + num_palindromes) / 2);
-  }
-
-  // we use compressiom factor from the syncmer paper
-  return num_kmers / (k - s + 1);
-}
-
 } // namespace skim::detail
 
 #endif // SKIMDB_UTIL_H
