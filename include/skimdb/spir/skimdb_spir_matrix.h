@@ -443,8 +443,6 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
                          std::size_t start,
                          std::size_t count,
                          std::size_t rle_blocks) {
-  const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
-
   switch (mat.block_size()) {
   case 1: {
     partitioned_mat_vec1(mat, vec, dst, log_q, start, count, rle_blocks);
@@ -467,36 +465,36 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
 }
 
 
-  inline auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::size_t log_q, std::size_t rle_blocks)
-      -> spir_matrix {
-    LogFun lf{"mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
+inline auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::size_t log_q, std::size_t rle_blocks)
+    -> spir_matrix {
+  LogFun lf{"mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
 
-    auto [db_r, _] = db.dimensions();
-    spir_matrix out{db_r, log_q};
+  auto [db_r, _] = db.dimensions();
+  spir_matrix out{db_r, log_q};
 
-    partitioned_mat_vec(db, vec.span(), out.span(), log_q, 0, db_r / rle_blocks, rle_blocks);
+  partitioned_mat_vec(db, vec.span(), out.span(), log_q, 0, db_r / rle_blocks, rle_blocks);
 
-    return out;
+  return out;
+}
+
+
+// server setup (hint_c = DB*A)
+inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::size_t log_q, std::size_t rle_blocks)
+    -> spir_matrix {
+  LogFun lf{"mat_mul(skimdb_matrix, ...)", spdlog::level::debug};
+
+  auto [db_r, _] = db.dimensions();
+  auto [a_r, a_c] = mat_a.dimensions();
+
+  auto trans_a = mat_a.transpose();
+  spir_matrix out{a_c, db_r, log_q};
+
+  for (std::size_t i = 0; i < a_c; ++i) {
+    partitioned_mat_vec(db, trans_a.row(i), out.row(i), log_q, 0, db_r / rle_blocks, rle_blocks);
   }
 
-
-  // server setup (hint_c = DB*A)
-  inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::size_t log_q, std::size_t rle_blocks)
-      -> spir_matrix {
-    LogFun lf{"mat_mul(skimdb_matrix, ...)", spdlog::level::debug};
-
-    auto [db_r, _] = db.dimensions();
-    auto [a_r, a_c] = mat_a.dimensions();
-
-    auto trans_a = mat_a.transpose();
-    spir_matrix out{a_c, db_r, log_q};
-
-    for (std::size_t i = 0; i < a_c; ++i) {
-      partitioned_mat_vec(db, trans_a.row(i), out.row(i), log_q, 0, db_r / rle_blocks, rle_blocks);
-    }
-
-    return out.transpose();
-  }
+  return out.transpose();
+}
 
 } // namespace skim::spir
 

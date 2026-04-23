@@ -68,15 +68,13 @@ public:
 
     fs::path path = fs::path{g_spir_config.client_metadata_dir} / fs::path{hash}.filename();
 
-    std:ifstream f{path, std::ios::binary};
+    std::ifstream f{path, std::ios::binary};
 
     if (!f) {
       return {grpc::StatusCode::NOT_FOUND, "requested file not found"};
     }
 
-    std::uint64_t total_size = fs::file_size(path);
-
-    constexpr std::size_t buf_size = 1 << 20; // 1 MB
+    constexpr std::size_t buf_size = 1 << 20; // 1MB
 
     std::array<char, buf_size> buff{};
     std::uint64_t offset{0};

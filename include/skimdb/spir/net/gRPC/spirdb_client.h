@@ -210,16 +210,12 @@ protected:
 
     DataChunk chunk;
 
-    std::uint64_t received = 0;
-
     while (reader->Read(&chunk)) {
       of.write(chunk.data().data(), chunk.data().size());
 
       if (!of) {
         return std::unexpected{std::format("unable to create {}", name.string())};
       }
-
-      received += chunk.data().size();
     }
 
     grpc::Status status = reader->Finish();
