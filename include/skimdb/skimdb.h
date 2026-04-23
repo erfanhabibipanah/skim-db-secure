@@ -49,7 +49,7 @@ inline void greedy_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std
     std::size_t curr_pos{0};
 
     for (std::size_t j = i + 1; j < i + w; ++j) {
-      auto dist = B.and_cardinality(bitmaps[j]);
+      auto dist = (B & bitmaps[j]).cardinality();
       if (curr_dist < dist) {
         curr_dist = dist;
         curr_pos = j;

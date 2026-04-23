@@ -20,7 +20,7 @@
 namespace cereal {
 
 template <class Archive>
-void save(Archive& ar, const roaring::Roaring& bitmap) {
+void save(Archive& ar, const skim::bitmap_t& bitmap) {
   auto size = bitmap.getSizeInBytes();
   std::vector<char> buf(size);
   bitmap.write(buf.data());
@@ -29,12 +29,12 @@ void save(Archive& ar, const roaring::Roaring& bitmap) {
 }
 
 template <class Archive>
-void load(Archive& ar, roaring::Roaring& bitmap) {
+void load(Archive& ar, skim::bitmap_t& bitmap) {
   std::size_t size{};
   ar(cereal::make_nvp("size", size));
   std::vector<char> buf(size);
   ar(cereal::make_nvp("data", buf));
-  bitmap = roaring::Roaring::readSafe(buf.data(), size);
+  bitmap = skim::bitmap_t::readSafe(buf.data(), size);
 }
 
 } // namespace cereal
@@ -185,7 +185,7 @@ inline auto kmer_to_binary(const std::string& kmer) noexcept -> kmer_binary_t {
     if (base == -1) {
       return 0; // invalid character
     }
-    result = (result << 2) | static_cast<std::uint32_t>(base);
+    result = (result << 2) | static_cast<kmer_binary_t>(base);
   }
 
   return result;
