@@ -362,8 +362,9 @@ public:
 
   [[nodiscard]] auto is_valid_kmer(const std::string& str) const -> bool {
     auto kmer = detail::kmer_to_binary(str);
+    auto canonical = std::min(kmer, detail::reverse_complement(kmer, skim_config_.k));
     return detail::is_valid(str, skim_config_.k) &&
-           detail::is_syncmer(kmer, skim_config_.k, skim_config_.s, skim_config_.t);
+           detail::is_syncmer(canonical, skim_config_.k, skim_config_.s, skim_config_.t);
   }
 
   [[nodiscard]] auto kmer_to_position(const std::string& s) const
@@ -371,7 +372,8 @@ public:
     LogFun lf{"spir_client_state::kmer_to_position(...)"};
 
     auto kmer = detail::kmer_to_binary(s);
-    auto res = skim_metadata_.index.find(kmer);
+    auto canonical = std::min(kmer, detail::reverse_complement(kmer, skim_config_.k));
+    auto res = skim_metadata_.index.find(canonical);
 
     if (!res.has_value()) {
       // if the k‑mer is valid but absent from the skimdb index, the k‑mer has no associated labels
