@@ -79,6 +79,8 @@ public:
     std::array<char, buf_size> buff{};
     std::uint64_t offset{0};
 
+    DataChunk chunk;
+
     while (f) {
       f.read(buff.data(), sizeof(buff));
       auto n = f.gcount();
@@ -86,8 +88,6 @@ public:
       if (n <= 0) {
         break;
       }
-
-      DataChunk chunk;
 
       chunk.set_data(buff.data(), n);
       chunk.set_offset(offset);
@@ -106,7 +106,9 @@ public:
     LogFun lf{"SpirDBService::Query(...)"};
     g_log->trace("serving spir query request from {}...", context->peer());
 
-    // TODO: can we eliminate this copy?
+    // TODO: we should consider making spir_matrix non-owning :-)
+    //       this way we could eliminate construction of query_vec
+    //       and operate on request->qu.data() directly
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
 
     if (query_vec_data.size() != state_.spir_parameters().sqrt_N) {
@@ -132,7 +134,6 @@ public:
 
     auto spir_params = state_.spir_parameters();
 
-    // TODO: can we eliminate this copy?
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
 
     if (query_vec_data.size() != spir_params.sqrt_N * spir_params.batch_size) {
