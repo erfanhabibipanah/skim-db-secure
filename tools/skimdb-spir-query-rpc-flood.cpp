@@ -9,6 +9,7 @@
 #include <spdlog/spdlog.h>
 
 #include <skimdb/detail/skimdb_definitions.h>
+#include <skimdb/skimdb_version.h>
 #include <skimdb/spir/net/gRPC/spirdb_client.h>
 
 
@@ -70,6 +71,8 @@ auto main(int argc, char* argv[]) -> int {
   spdlog::cfg::load_env_levels();
   skim::g_log = spdlog::stdout_color_mt("skimdb");
   skim::g_log->set_level(spdlog::level::warn);
+
+  mlog->info("SKiMDB ver. {}", skim::version);
 
   if (cache_dir.empty()) {
     mlog->info("client cache directory not specified! using local directory...");

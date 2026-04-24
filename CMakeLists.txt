@@ -1,6 +1,28 @@
 cmake_minimum_required(VERSION 3.22)
 project(skimdb VERSION 0.1.0 LANGUAGES CXX)
 
+# Get git commit hash
+find_package(Git QUIET)
+
+if(GIT_FOUND)
+  execute_process(
+    COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    OUTPUT_VARIABLE GIT_COMMIT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+endif()
+if(NOT DEFINED GIT_COMMIT OR GIT_COMMIT STREQUAL "")
+  set(GIT_COMMIT "unknown")
+endif()
+
+configure_file(
+  ${CMAKE_SOURCE_DIR}/cmake/skimdb_version.h.in
+  ${CMAKE_BINARY_DIR}/include/skimdb/skimdb_version.h
+  @ONLY
+)
+
 option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
 option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)
 option(SKIMDB_BUILD_SPIR "Build SPIR implementation" OFF)
@@ -101,6 +123,7 @@ add_library(skimdb::skimdb ALIAS skimdb)
 
 target_include_directories(skimdb INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -117,6 +140,11 @@ target_link_libraries(skimdb INTERFACE
 install(
     DIRECTORY include/
     DESTINATION include
+)
+
+install(
+  FILES "${CMAKE_BINARY_DIR}/include/skimdb/skimdb_version.h"
+  DESTINATION include/skimdb
 )
 
 # -------------------------------------------------------------------

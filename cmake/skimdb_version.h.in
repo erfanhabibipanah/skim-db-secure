@@ -1,0 +1,7 @@
+#ifndef SKIMDB_VERSION_H
+#define SKIMDB_VERSION_H
+#include <string>
+namespace skim {
+  inline constexpr std::string version{"@PROJECT_VERSION@+@GIT_COMMIT@"};
+}
+#endif // SKIMDB_VERSION_H

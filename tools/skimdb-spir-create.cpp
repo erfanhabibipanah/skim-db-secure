@@ -6,11 +6,12 @@
 #include <fmtextra/fmt_extra.h>
 #include <fmtextra/prompted_input.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
 #include <skimdb/spir/skimdb_spir.h>
 
 
@@ -55,6 +56,8 @@ auto main(int argc, char* argv[]) -> int {
   spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-spir-server-create");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMDB ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input not specified!");

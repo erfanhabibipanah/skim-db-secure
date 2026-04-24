@@ -8,6 +8,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include <skimdb/skimdb_version.h>
 #include <skimdb/spir/net/gRPC/spirdb_service.h>
 #include <skimdb/spir/skimdb_spir.h>
 
@@ -43,6 +44,8 @@ auto main(int argc, char* argv[]) -> int {
   spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-spir-serve-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMDB ver. {}", skim::version);
 
   if (cache_dir.empty()) {
     log->info("server store directory not specified! using local directory...");

@@ -90,15 +90,13 @@ public:
                                 .metadata_hash = spir_ans.metadata_hash(),
                                 .hint_c_hash = spir_ans.hint_c_hash()};
 
-    g_log->info("searching for client metadata...");
-
     fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.metadata_hash;
     fs::path hint_c_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.hint_c_hash;
 
     if (fs::exists(metadata_path) && fs::exists(hint_c_path)) {
-      g_log->debug("client metadata and hint_c found locally");
+      g_log->info("client metadata and hint_c found locally!");
     } else {
-      g_log->debug("downloading client metadata and hint_c from server...");
+      g_log->info("downloading client metadata and hint_c from server...");
 
       auto res = m_get_data_(g_spir_config.client_metadata_dir, spir_conf.metadata_hash);
 

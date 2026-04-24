@@ -9,7 +9,6 @@
  */
 
 #include <chrono>
-#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -20,8 +19,9 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
-#include <skimdb/skimdb.h>
 #include <skimdb/net/gRPC/skimdb_client.h>
+#include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
 
 
 auto main(int argc, char* argv[]) -> int {
@@ -48,6 +48,8 @@ auto main(int argc, char* argv[]) -> int {
   spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-index-query-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMDB ver. {}", skim::version);
 
   log->info("connecting to {}...", addr);
 

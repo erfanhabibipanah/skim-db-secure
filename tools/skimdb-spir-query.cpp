@@ -10,6 +10,7 @@
 #include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
 #include <skimdb/spir/skimdb_spir.h>
 
 
@@ -44,6 +45,8 @@ auto main(int argc, char* argv[]) -> int {
   spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-spir-query");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMDB ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input database not specified!");
