@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(skimdb VERSION 0.0.1 LANGUAGES CXX)
+project(skimdb VERSION 0.1.0 LANGUAGES CXX)
 
 option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
 option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)

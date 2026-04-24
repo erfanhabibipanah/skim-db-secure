@@ -20,6 +20,8 @@
 #include "detail/skimdb_encoding.h"
 #include "detail/skimdb_util.h"
 
+#include "skimdb_config.h"
+
 
 namespace skim::solver {
 
@@ -138,6 +140,8 @@ public:
 
     try {
       cereal::BinaryInputArchive archive(is);
+      skimdb_version_t ver;
+      archive(ver);
       archive(*this);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("deserialization failed {}", e.what())};
@@ -154,6 +158,8 @@ public:
 
     try {
       cereal::BinaryOutputArchive archive{os};
+      skimdb_version_t ver;
+      archive(ver);
       archive(*this);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};
