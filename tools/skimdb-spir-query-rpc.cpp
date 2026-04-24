@@ -22,7 +22,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");

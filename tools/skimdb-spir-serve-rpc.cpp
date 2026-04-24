@@ -26,7 +26,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("i,input", "spir database to serve", cxxopts::value<std::string>(in))
-      ("a,addr", "serve on network:port", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "address [network:port] to serve on", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "server store directory", cxxopts::value<std::string>(cache_dir))
       ("h,help", "print this help");
 
@@ -48,7 +48,7 @@ auto main(int argc, char* argv[]) -> int {
   log->info("SKiMdb ver. {}", skim::version);
 
   if (cache_dir.empty()) {
-    log->info("server store directory not specified! using local directory...");
+    log->debug("server store directory not specified! using local directory...");
     cache_dir = ".";
   }
 

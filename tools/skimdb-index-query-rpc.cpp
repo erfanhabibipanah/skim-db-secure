@@ -31,7 +31,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);

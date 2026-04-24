@@ -77,7 +77,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   if (cache_dir.empty()) {
-    log->info("server store directory not specified! using local directory...");
+    log->debug("server store directory not specified! using local directory...");
     cache_dir = ".";
   }
 
