@@ -151,15 +151,19 @@ public:
     auto qu_data = query_state.qu_vec.span();
 
     grpc::ClientContext ctx;
-
-    QueryRequest req;
-    req.mutable_qu()->Assign(qu_data.begin(), qu_data.end());
-
     QueryReply reply;
-    grpc::Status status = stub_->Query(&ctx, req, &reply);
-    if (!status.ok()) {
-      g_log->error("query failed: {}", status.error_message());
-      co_return;
+
+    {
+      LogFun lf_sub{"gRPC query request", spdlog::level::debug};
+
+      QueryRequest req;
+      req.mutable_qu()->Assign(qu_data.begin(), qu_data.end());
+
+      grpc::Status status = stub_->Query(&ctx, req, &reply);
+      if (!status.ok()) {
+        g_log->error("query failed: {}", status.error_message());
+        co_return;
+      }
     }
 
     std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};

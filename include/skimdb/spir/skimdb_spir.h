@@ -185,7 +185,7 @@ private:
   auto res = state.load(path);
 
   if (!res) {
-    return std::unexpected{std::format("faile to load server: {}", res.error())};
+    return std::unexpected{std::format("failed to load server: {}", res.error())};
   }
 
   return state;
@@ -373,7 +373,7 @@ public:
 
   [[nodiscard]] auto kmer_to_position(const std::string& s) const
       -> std::optional<std::pair<std::size_t, std::size_t>> {
-    LogFun lf{"spir_client_state::kmer_to_position(...)"};
+    LogFun lf{"spir_client_state::kmer_to_position(...)", spdlog::level::debug};
 
     auto kmer = detail::kmer_to_binary(s);
     auto canonical = std::min(kmer, detail::reverse_complement(kmer, skim_config_.k));
@@ -408,7 +408,7 @@ public:
 
 
   [[nodiscard]] auto prepare_query(std::size_t i_col) -> spirdb_query_state {
-    LogFun lf{"spir_client_state::prepare_query(...)"};
+    LogFun lf{"spir_client_state::prepare_query(...)", spdlog::level::debug};
 
     auto& rng = m_get_rng_();
 
@@ -462,7 +462,7 @@ public:
 
   [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row)
       -> std::generator<const std::string&> {
-    LogFun lf{"spir_client_state::result(...)"};
+    LogFun lf{"spir_client_state::result(...)", spdlog::level::debug};
 
     auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec.span(), spir_config_.log_q, i_row, spir_config_.rle_blocks);
     d.div_delta(spir_config_.log_q - spir_config_.log_p);

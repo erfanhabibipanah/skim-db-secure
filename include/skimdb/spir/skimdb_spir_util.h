@@ -20,7 +20,7 @@ namespace fs = std::filesystem;
 auto sha256_file(const fs::path& path) -> std::expected<std::string, std::string> {
   std::ifstream file(path, std::ios::binary);
   if (!file) {
-    return std::unexpected{"Unable to open file"};
+    return std::unexpected{"unable to open file"};
   }
 
   EVP_MD_CTX* ctx = EVP_MD_CTX_new();
