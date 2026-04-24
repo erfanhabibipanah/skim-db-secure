@@ -42,10 +42,10 @@ auto main(int argc, char* argv[]) -> int {
   auto log = spdlog::stdout_color_mt("skimdb-spir-query-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
-  log->info("SKiMDB ver. {}", skim::version);
+  log->info("SKiMdb ver. {}", skim::version);
 
   if (cache_dir.empty()) {
-    log->info("client cache directory not specified! using local directory...");
+    log->debug("client cache directory not specified! using local directory...");
     cache_dir = ".";
   }
 

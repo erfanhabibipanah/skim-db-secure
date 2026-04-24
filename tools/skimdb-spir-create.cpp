@@ -57,7 +57,7 @@ auto main(int argc, char* argv[]) -> int {
   auto log = spdlog::stdout_color_mt("skimdb-spir-server-create");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
-  log->info("SKiMDB ver. {}", skim::version);
+  log->info("SKiMdb ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input not specified!");

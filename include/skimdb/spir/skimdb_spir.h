@@ -28,8 +28,9 @@
 #include <skimdb/detail/skimdb_util.h>
 #include <skimdb/skimdb.h>
 
-#include "skimdb_spir_matrix.h"
+#include "skimdb/skimdb_config.h"
 #include "skimdb_spir_definitions.h"
+#include "skimdb_spir_matrix.h"
 #include "skimdb_spir_util.h"
 
 
@@ -51,6 +52,9 @@ spir_runtime_config g_spir_config;
 
 class spir_server_state final {
 public:
+  // TODO: check that this does not blow up things...
+  spir_server_state() = default;
+
   explicit spir_server_state(skimdb_matrix&& DB, skimdb_parameters&& skim_config, spirdb_parameters&& spir_config)
       : DB_{std::move(DB)}, skim_config_{std::move(skim_config)}, spir_config_{std::move(spir_config)} {}
 
@@ -102,6 +106,38 @@ public:
   }
 
 
+  auto load(const fs::path& path) -> std::expected<void, std::string> {
+    std::ifstream is{path, std::ios::binary};
+    if (!is) {
+      return std::unexpected{"could not open file"};
+    }
+
+    try {
+      cereal::BinaryInputArchive archive(is);
+      skimdb_version_t ver;
+      archive(ver,
+              DB_,
+              skim_config_.k,
+              skim_config_.s,
+              skim_config_.t,
+              spir_config_.n,
+              spir_config_.sigma,
+              spir_config_.log_p,
+              spir_config_.log_q,
+              spir_config_.batch_size,
+              spir_config_.block_size,
+              spir_config_.rle_blocks,
+              spir_config_.sqrt_N,
+              spir_config_.seed,
+              spir_config_.metadata_hash,
+              spir_config_.hint_c_hash);
+    } catch (const std::exception& e) {
+      return std::unexpected{std::format("deserialization failed {}", e.what())};
+    }
+
+    return {};
+  }
+
   auto save(const fs::path& path) const -> std::expected<std::uintmax_t, std::string> {
     std::ofstream of{path, std::ios::binary};
 
@@ -111,7 +147,9 @@ public:
 
     try {
       cereal::BinaryOutputArchive archive{of};
-      archive(DB_,
+      skimdb_version_t ver;
+      archive(ver,
+              DB_,
               skim_config_.k,
               skim_config_.s,
               skim_config_.t,
@@ -136,11 +174,22 @@ public:
   }
 
 private:
-  skimdb_matrix DB_;              // matrix representation of rle encodings
-  skimdb_parameters skim_config_; // skimdb index parameters
-  spirdb_parameters spir_config_; // SPIR parameters
+  skimdb_matrix DB_{};              // matrix representation of rle encodings
+  skimdb_parameters skim_config_{}; // skimdb index parameters
+  spirdb_parameters spir_config_{}; // SPIR parameters
 };
 
+
+[[nodiscard]] auto load_server(const fs::path& path) -> std::expected<spir_server_state, std::string> {
+  spir_server_state state;
+  auto res = state.load(path);
+
+  if (!res) {
+    return std::unexpected{std::format("faile to load server: {}", res.error())};
+  }
+
+  return state;
+}
 
 [[nodiscard]] auto make_server(skimdb&& db,
                                std::size_t log_p,
@@ -289,54 +338,6 @@ private:
                               .hint_c_hash = hint_c_hash};
 
   return spir_server_state{std::move(DB), std::move(skim_conf), std::move(spir_conf)};
-}
-
-
-[[nodiscard]] auto load_server(const fs::path& path) -> std::expected<spir_server_state, std::string> {
-  LogFun lf{"load_server(...)"};
-
-  std::ifstream is{path, std::ios::binary};
-  if (!is) {
-    return std::unexpected{"could not open file"};
-  }
-
-  try {
-    cereal::BinaryInputArchive archive(is);
-
-    skimdb_matrix DB;
-    skimdb_parameters skim_conf{};
-    spirdb_parameters spir_conf{};
-
-    archive(DB,
-            skim_conf.k,
-            skim_conf.s,
-            skim_conf.t,
-            spir_conf.n,
-            spir_conf.sigma,
-            spir_conf.log_p,
-            spir_conf.log_q,
-            spir_conf.batch_size,
-            spir_conf.block_size,
-            spir_conf.rle_blocks,
-            spir_conf.sqrt_N,
-            spir_conf.seed,
-            spir_conf.metadata_hash,
-            spir_conf.hint_c_hash);
-
-    g_log->info("server state loaded, (k={}, s={}, t={}, sqrt_N={}, log_p={}, log_q={}, n={}, sigma={})",
-                skim_conf.k,
-                skim_conf.s,
-                skim_conf.t,
-                spir_conf.sqrt_N,
-                spir_conf.log_p,
-                spir_conf.log_q,
-                spir_conf.n,
-                spir_conf.sigma);
-
-    return spir_server_state{std::move(DB), std::move(skim_conf), std::move(spir_conf)};
-  } catch (...) {
-    return std::unexpected{"deserialization failed"};
-  }
 }
 
 
