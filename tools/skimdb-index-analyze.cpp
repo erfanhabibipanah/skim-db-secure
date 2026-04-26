@@ -74,7 +74,12 @@ auto main(int argc, char* argv[]) -> int {
     return encoding.length();
   });
 
+  g_log->debug("{} rles, {} rle lengths", kmer_count, rle_lengths.size());
+
   auto [min_it, max_it] = std::minmax_element(rle_lengths.begin(), rle_lengths.end());
+  std::size_t min = *min_it;
+  std::size_t max = *max_it;
+
   double mean = std::accumulate(rle_lengths.begin(), rle_lengths.end(), 0.0) / kmer_count;
 
   auto q1_it = rle_lengths.begin() + kmer_count / 4;
@@ -90,7 +95,7 @@ auto main(int argc, char* argv[]) -> int {
   std::nth_element(rle_lengths.begin(), q3_it, rle_lengths.end());
   std::size_t q3 = *q3_it;
 
-  log->info("RLE length statistics: mean {}, min {}, Q1 {}, median {}, Q3 {}, max {}", mean, *min_it, q1, median, q3, *max_it);
+  log->info("RLE length statistics: mean {}, min {}, Q1 {}, median {}, Q3 {}, max {}", mean, min, q1, median, q3, max);
 
   return 0;
 }
