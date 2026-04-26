@@ -21,6 +21,7 @@
 
 #include <skimdb/skimdb.h>
 #include <skimdb/skimdb_builder.h>
+#include <skimdb/skimdb_version.h>
 
 
 namespace fs = std::filesystem;
@@ -61,6 +62,8 @@ auto main(int argc, char* argv[]) -> int {
   spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-index-create");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input not specified!");

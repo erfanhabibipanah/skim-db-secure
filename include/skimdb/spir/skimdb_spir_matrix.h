@@ -79,7 +79,8 @@ public:
     std::size_t n = data_.size();
     const auto* src = mat.data_.data();
 
-  #pragma omp parallel for simd schedule(static)
+    // vectorization does not work
+#pragma omp parallel for schedule(static)
     for (std::size_t i = 0; i < n; ++i) {
       dst[i] = (dst[i] + src[i]) & mask_;
     }
@@ -95,7 +96,8 @@ public:
     std::size_t n = data_.size();
     std::uint64_t half_delta = (log_delta == 0) ? 0ull : (1ull << (log_delta - 1));
 
-  #pragma omp parallel for simd schedule(static)
+    // vectorization does not work
+#pragma omp parallel for schedule(static)
     for (std::size_t i = 0; i < n; ++i) {
       dst[i] = ((dst[i] + half_delta) & mask_) >> log_delta;
     }
@@ -257,6 +259,7 @@ inline void partitioned_mat_vec_inner(std::uint64_t* __restrict__ out,
                                       std::uint64_t mask) {
   for (std::size_t i = 0; i < N; ++i) {
     out[i] += (static_cast<std::uint64_t>(rle[i]) * vec_val) & mask;
+    out[i] &= mask;
   }
 }
 
@@ -272,32 +275,40 @@ void partitioned_mat_vec1(const skimdb_matrix& mat,
 
   const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
-#pragma omp parallel for schedule(static)
-  for (std::size_t p = start; p < start + count; ++p) {
-    auto* __restrict__ out = dst.subspan(p * rle_blocks, rle_blocks).data();
+  // #pragma omp parallel for schedule(static)
+#pragma omp parallel
+  {
+#pragma omp single
+    {
+#pragma omp taskloop
+      for (std::size_t p = start; p < start + count; ++p) {
+        auto* __restrict__ out = dst.subspan(p * rle_blocks, rle_blocks).data();
 
-    for (std::size_t j = 0; j < m_cols; ++j) {
-      auto rle = mat.rle_in_col(p, j);
+        for (std::size_t j = 0; j < m_cols; ++j) {
+          auto rle = mat.rle_in_col(p, j);
 
-      const auto* __restrict__ rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
-      const std::size_t len = rle.size() * 2;
+          const auto* __restrict__ rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
+          const std::size_t len = rle.size() * 2;
 
-      auto vec_val = vec[j];
+          auto vec_val = vec[j];
 
-      switch (len) {
-      case 2:
-        partitioned_mat_vec_inner<2>(out, rle_ptr, vec_val, mask);
-        break;
-      case 4:
-        partitioned_mat_vec_inner<4>(out, rle_ptr, vec_val, mask);
-        break;
-      case 8:
-        partitioned_mat_vec_inner<8>(out, rle_ptr, vec_val, mask);
-        break;
-      default:
+          switch (len) {
+          case 2:
+            partitioned_mat_vec_inner<2>(out, rle_ptr, vec_val, mask);
+            break;
+          case 4:
+            partitioned_mat_vec_inner<4>(out, rle_ptr, vec_val, mask);
+            break;
+          case 8:
+            partitioned_mat_vec_inner<8>(out, rle_ptr, vec_val, mask);
+            break;
+          default:
 #pragma omp simd
-        for (std::size_t i = 0; i < len; ++i) {
-          out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+            for (std::size_t i = 0; i < len; ++i) {
+              out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+              out[i] &= mask;
+            }
+          }
         }
       }
     }
@@ -316,32 +327,40 @@ void partitioned_mat_vec2(const skimdb_matrix& mat,
 
   const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
-#pragma omp parallel for schedule(static)
-  for (std::size_t p = start; p < start + count; ++p) {
-    auto* __restrict__ out = dst.subspan(p * rle_blocks, rle_blocks).data();
+  // #pragma omp parallel for schedule(static)
+#pragma omp parallel
+  {
+#pragma omp single
+    {
+#pragma omp taskloop
+      for (std::size_t p = start; p < start + count; ++p) {
+        auto* __restrict__ out = dst.subspan(p * rle_blocks, rle_blocks).data();
 
-    for (std::size_t j = 0; j < m_cols; ++j) {
-      auto rle = mat.rle_in_col(p, j);
+        for (std::size_t j = 0; j < m_cols; ++j) {
+          auto rle = mat.rle_in_col(p, j);
 
-      const std::uint16_t* __restrict__ rle_ptr = rle.data();
-      const std::size_t len = rle.size();
+          const std::uint16_t* __restrict__ rle_ptr = rle.data();
+          const std::size_t len = rle.size();
 
-      auto vec_val = vec[j];
+          auto vec_val = vec[j];
 
-      switch (len) {
-      case 2:
-        partitioned_mat_vec_inner<2>(out, rle_ptr, vec_val, mask);
-        break;
-      case 4:
-        partitioned_mat_vec_inner<4>(out, rle_ptr, vec_val, mask);
-        break;
-      case 8:
-        partitioned_mat_vec_inner<8>(out, rle_ptr, vec_val, mask);
-        break;
-      default:
+          switch (len) {
+          case 2:
+            partitioned_mat_vec_inner<2>(out, rle_ptr, vec_val, mask);
+            break;
+          case 4:
+            partitioned_mat_vec_inner<4>(out, rle_ptr, vec_val, mask);
+            break;
+          case 8:
+            partitioned_mat_vec_inner<8>(out, rle_ptr, vec_val, mask);
+            break;
+          default:
 #pragma omp simd
-        for (std::size_t i = 0; i < len; ++i) {
-          out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+            for (std::size_t i = 0; i < len; ++i) {
+              out[i] += (static_cast<std::uint64_t>(rle_ptr[i]) * vec_val) & mask;
+              out[i] &= mask;
+            }
+          }
         }
       }
     }
@@ -373,34 +392,45 @@ void partitioned_mat_vec3(const skimdb_matrix& mat,
 
   const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
-#pragma omp parallel for schedule(static)
-  for (std::size_t p = start; p < start + count; ++p) {
-    auto* __restrict__ out = dst.subspan(p * rle_blocks, rle_blocks).data();
+  // #pragma omp parallel for schedule(static)
+#pragma omp parallel
+  {
+#pragma omp single
+    {
+#pragma omp taskloop
+      for (std::size_t p = start; p < start + count; ++p) {
+        auto* __restrict__ out = dst.subspan(p * rle_blocks, rle_blocks).data();
 
-    for (std::size_t j = 0; j < m_cols; ++j) {
-      auto rle = mat.rle_in_col(p, j);
+        for (std::size_t j = 0; j < m_cols; ++j) {
+          auto rle = mat.rle_in_col(p, j);
 
-      const auto* __restrict__ rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
+          const auto* __restrict__ rle_ptr = reinterpret_cast<const std::uint8_t*>(rle.data());
 
-      const std::size_t len = rle.size() * 2;
-      const std::size_t full_blocks = len / 3;
+          const std::size_t len = rle.size() * 2;
+          const std::size_t full_blocks = len / 3;
 
-      auto vec_val = vec[j];
+          auto vec_val = vec[j];
 
-      for (std::size_t i = 0; i < full_blocks; ++i) {
-        out[i] += (static_cast<std::uint64_t>(load24(rle_ptr + i * 3)) * vec_val) & mask;
-      }
+          // probably not vectorized
+          for (std::size_t i = 0; i < full_blocks; ++i) {
+            out[i] += (static_cast<std::uint64_t>(load24(rle_ptr + i * 3)) * vec_val) & mask;
+            out[i] &= mask;
+          }
 
-      if (full_blocks * 3 < len) {
-        std::uint64_t val = 0;
-        const std::size_t rem = len - full_blocks * 3;
+          if (full_blocks * 3 < len) {
+            std::uint64_t val = 0;
+            const std::size_t rem = len - full_blocks * 3;
 
-        for (std::size_t k = 0; k < rem; ++k) {
-          val = (val << 8) | rle_ptr[full_blocks * 3 + k];
+            // probably not vectorized
+            for (std::size_t k = 0; k < rem; ++k) {
+              val = (val << 8) | rle_ptr[full_blocks * 3 + k];
+            }
+            val <<= (3 - rem) * 8;
+
+            out[full_blocks] += (val * vec_val) & mask;
+            out[full_blocks] &= mask;
+          }
         }
-        val <<= (3 - rem) * 8;
-
-        out[full_blocks] += (val * vec_val) & mask;
       }
     }
   }
@@ -413,8 +443,6 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
                          std::size_t start,
                          std::size_t count,
                          std::size_t rle_blocks) {
-  const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
-
   switch (mat.block_size()) {
   case 1: {
     partitioned_mat_vec1(mat, vec, dst, log_q, start, count, rle_blocks);
@@ -434,18 +462,11 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
       break;
     }
   }
-
-  auto* __restrict__ out = dst.data();
-  auto end = dst.size();
-
-#pragma omp parallel for simd schedule(static)
-  for (std::size_t i = 0; i < end; ++i) {
-    out[i] &= mask;
-  }
 }
 
 
-inline auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::size_t log_q, std::size_t rle_blocks) -> spir_matrix {
+inline auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::size_t log_q, std::size_t rle_blocks)
+    -> spir_matrix {
   LogFun lf{"mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();
@@ -458,7 +479,8 @@ inline auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::size_t
 
 
 // server setup (hint_c = DB*A)
-inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::size_t log_q, std::size_t rle_blocks) -> spir_matrix {
+inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::size_t log_q, std::size_t rle_blocks)
+    -> spir_matrix {
   LogFun lf{"mat_mul(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();

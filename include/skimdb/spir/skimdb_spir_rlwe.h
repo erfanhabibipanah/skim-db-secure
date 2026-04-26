@@ -282,7 +282,6 @@ inline auto compute_hint_ntt(
         a_transpose(ctx_data, As[i]);
     }
 
-    // hint only needs poly_degree columns (per-seed contributions are summed into one poly)
     spir_matrix hint{sqrt_N, poly_degree, log_q};
 
     auto rns_size = poly_degree * num_moduli;
@@ -292,7 +291,6 @@ inline auto compute_hint_ntt(
 
     #pragma omp parallel for schedule(static)
     for (std::uint64_t row = 0; row < db_rows; ++row) {
-        // thread-local buffers
         std::vector<std::uint64_t> t_accum(rns_size, 0);
         std::vector<std::uint64_t> t_tmp(rns_size);
         std::vector<std::uint64_t> t_row_pt(rns_size);
@@ -413,7 +411,6 @@ inline auto prepare_query_hybrid(
 
     #pragma omp parallel
     {
-        // each thread gets its own encryptor (SEAL encryptor is not thread-safe)
         seal::Encryptor enc(ctx.seal_context(), key.secret_key());
 
         #pragma omp for schedule(static)
@@ -441,7 +438,6 @@ inline auto prepare_query_hybrid(
             enc.encrypt_symmetric_preprocessed(pt, ct);
 
             if (num_slots < poly_degree) {
-                // truncate ct
                 auto ctx_data = ctx.seal_context().first_context_data();
                 auto coeff_modulus_size = ctx_data->parms().coeff_modulus().size();
                 auto coeff_count = ctx_data->parms().poly_modulus_degree();

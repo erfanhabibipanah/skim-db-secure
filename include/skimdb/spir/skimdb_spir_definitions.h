@@ -41,7 +41,10 @@ struct spirdb_parameters {
   std::size_t rle_blocks; // number of blocks needed per RLE encoding
   std::size_t sqrt_N;     // matrix side length (blocks of data)
 
-  std::uint64_t seed; // seed for matrix A
+  std::uint64_t seed;         // seed for matrix A
+
+  std::string metadata_hash;  // hash of client metadata (for verification)
+  std::string hint_c_hash;    // hash of hint_c (for verification)
 };
 
 struct spirdb_query_state {

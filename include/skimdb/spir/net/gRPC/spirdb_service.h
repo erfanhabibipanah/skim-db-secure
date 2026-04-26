@@ -35,20 +35,6 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status GetDbMetadata(grpc::ServerContext* context, const google::protobuf::Empty*, DbMetadataReply* reply) override {
-    LogFun lf{"SpirDBService::GetDbMetadata(...)", spdlog::level::debug};
-    g_log->trace("serving db metadata request from {}...", context->peer());
-
-    std::ostringstream os(std::ios::binary);
-    cereal::BinaryOutputArchive ar(os);
-    ar(state_.skim_metadata().index);
-    *reply->mutable_index() = std::move(os).str();
-
-    reply->mutable_labels()->Assign(state_.skim_metadata().labels.begin(), state_.skim_metadata().labels.end());
-
-    return grpc::Status::OK;
-  }
-
   grpc::Status GetSpirParameters(grpc::ServerContext* context, const google::protobuf::Empty*,
                                  SpirParametersReply* reply) override {
     LogFun lf{"SpirDBService::GetSpirParameters(...)", spdlog::level::debug};
@@ -65,31 +51,52 @@ public:
     reply->set_rle_blocks(spir_params.rle_blocks);
     reply->set_sqrt_n(spir_params.sqrt_N);
     reply->set_seed(spir_params.seed);
+    reply->set_metadata_hash(spir_params.metadata_hash);
+    reply->set_hint_c_hash(spir_params.hint_c_hash);
 
     return grpc::Status::OK;
   }
 
-  // TODO: temporary measure to allow for testing with larger databases. Need to better optimize streaming large hint matrices
-  grpc::Status GetSpirHint(grpc::ServerContext* context, const google::protobuf::Empty*, grpc::ServerWriter<SpirHintRow>* writer) override {
-    LogFun lf{"SpirDBService::GetSpirHint(...)", spdlog::level::debug};
-    g_log->trace("serving spir hint request from {}...", context->peer());
+  // TODO: currently we do not have data consistency check (we may have collision on hash)
+  grpc::Status DownloadData(grpc::ServerContext* context,
+                            const DataRequest* request,
+                            grpc::ServerWriter<DataChunk>* writer) override {
+    LogFun lf{"SpirDBService::DownloadData(...)"};
 
-    SpirHintRow row;
+    auto hash = request->hash();
+    fs::path path = fs::path{g_spir_config.server_store_dir} / fs::path{hash}.filename();
 
-    const auto& hint_c = state_.hint_c();
-    auto [rows, _] = hint_c.dimensions();
+    g_log->trace("serving {} to {}...", path.string(), context->peer());
 
-    for (std::size_t r = 0; r < rows; ++r) {
-      if (context->IsCancelled()) {
-        return grpc::Status::CANCELLED;
+    std::ifstream f{path, std::ios::binary};
+
+    if (!f) {
+      return {grpc::StatusCode::NOT_FOUND, "requested file not found"};
+    }
+
+    constexpr std::size_t buf_size = 1 << 20; // 1MB
+
+    std::array<char, buf_size> buff{};
+    std::uint64_t offset{0};
+
+    DataChunk chunk;
+
+    while (f) {
+      f.read(buff.data(), sizeof(buff));
+      auto n = f.gcount();
+
+      if (n <= 0) {
+        break;
       }
 
-      const auto data = hint_c.row(r);
-      row.mutable_hint_row()->Assign(data.begin(), data.end());
+      chunk.set_data(buff.data(), n);
+      chunk.set_offset(offset);
 
-      if (!writer->Write(row)) {
-        return grpc::Status(grpc::StatusCode::INTERNAL, "failed to write spir hint row");
+      if (!writer->Write(chunk)) {
+        return {grpc::StatusCode::CANCELLED, "client disconnected"};
       }
+
+      offset += n;
     }
 
     return grpc::Status::OK;
@@ -99,7 +106,9 @@ public:
     LogFun lf{"SpirDBService::Query(...)"};
     g_log->trace("serving spir query request from {}...", context->peer());
 
-    // TODO: can we eliminate this copy?
+    // TODO: we should consider making spir_matrix non-owning :-)
+    //       this way we could eliminate construction of query_vec
+    //       and operate on request->qu.data() directly
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
 
     if (query_vec_data.size() != state_.spir_parameters().sqrt_N) {
@@ -125,7 +134,6 @@ public:
 
     auto spir_params = state_.spir_parameters();
 
-    // TODO: can we eliminate this copy?
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
 
     if (query_vec_data.size() != spir_params.sqrt_N * spir_params.batch_size) {

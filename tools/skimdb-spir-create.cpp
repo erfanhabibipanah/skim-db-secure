@@ -6,11 +6,12 @@
 #include <fmtextra/fmt_extra.h>
 #include <fmtextra/prompted_input.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
 #include <skimdb/spir/skimdb_spir.h>
 
 
@@ -20,9 +21,10 @@ namespace fs = std::filesystem;
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
   std::string out = "";
+  std::string cache_dir = "";
   unsigned int logp = 22;
   unsigned int logq = 64;
-  unsigned int batch_size = 10;
+  unsigned int batch_size = 1;
   std::size_t n = 1923;
   double sigma = 271.65;
   bool use_rlwe = false;
@@ -33,10 +35,11 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "input skimdb database file", cxxopts::value<std::string>(in))
       ("o,output", "output file for server state", cxxopts::value<std::string>(out))
+      ("c,cache-dir", "server store directory", cxxopts::value<std::string>(cache_dir))
       ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
       ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
-      ("b,batch_size", "batch size", cxxopts::value<unsigned int>(batch_size)->default_value(std::to_string(batch_size)))
-      ("n", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
+      ("b,batch-size", "batch size", cxxopts::value<unsigned int>(batch_size)->default_value(std::to_string(batch_size)))
+      ("n,secret-size", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
       ("s,sigma", "variance of error distribution", cxxopts::value<double>(sigma)->default_value(std::to_string(sigma)))
 #ifdef SKIMDB_USE_RLWE
       ("rlwe", "use Ring-LWE hybrid mode (n becomes poly_degree)", cxxopts::value<bool>(use_rlwe)->default_value("false"))
@@ -58,6 +61,8 @@ auto main(int argc, char* argv[]) -> int {
   auto log = spdlog::stdout_color_mt("skimdb-spir-server-create");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
+  log->info("SKiMdb ver. {}", skim::version);
+
   if (in.empty()) {
     log->error("input not specified!");
     return -1;
@@ -74,6 +79,13 @@ auto main(int argc, char* argv[]) -> int {
     log->error("output not specified!");
     return -1;
   }
+
+  if (cache_dir.empty()) {
+    log->debug("server store directory not specified! using local directory...");
+    cache_dir = ".";
+  }
+
+  skim::spir::g_spir_config.server_store_dir = cache_dir;
 
   log->info("loading index from {}...", in);
 
@@ -117,7 +129,6 @@ auto main(int argc, char* argv[]) -> int {
   } else {
     log->info("server state saved, size: {}B ({})", save_res.value(), as_fsize{save_res.value()});
   }
-
 
   log->info("done!");
 

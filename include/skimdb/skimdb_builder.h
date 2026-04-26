@@ -16,8 +16,8 @@
 #include "detail/skimdb_definitions.h"
 #include "detail/skimdb_logger.h"
 #include "detail/skimdb_util.h"
+
 #include "skimdb.h"
-#include "skimdb_solvers.h"
 
 
 namespace skim {
@@ -32,9 +32,6 @@ public:
 
     g_log->info("packing kmers into data with (k={}, s={}, t={})...", k, s, t);
 
-    std::size_t total_kmers = detail::estimated_kmer_count(k, s, t);
-    g_log->info("estimated {} total kmers", total_kmers);
-
     skimdb db;
 
     db.k_ = k;
@@ -47,8 +44,9 @@ public:
     db.labels_ = std::move(labels);
 
     // we first build k-mer hash
+    // pre-allocation is arbitrary
     std::vector<kmer_binary_t> kmers;
-    kmers.reserve(total_kmers);
+    kmers.reserve(1024 * 1024);
 
     for (auto& bmp : bitmaps) {
       for (kmer_binary_t kmer : bmp) {

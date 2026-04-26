@@ -5,11 +5,12 @@
 #include <cxxopts.hpp>
 #include <fmtextra/fmt_extra.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
 #include <skimdb/spir/skimdb_spir.h>
 
 
@@ -18,7 +19,7 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
-  unsigned int logp = 16;
+  unsigned int logp = 22;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -40,8 +41,10 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("spirdb-precompute-size");
+  auto log = spdlog::stdout_color_mt("skimdb-spir-dbsize");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
 
   if (logp < 8) {
     log->error("logp must be at least 8");

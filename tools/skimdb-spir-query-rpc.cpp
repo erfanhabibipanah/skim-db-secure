@@ -1,19 +1,21 @@
-#include <cstdlib>
 #include <iostream>
 #include <string>
 
 #include <cxxopts.hpp>
 #include <fmtextra/prompted_input.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
+#include <skimdb/skimdb_version.h>
 #include <skimdb/spir/net/gRPC/spirdb_client.h>
+#include <skimdb/spir/skimdb_spir.h>
 
 
 auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
+  std::string cache_dir = "";
   bool verbose = false;
   bool use_rlwe = false;
 
@@ -21,7 +23,8 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("s,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
 #ifdef SKIMDB_USE_RLWE
       ("rlwe", "use Ring-LWE hybrid query mode", cxxopts::value<bool>(use_rlwe)->default_value("false"))
@@ -43,25 +46,23 @@ auto main(int argc, char* argv[]) -> int {
   auto log = spdlog::stdout_color_mt("skimdb-spir-query-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
-  log->info("connecting to {}...", addr);
+  log->info("SKiMdb ver. {}", skim::version);
 
-  grpc::ChannelArguments args;
-  args.SetMaxReceiveMessageSize(-1);
-  args.SetMaxSendMessageSize(-1);
-
-  auto channel = grpc::CreateCustomChannel(addr, grpc::InsecureChannelCredentials(), args);
-
-  if (!channel->WaitForConnected(std::chrono::system_clock::now() + std::chrono::seconds(5))) {
-    log->error("unable to connect to {}!", addr);
-    return -1;
+  if (cache_dir.empty()) {
+    log->debug("client cache directory not specified! using local directory...");
+    cache_dir = ".";
   }
 
-  skim::spir::rpc::SpirDBClient client{channel};
-  log->info("connection established, preparing for queries...");
+  skim::spir::g_spir_config.client_hint_c_dir = cache_dir;
+  skim::spir::g_spir_config.client_metadata_dir = cache_dir;
 
-  auto success = client.setup();
-  if (!success) {
-    log->error("rpc setup failed: {}", success.error());
+  log->info("connecting to {}...", addr);
+
+  skim::spir::rpc::SpirDBClient client{addr};
+
+  auto res = client.setup();
+  if (!res) {
+    log->error("rpc setup failed: {}", res.error());
     return -1;
   }
 

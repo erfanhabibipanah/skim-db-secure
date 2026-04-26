@@ -10,10 +10,9 @@
 #include <format>
 #include <fstream>
 #include <generator>
-#include <optional>
 #include <random>
-#include <span>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -23,14 +22,16 @@
 
 #include <dgpp/uniform_rejection.hpp>
 
-#include <skimdb/detail/skimdb_logger.h>
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/detail/skimdb_encoding.h>
+#include <skimdb/detail/skimdb_logger.h>
 #include <skimdb/detail/skimdb_util.h>
 #include <skimdb/skimdb.h>
 
-#include "skimdb_spir_matrix.h"
+#include "skimdb/skimdb_config.h"
 #include "skimdb_spir_definitions.h"
+#include "skimdb_spir_matrix.h"
+#include "skimdb_spir_util.h"
 
 #ifdef SKIMDB_USE_RLWE
 #include "skimdb_spir_rlwe.h"
@@ -41,26 +42,30 @@ namespace skim::spir {
 
 namespace fs = std::filesystem;
 
+
+struct spir_runtime_config {
+  unsigned int grpc_connect_timeout{5};             // gRPC connection timeout (seconds)
+  unsigned int grpc_download_timeout{300};          // gRPC data download timeout (seconds)
+  std::string server_store_dir{".skimdb-server"};   // path to directory where server stores hint data
+  std::string client_metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
+  std::string client_hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
+};
+
+spir_runtime_config g_spir_config;
+
+
 class spir_server_state final {
 public:
-  explicit spir_server_state(skimdb_matrix&& DB,
-                             skimdb_metadata&& metadata,
-                             skimdb_parameters&& skim_config,
-                             spirdb_parameters&& spir_config,
-                             spir_matrix&& hint_c)
-    : DB_{std::move(DB)},
-      metadata_{std::move(metadata)},
-      skim_config_{std::move(skim_config)},
-      spir_config_{std::move(spir_config)},
-      hint_c_{std::move(hint_c)} {}
+  // TODO: check that this does not blow up things...
+  spir_server_state() = default;
+
+  explicit spir_server_state(skimdb_matrix&& DB, skimdb_parameters&& skim_config, spirdb_parameters&& spir_config)
+      : DB_{std::move(DB)}, skim_config_{std::move(skim_config)}, spir_config_{std::move(spir_config)} {}
+
 
   [[nodiscard]] auto skim_parameters() const -> const skimdb_parameters& { return skim_config_; }
 
-  [[nodiscard]] auto skim_metadata() const -> const skimdb_metadata& { return metadata_; }
-
   [[nodiscard]] auto spir_parameters() const -> const spirdb_parameters& { return spir_config_; }
-
-  [[nodiscard]] auto hint_c() const -> const spir_matrix& { return hint_c_; }
 
 
   [[nodiscard]] auto answer(const spir_matrix& qu) const -> std::expected<spir_matrix, std::string> {
@@ -105,18 +110,17 @@ public:
   }
 
 
-  auto save(const fs::path& path) const -> std::expected<std::uintmax_t, std::string> {
-    std::ofstream of{path, std::ios::binary};
-
-    if (!of) {
-      return std::unexpected{"could not create file"};
+  auto load(const fs::path& path) -> std::expected<void, std::string> {
+    std::ifstream is{path, std::ios::binary};
+    if (!is) {
+      return std::unexpected{"could not open file"};
     }
 
     try {
-      cereal::BinaryOutputArchive archive{of};
-      archive(DB_,
-              metadata_.index,
-              metadata_.labels,
+      cereal::BinaryInputArchive archive(is);
+      skimdb_version_t ver;
+      archive(ver,
+              DB_,
               skim_config_.k,
               skim_config_.s,
               skim_config_.t,
@@ -129,7 +133,41 @@ public:
               spir_config_.rle_blocks,
               spir_config_.sqrt_N,
               spir_config_.seed,
-              hint_c_);
+              spir_config_.metadata_hash,
+              spir_config_.hint_c_hash);
+    } catch (const std::exception& e) {
+      return std::unexpected{std::format("deserialization failed {}", e.what())};
+    }
+
+    return {};
+  }
+
+  auto save(const fs::path& path) const -> std::expected<std::uintmax_t, std::string> {
+    std::ofstream of{path, std::ios::binary};
+
+    if (!of) {
+      return std::unexpected{"could not create file"};
+    }
+
+    try {
+      cereal::BinaryOutputArchive archive{of};
+      skimdb_version_t ver;
+      archive(ver,
+              DB_,
+              skim_config_.k,
+              skim_config_.s,
+              skim_config_.t,
+              spir_config_.n,
+              spir_config_.sigma,
+              spir_config_.log_p,
+              spir_config_.log_q,
+              spir_config_.batch_size,
+              spir_config_.block_size,
+              spir_config_.rle_blocks,
+              spir_config_.sqrt_N,
+              spir_config_.seed,
+              spir_config_.metadata_hash,
+              spir_config_.hint_c_hash);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};
     }
@@ -140,14 +178,22 @@ public:
   }
 
 private:
-  skimdb_matrix DB_;              // matrix representation of rle encodings
-  skimdb_metadata metadata_;      // skimdb metadata (kmer index, labels)
-  skimdb_parameters skim_config_; // skimdb index parameters
-
-  spirdb_parameters spir_config_; // SPIR parameters
-  spir_matrix hint_c_;            // precomputed D*A matrix for query processing
+  skimdb_matrix DB_{};              // matrix representation of rle encodings
+  skimdb_parameters skim_config_{}; // skimdb index parameters
+  spirdb_parameters spir_config_{}; // SPIR parameters
 };
 
+
+[[nodiscard]] auto load_server(const fs::path& path) -> std::expected<spir_server_state, std::string> {
+  spir_server_state state;
+  auto res = state.load(path);
+
+  if (!res) {
+    return std::unexpected{std::format("failed to load server: {}", res.error())};
+  }
+
+  return state;
+}
 
 [[nodiscard]] auto make_server(skimdb&& db,
                                std::size_t log_p,
@@ -190,11 +236,14 @@ private:
   std::size_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
   std::size_t min_blocks = kmers * rle_blocks;
 
-  g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
+  g_log->info("skimdb contains {} kmers, requires {} block(s) per RLE", kmers, rle_blocks);
 
   double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
   auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
+
   std::size_t sqrt_N = rles_per_side * rle_blocks;
+
+  skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
 
   g_log->info("spir matrix dimension sqrt(N) = {}", sqrt_N);
 
@@ -202,6 +251,81 @@ private:
 
   spir_matrix A{sqrt_N, n, log_q};
   A.fill(rng);
+
+  // compute hint_c = DB * A
+  g_log->info("precomputing hint matrix DB * A, be patient...");
+  auto hint_c = mat_mul(DB, A, log_q, rle_blocks);
+
+  g_log->info("saving client metadata...");
+  std::string metadata_hash;
+
+  {
+    std::string rand_name = std::to_string(std::random_device{}());
+    fs::path temp_metadata_path = fs::path(g_spir_config.server_store_dir) / rand_name;
+
+    {
+      std::ofstream os{temp_metadata_path, std::ios::binary};
+      if (!os) {
+        return std::unexpected{"could not create client metadata"};
+      }
+
+      cereal::BinaryOutputArchive archive{os};
+      archive(db_parts.index, db_parts.labels);
+    }
+
+    auto hash_res = sha256_file(temp_metadata_path);
+
+    if (!hash_res) {
+      return std::unexpected{hash_res.error()};
+    }
+
+    metadata_hash = hash_res.value();
+
+    std::error_code ec;
+    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_store_dir) / metadata_hash, ec);
+    if (ec) {
+      return std::unexpected{"could not rename client metadata"};
+    }
+
+    g_log->info("client metadata generated with hash {}", metadata_hash);
+  }
+
+  g_log->info("saving hint_c...");
+  std::string hint_c_hash;
+
+  {
+    std::string rand_name = std::to_string(std::random_device{}());
+    fs::path temp_metadata_path = fs::path(g_spir_config.server_store_dir) / rand_name;
+
+    {
+      std::ofstream os{temp_metadata_path, std::ios::binary};
+      if (!os) {
+        return std::unexpected{"could not create hint_c"};
+      }
+
+      cereal::BinaryOutputArchive archive{os};
+      archive(hint_c);
+    }
+
+    auto hash_res = sha256_file(temp_metadata_path);
+
+    if (!hash_res) {
+      return std::unexpected{hash_res.error()};
+    }
+
+    hint_c_hash = hash_res.value();
+
+    std::error_code ec;
+    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_store_dir) / hint_c_hash, ec);
+
+    if (ec) {
+      return std::unexpected{"could not rename hint_c"};
+    }
+
+    g_log->info("hint_c generated with hash {}", hint_c_hash);
+  }
+
+  g_log->info("constructing server state...");
 
   skimdb_parameters skim_conf{.k = k, .s = s, .t = t};
 
@@ -213,22 +337,20 @@ private:
                               .block_size = block_size,
                               .rle_blocks = rle_blocks,
                               .sqrt_N = sqrt_N,
-                              .seed = seed};
+                              .seed = seed,
+                              .metadata_hash = metadata_hash,
+                              .hint_c_hash = hint_c_hash};
 
-  skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
-  skimdb_metadata metadata{.index = std::move(db_parts.index), .labels = std::move(db_parts.labels)};
-
-  // compute hint_c = DB * A
-  g_log->info("precomputing hint matrix DB * A...");
-  auto hint_c = mat_mul(DB, A, log_q, rle_blocks);
-
-  return spir_server_state{std::move(DB), std::move(metadata), std::move(skim_conf), std::move(spir_conf), std::move(hint_c)};
+  return spir_server_state{std::move(DB), std::move(skim_conf), std::move(spir_conf)};
 }
 
 
 #ifdef SKIMDB_USE_RLWE
-[[nodiscard]] auto make_server_rlwe(skimdb&& db, unsigned int log_p, unsigned int log_q,
-                                    std::uint64_t poly_degree, std::size_t batch_size = 1,
+[[nodiscard]] auto make_server_rlwe(skimdb&& db,
+                                    std::size_t log_p,
+                                    std::size_t log_q,
+                                    std::uint64_t poly_degree,
+                                    std::size_t batch_size = 1,
                                     std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server_rlwe(...)"};
@@ -237,7 +359,7 @@ private:
     return std::unexpected{"unsupported plaintext modulus"};
   }
   if (log_q != 32 && log_q != 64) {
-    return std::unexpected{"RLWE requires log_q = 32 or 64"};
+    return std::unexpected{"unsupported ciphertext modulus for RLWE"};
   }
   if (poly_degree == 0 || (poly_degree & (poly_degree - 1)) != 0) {
     return std::unexpected{"poly_degree must be a power of 2"};
@@ -251,6 +373,7 @@ private:
 
   auto kmers = db_parts.data.size();
   std::size_t max_rle = 0;
+
   for (const auto& entry : db_parts.data) {
     max_rle = std::max(max_rle, entry.length());
   }
@@ -261,12 +384,15 @@ private:
 
   std::size_t block_size = log_p / 8;
   std::size_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
+  std::size_t min_blocks = kmers * rle_blocks;
 
-  g_log->info("skimdb contains {} kmers, require {} blocks per RLE", kmers, rle_blocks);
+  g_log->info("skimdb contains {} kmers, requires {} block(s) per RLE", kmers, rle_blocks);
 
-  double min_side = std::ceil(std::sqrt(static_cast<double>(kmers * rle_blocks)));
+  double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
   auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
   std::size_t sqrt_N = rles_per_side * rle_blocks;
+
+  skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
 
   g_log->info("spir matrix dimension sqrt(N) = {}, poly_degree = {}", sqrt_N, poly_degree);
 
@@ -278,61 +404,99 @@ private:
 
   g_log->info("RLWE: num_seeds = {}", num_seeds);
 
-  skimdb_parameters skim_conf{k, s, t};
-  double sigma = seal::util::seal_he_std_parms_error_std_dev;
-  spirdb_parameters spir_conf{n, sigma, log_p, log_q, batch_size, block_size, rle_blocks, sqrt_N, seed};
-
-  skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
-  skimdb_metadata metadata{.index = std::move(db_parts.index), .labels = std::move(db_parts.labels)};
-
-  g_log->info("precomputing RLWE hint matrix via NTT...");
+  g_log->info("precomputing RLWE hint matrix via NTT, be patient...");
   auto hint_c = rlwe::compute_hint_ntt(ctx, key, DB, a_seeds, num_seeds, sqrt_N, rle_blocks);
 
-  return spir_server_state{std::move(DB),
-                           std::move(metadata),
-                           std::move(skim_conf),
-                           std::move(spir_conf),
-                           std::move(hint_c)};
+  g_log->info("saving client metadata...");
+  std::string metadata_hash;
+
+  {
+    std::string rand_name = std::to_string(std::random_device{}());
+    fs::path temp_metadata_path = fs::path(g_spir_config.server_store_dir) / rand_name;
+
+    {
+      std::ofstream os{temp_metadata_path, std::ios::binary};
+      if (!os) {
+        return std::unexpected{"could not create client metadata"};
+      }
+
+      cereal::BinaryOutputArchive archive{os};
+      archive(db_parts.index, db_parts.labels);
+    }
+
+    auto hash_res = sha256_file(temp_metadata_path);
+
+    if (!hash_res) {
+      return std::unexpected{hash_res.error()};
+    }
+
+    metadata_hash = hash_res.value();
+
+    std::error_code ec;
+    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_store_dir) / metadata_hash, ec);
+    if (ec) {
+      return std::unexpected{"could not rename client metadata"};
+    }
+
+    g_log->info("client metadata generated with hash {}", metadata_hash);
+  }
+
+  g_log->info("saving hint_c...");
+  std::string hint_c_hash;
+
+  {
+    std::string rand_name = std::to_string(std::random_device{}());
+    fs::path temp_metadata_path = fs::path(g_spir_config.server_store_dir) / rand_name;
+
+    {
+      std::ofstream os{temp_metadata_path, std::ios::binary};
+      if (!os) {
+        return std::unexpected{"could not create hint_c"};
+      }
+
+      cereal::BinaryOutputArchive archive{os};
+      archive(hint_c);
+    }
+
+    auto hash_res = sha256_file(temp_metadata_path);
+
+    if (!hash_res) {
+      return std::unexpected{hash_res.error()};
+    }
+
+    hint_c_hash = hash_res.value();
+
+    std::error_code ec;
+    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_store_dir) / hint_c_hash, ec);
+
+    if (ec) {
+      return std::unexpected{"could not rename hint_c"};
+    }
+
+    g_log->info("hint_c generated with hash {}", hint_c_hash);
+  }
+
+  g_log->info("constructing server state...");
+
+  skimdb_parameters skim_conf{.k = k, .s = s, .t = t};
+
+  double sigma = seal::util::seal_he_std_parms_error_std_dev;
+
+  spirdb_parameters spir_conf{.n = n,
+                              .sigma = sigma,
+                              .log_p = log_p,
+                              .log_q = log_q,
+                              .batch_size = batch_size,
+                              .block_size = block_size,
+                              .rle_blocks = rle_blocks,
+                              .sqrt_N = sqrt_N,
+                              .seed = seed,
+                              .metadata_hash = metadata_hash,
+                              .hint_c_hash = hint_c_hash};
+
+  return spir_server_state{std::move(DB), std::move(skim_conf), std::move(spir_conf)};
 }
 #endif
-
-
-[[nodiscard]] auto load_server(const fs::path& path) -> std::expected<spir_server_state, std::string> {
-  LogFun lf{"load_server(...)"};
-
-  std::ifstream is{path, std::ios::binary};
-  if (!is) {
-    return std::unexpected{"could not open file"};
-  }
-
-  try {
-    cereal::BinaryInputArchive archive(is);
-
-    skimdb_matrix DB;
-    skimdb::kmer_index index;
-    std::vector<std::string> labels;
-    skimdb_parameters skim_conf{};
-    spirdb_parameters spir_conf{};
-    spir_matrix hint_c;
-
-    archive(DB, index, labels, skim_conf.k, skim_conf.s, skim_conf.t, spir_conf.n, spir_conf.sigma, spir_conf.log_p,
-            spir_conf.log_q, spir_conf.batch_size, spir_conf.block_size, spir_conf.rle_blocks, spir_conf.sqrt_N,
-            spir_conf.seed, hint_c);
-
-    skimdb_metadata metadata{.index = std::move(index), .labels = std::move(labels)};
-
-    g_log->info("serever state loaded with spir paramaters sqrt_N: {}, log_p: {}, log_q: {}, n: {}, and sigma: {}",
-                spir_conf.sqrt_N, spir_conf.log_p, spir_conf.log_q, spir_conf.n, spir_conf.sigma);
-
-    return spir_server_state{std::move(DB),
-                             std::move(metadata),
-                             std::move(skim_conf),
-                             std::move(spir_conf),
-                             std::move(hint_c)};
-  } catch (...) {
-    return std::unexpected{"deserialization failed"};
-  }
-}
 
 
 class spir_client_state {
@@ -342,12 +506,12 @@ public:
   explicit spir_client_state(skimdb_parameters skim_config, skimdb_metadata skim_metadata,
                              spirdb_parameters spir_config, spir_matrix hint_c,
                              std::uint64_t seed = std::random_device{}())
-      : skim_config_{std::move(skim_config)},
-        skim_metadata_{std::move(skim_metadata)},
-        spir_config_{std::move(spir_config)},
-        A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
-        hint_c_{std::move(hint_c)},
-        rng_{seed} {
+    : skim_config_{std::move(skim_config)},
+      skim_metadata_{std::move(skim_metadata)},
+      spir_config_{std::move(spir_config)},
+      A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
+      hint_c_{std::move(hint_c)},
+      main_seed_{seed} {
     spir_common_rng_t rng{spir_config_.seed};
     A_.fill(rng);
   }
@@ -372,14 +536,18 @@ public:
 
   [[nodiscard]] auto is_valid_kmer(const std::string& str) const -> bool {
     auto kmer = detail::kmer_to_binary(str);
-    return detail::is_valid(str, skim_config_.k) && detail::is_syncmer(kmer, skim_config_.k, skim_config_.s, skim_config_.t);
+    auto canonical = std::min(kmer, detail::reverse_complement(kmer, skim_config_.k));
+    return detail::is_valid(str, skim_config_.k) &&
+           detail::is_syncmer(canonical, skim_config_.k, skim_config_.s, skim_config_.t);
   }
 
-  [[nodiscard]] auto kmer_to_position(const std::string& s) const -> std::optional<std::pair<std::size_t, std::size_t>> {
-    LogFun lf{"spir_client_state::kmer_to_position(...)"};
+  [[nodiscard]] auto kmer_to_position(const std::string& s) const
+      -> std::optional<std::pair<std::size_t, std::size_t>> {
+    LogFun lf{"spir_client_state::kmer_to_position(...)", spdlog::level::debug};
 
     auto kmer = detail::kmer_to_binary(s);
-    auto res = skim_metadata_.index.find(kmer);
+    auto canonical = std::min(kmer, detail::reverse_complement(kmer, skim_config_.k));
+    auto res = skim_metadata_.index.find(canonical);
 
     if (!res.has_value()) {
       // if the k‑mer is valid but absent from the skimdb index, the k‑mer has no associated labels
@@ -410,16 +578,18 @@ public:
 
 
   [[nodiscard]] auto prepare_query(std::size_t i_col) -> spirdb_query_state {
-    LogFun lf{"spir_client_state::prepare_query(...)"};
+    LogFun lf{"spir_client_state::prepare_query(...)", spdlog::level::debug};
+
+    auto& rng = m_get_rng_();
 
     spir_matrix s{spir_config_.n, spir_config_.log_q};
-    s.fill(rng_);
+    s.fill(rng);
 
     dgpp::uniform_rejection dist{spir_config_.sigma};
     spir_matrix e{spir_config_.sqrt_N, spir_config_.log_q};
-    e.fill(rng_, dist);
+    e.fill(rng, dist);
 
-    spir_data_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
+    std::size_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
 
     auto qu = mat_vec(A_, s, spir_config_.log_q);
     qu.add(e);
@@ -432,12 +602,14 @@ public:
   [[nodiscard]] auto new_batch() -> spirdb_query_state {
     LogFun lf{"spir_client_state::new_batch(...)"};
 
+    auto& rng = m_get_rng_();
+
     spir_matrix s{spir_config_.batch_size, spir_config_.n, spir_config_.log_q};
-    s.fill(rng_);
+    s.fill(rng);
 
     dgpp::uniform_rejection dist{spir_config_.sigma};
     spir_matrix e{spir_config_.batch_size, spir_config_.sqrt_N, spir_config_.log_q};
-    e.fill(rng_, dist);
+    e.fill(rng, dist);
 
     spir_matrix qu{spir_config_.batch_size, spir_config_.sqrt_N, spir_config_.log_q};
 
@@ -477,7 +649,6 @@ public:
     return std::make_pair(i_row, spirdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)});
   }
 
-
   [[nodiscard]] auto result_hybrid(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row)
       -> std::generator<const std::string&> {
     LogFun lf{"spir_client_state::result_hybrid(...)"};
@@ -500,14 +671,14 @@ public:
   void update_batch(spirdb_query_state& batch_state, std::size_t i_batch, std::size_t i_col) {
     LogFun lf{"spir_client_state::update_batch(...)", spdlog::level::trace};
 
-    spir_data_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
+    std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
     batch_state.qu_vec.set(i_batch, i_col, batch_state.qu_vec.get(i_batch, i_col) + delta);
   }
 
 
   [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row)
       -> std::generator<const std::string&> {
-    LogFun lf{"spir_client_state::result(...)"};
+    LogFun lf{"spir_client_state::result(...)", spdlog::level::debug};
 
     auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec.span(), spir_config_.log_q, i_row, spir_config_.rle_blocks);
     d.div_delta(spir_config_.log_q - spir_config_.log_p);
@@ -523,16 +694,26 @@ public:
   }
 
 private:
-  auto m_recover_(std::span<const spir_data_t> d_data) -> detail::encoding {
+  auto m_make_local_seed_() -> std::uint64_t {
+    auto tid = std::hash<std::thread::id>{}(std::this_thread::get_id());
+    return main_seed_ ^ (tid * 0x9e3779b97f4a7c15ULL); // Fibonacci hashing
+  }
+
+  auto m_get_rng_() -> spir_common_rng_t& {
+    thread_local spir_common_rng_t rng(m_make_local_seed_());
+    return rng;
+  }
+
+  auto m_recover_(std::span<const std::uint64_t> d_data) -> detail::encoding {
     std::vector<std::uint16_t> rle_data;
 
     switch (spir_config_.block_size) {
     case 1: {
       std::size_t out_len = spir_config_.rle_blocks / 2;
+
       rle_data.resize(out_len);
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
-#pragma omp parallel for simd schedule(static)
       for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
         dst[i] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);
       }
@@ -541,10 +722,10 @@ private:
     }
     case 2: {
       std::size_t out_len = spir_config_.rle_blocks;
+
       rle_data.resize(out_len);
       std::uint16_t* dst = rle_data.data();
 
-#pragma omp parallel for simd schedule(static)
       for (std::size_t i = 0; i < out_len; ++i) {
         dst[i] = static_cast<std::uint16_t>(d_data[i] & 0xFFFFull);
       }
@@ -553,12 +734,12 @@ private:
     }
     case 3: {
       std::size_t out_len = spir_config_.rle_blocks * 3 / 2 + ((spir_config_.rle_blocks * 3 % 2) ? 1 : 0);
+
       rle_data.resize(out_len);
       auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
 
-#pragma omp parallel for simd schedule(static)
       for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
-        dst[i * 3] = static_cast<std::uint8_t>((d_data[i] >> 16) & 0xFFull);
+        dst[i * 3 + 0] = static_cast<std::uint8_t>((d_data[i] >> 16) & 0xFFull);
         dst[i * 3 + 1] = static_cast<std::uint8_t>((d_data[i] >> 8) & 0xFFull);
         dst[i * 3 + 2] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);
       }
@@ -583,17 +764,72 @@ private:
   spir_matrix A_;      // matrix A
   spir_matrix hint_c_; // hint matrix from server
 
-  rng_type rng_;
+  std::uint64_t main_seed_;
 
 #ifdef SKIMDB_USE_RLWE
   std::unique_ptr<rlwe::RLWEContext> rlwe_ctx_;
   std::unique_ptr<rlwe::RLWEKey> rlwe_key_;
   std::vector<std::uint64_t> a_seeds_;
   std::uint64_t num_a_seeds_ = 0;
-
-
 #endif
 };
+
+[[nodiscard]] auto load_client(skimdb_parameters skim_config,
+                               spirdb_parameters spir_config,
+                               std::uint64_t seed = std::random_device{}())
+    -> std::expected<spir_client_state, std::string> {
+  LogFun lf{"load_client(...)"};
+
+  fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / spir_config.metadata_hash;
+  fs::path hint_c_path = fs::path(g_spir_config.client_hint_c_dir) / spir_config.hint_c_hash;
+
+  g_log->debug("loading client metadata from {}...", metadata_path.string());
+
+  skimdb_metadata skim_metadata;
+
+  {
+    std::ifstream is{metadata_path, std::ios::binary};
+    if (!is) {
+      return std::unexpected{"could not open metadata file"};
+    }
+
+    try {
+      cereal::BinaryInputArchive archive(is);
+
+      skimdb::kmer_index index;
+      std::vector<std::string> labels;
+
+      archive(index, labels);
+
+      skim_metadata = skimdb_metadata{.index = std::move(index), .labels = std::move(labels)};
+    } catch (...) {
+      return std::unexpected{"deserialization failed"};
+    }
+  }
+
+  g_log->debug("loading hint_c from {}...", hint_c_path.string());
+
+  spir_matrix hint_c;
+
+  {
+    std::ifstream is{hint_c_path, std::ios::binary};
+    if (!is) {
+      return std::unexpected{"could not open hint_c file"};
+    }
+
+    try {
+      cereal::BinaryInputArchive archive(is);
+      archive(hint_c);
+    } catch (...) {
+      return std::unexpected{"deserialization failed"};
+    }
+  }
+
+  g_log->debug("constructing client state...");
+
+  return spir_client_state{
+      std::move(skim_config), std::move(skim_metadata), std::move(spir_config), std::move(hint_c), seed};
+}
 
 } // namespace skim::spir
 

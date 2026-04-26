@@ -1,8 +1,3 @@
-# Try CONFIG mode first (needed for bundled protobuf with abseil deps)
-find_package(Protobuf CONFIG QUIET)
-if(NOT Protobuf_FOUND)
-    find_package(Protobuf REQUIRED)
-endif()
 find_package(gRPCCompat REQUIRED)
 
 set(PROTO_FILE ${CMAKE_CURRENT_SOURCE_DIR}/proto/spirdb.proto)

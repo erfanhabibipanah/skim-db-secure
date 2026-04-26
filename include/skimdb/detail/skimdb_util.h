@@ -20,7 +20,7 @@
 namespace cereal {
 
 template <class Archive>
-void save(Archive& ar, const roaring::Roaring& bitmap) {
+void save(Archive& ar, const skim::bitmap_t& bitmap) {
   auto size = bitmap.getSizeInBytes();
   std::vector<char> buf(size);
   bitmap.write(buf.data());
@@ -29,15 +29,66 @@ void save(Archive& ar, const roaring::Roaring& bitmap) {
 }
 
 template <class Archive>
-void load(Archive& ar, roaring::Roaring& bitmap) {
+void load(Archive& ar, skim::bitmap_t& bitmap) {
   std::size_t size{};
   ar(cereal::make_nvp("size", size));
   std::vector<char> buf(size);
   ar(cereal::make_nvp("data", buf));
-  bitmap = roaring::Roaring::readSafe(buf.data(), size);
+  bitmap = skim::bitmap_t::readSafe(buf.data(), size);
 }
 
 } // namespace cereal
+
+
+namespace skim {
+
+class kmer_distribution {
+public:
+  using result_type = std::string;
+
+  struct param_type {
+    std::size_t k;
+    friend auto operator==(const param_type&, const param_type&) -> bool = default;
+  };
+
+  kmer_distribution() = default;
+  explicit kmer_distribution(std::size_t k) : params_{k} {}
+  explicit kmer_distribution(const param_type& p) : params_{p} {}
+
+  [[nodiscard]] auto param() const noexcept { return params_; }
+  void param(const param_type& p) noexcept { params_ = p; }
+
+  [[nodiscard]] auto k() const noexcept { return params_.k; }
+
+  void reset() noexcept {}
+
+  template <typename URBG>
+  auto operator()(URBG& g) -> result_type {
+    return (*this)(g, params_);
+  }
+
+  template <typename URBG>
+  auto operator()(URBG& g, const param_type& p) -> result_type {
+    std::string s;
+    s.resize(p.k);
+
+    std::uniform_int_distribution<int> dist(0, 3);
+
+    for (std::size_t i = 0; i < p.k; ++i) {
+      s[i] = alphabet_[dist(g)];
+    }
+
+    return s;
+  }
+
+  friend auto operator==(const kmer_distribution&, const kmer_distribution&) -> bool = default;
+
+private:
+  param_type params_{0};
+  static constexpr std::array<char, 4> alphabet_{'A', 'C', 'G', 'T'};
+};
+
+} // namespace skim
 
 
 namespace skim::detail {
@@ -134,7 +185,7 @@ inline auto kmer_to_binary(const std::string& kmer) noexcept -> kmer_binary_t {
     if (base == -1) {
       return 0; // invalid character
     }
-    result = (result << 2) | static_cast<std::uint32_t>(base);
+    result = (result << 2) | static_cast<kmer_binary_t>(base);
   }
 
   return result;
@@ -246,18 +297,6 @@ inline auto total_kmer_count(std::size_t k, std::size_t s, std::size_t t) -> std
   }
 
   return count;
-}
-
-inline auto estimated_kmer_count(std::size_t k, std::size_t s, std::size_t) noexcept -> std::size_t {
-  std::size_t num_kmers = 1ULL << (2 * k);
-
-  if (s == 0 || s >= k) {
-    std::size_t num_palindromes = (1ULL << (2 * (k >> 1))) * ((k + 1) % 2);
-    return static_cast<std::size_t>((num_kmers + num_palindromes) / 2);
-  }
-
-  // we use compressiom factor from the syncmer paper
-  return num_kmers / (k - s + 1);
 }
 
 } // namespace skim::detail

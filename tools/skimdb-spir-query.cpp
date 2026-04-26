@@ -5,11 +5,12 @@
 #include <cxxopts.hpp>
 #include <fmtextra/prompted_input.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
 #include <skimdb/spir/skimdb_spir.h>
 
 
@@ -18,6 +19,7 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
+  std::string cache_dir = "";
   bool verbose = false;
   bool use_rlwe = false;
 
@@ -26,6 +28,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("i,input", "spir database to query", cxxopts::value<std::string>(in))
+      ("c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
 #ifdef SKIMDB_USE_RLWE
       ("rlwe", "use Ring-LWE hybrid query mode", cxxopts::value<bool>(use_rlwe)->default_value("false"))
@@ -47,10 +50,20 @@ auto main(int argc, char* argv[]) -> int {
   auto log = spdlog::stdout_color_mt("skimdb-spir-query");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
+  log->info("SKiMdb ver. {}", skim::version);
+
   if (in.empty()) {
     log->error("input database not specified!");
     return -1;
   }
+
+  if (cache_dir.empty()) {
+    log->debug("client cache directory not specified! using local directory...");
+    cache_dir = ".";
+  }
+
+  skim::spir::g_spir_config.client_hint_c_dir = cache_dir;
+  skim::spir::g_spir_config.client_metadata_dir = cache_dir;
 
   log->info("loading spir db from {}...", in);
 
@@ -70,11 +83,16 @@ auto main(int argc, char* argv[]) -> int {
 
   auto server_state = setup.value();
 
-
   log->info("creating client...");
 
-  skim::spir::spir_client_state client_state{server_state.skim_parameters(), server_state.skim_metadata(),
-                                             server_state.spir_parameters(), server_state.hint_c()};
+  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), server_state.spir_parameters());
+
+  if (!client_setup) {
+    log->error("could not create client: {}", client_setup.error());
+    return -1;
+  }
+
+  auto client_state = std::move(client_setup.value());
 
 #ifdef SKIMDB_USE_RLWE
   if (use_rlwe) {

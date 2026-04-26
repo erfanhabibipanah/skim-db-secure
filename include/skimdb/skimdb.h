@@ -20,6 +20,50 @@
 #include "detail/skimdb_encoding.h"
 #include "detail/skimdb_util.h"
 
+#include "skimdb_config.h"
+
+
+namespace skim::solver {
+
+inline void greedy_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) {
+  LogFun lf{"greedy_order_bitmaps"};
+
+  std::vector<std::size_t> sizes(bitmaps.size());
+
+  for (auto&& [bitmap, size] : std::views::zip(bitmaps, sizes)) {
+    size = bitmap.cardinality();
+  }
+
+  auto bls_zip = std::views::zip(bitmaps, labels, sizes);
+  std::ranges::sort(bls_zip, std::ranges::greater{}, [](const auto& bls) { return std::get<2>(bls); });
+
+  constexpr std::size_t min_win = 16;
+  constexpr double win_factor = 0.25;
+
+  // selected somewhat arbitrarily
+  auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(bitmaps.size())));
+
+  for (std::size_t i = 0, end = bitmaps.size() - w - 1; i < end; ++i) {
+    auto& B = bitmaps[i];
+
+    // this could be better expressed with ranges, but would be slower :(
+    std::size_t curr_dist{0};
+    std::size_t curr_pos{0};
+
+    for (std::size_t j = i + 1; j < i + w; ++j) {
+      auto dist = (B & bitmaps[j]).cardinality();
+      if (curr_dist < dist) {
+        curr_dist = dist;
+        curr_pos = j;
+      }
+    }
+
+    bitmaps[i + 1].swap(bitmaps[curr_pos]);
+    labels[i + 1].swap(labels[curr_pos]);
+  }
+}
+} // namespace skim::solver
+
 
 namespace skim {
 
@@ -65,6 +109,7 @@ public:
 
   [[nodiscard]] auto parameters() const -> parameters_type { return parameters_type{.k = k_, .s = s_, .t = t_}; }
 
+
   [[nodiscard]] auto explode() && -> skimdb_components {
     return {.data = std::move(data_), .labels = std::move(labels_), .index = std::move(index_)};
   }
@@ -95,6 +140,8 @@ public:
 
     try {
       cereal::BinaryInputArchive archive(is);
+      skimdb_version_t ver;
+      archive(ver);
       archive(*this);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("deserialization failed {}", e.what())};
@@ -111,6 +158,8 @@ public:
 
     try {
       cereal::BinaryOutputArchive archive{os};
+      skimdb_version_t ver;
+      archive(ver);
       archive(*this);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};

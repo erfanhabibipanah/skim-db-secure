@@ -14,12 +14,14 @@
 
 #include <cxxopts.hpp>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
-#include <skimdb/skimdb.h>
 #include <skimdb/net/gRPC/skimdb_service.h>
+#include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
+
 
 namespace fs = std::filesystem;
 
@@ -33,7 +35,7 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("i,input", "database to serve", cxxopts::value<std::string>(in))
-      ("s,server", "serve on network:port", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "address [network:port] to serve on", cxxopts::value<std::string>(addr)->default_value(addr))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -50,6 +52,8 @@ auto main(int argc, char* argv[]) -> int {
   spdlog::cfg::load_env_levels();
   auto log = spdlog::stdout_color_mt("skimdb-index-serve-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input database not specified!");

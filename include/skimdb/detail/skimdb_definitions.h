@@ -3,7 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <roaring/roaring.hh>
+#include <roaring/roaring64map.hh>
 
 
 namespace skim {
@@ -30,15 +30,15 @@ inline auto operator!=(const skimdb_parameters& lhs, const skimdb_parameters& rh
 
 
 // type to represent encoded k-mer
-using kmer_binary_t = std::uint32_t;
+using kmer_binary_t = std::uint64_t;
 
 
 // default bitmap type for k-mer handling (k-mer binary type must be storable in bitmap_t)
-using bitmap_t = roaring::Roaring;
+using bitmap_t = roaring::Roaring64Map;
 
 
 // max k-mer size handled by skimdb
-inline constexpr std::size_t g_kmer_limit = 16;
+inline constexpr std::size_t g_kmer_limit = 32;
 
 } // namespace skim
 

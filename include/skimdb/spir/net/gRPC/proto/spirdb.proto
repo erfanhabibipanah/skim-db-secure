@@ -11,31 +11,26 @@ message DbParametersReply {
   uint64 t = 3;
 }
 
-message DbMetadataReply {
-  bytes index               = 1;
-  repeated string labels    = 2;
-}
-
 message SpirParametersReply {
-  uint64 n          = 1;
-  double sigma      = 2;
+  uint64 n              = 1;
+  double sigma          = 2;
 
   // std::size_t
-  uint64 log_p      = 3;
-  uint64 log_q      = 4;
+  uint64 log_p          = 3;
+  uint64 log_q          = 4;
 
   // std::size_t
-  uint64 batch_size = 5;
+  uint64 batch_size     = 5;
 
-  uint32 block_size = 6;
-  uint64 rle_blocks = 7;
-  uint64 sqrt_N     = 8;
+  // std::size_t
+  uint64 block_size     = 6;
+  uint64 rle_blocks     = 7;
+  uint64 sqrt_N         = 8;
 
-  uint64 seed       = 9;
-}
+  uint64 seed           = 9;
 
-message SpirHintRow {
-  repeated uint64 hint_row = 1;
+  string metadata_hash  = 10;
+  string hint_c_hash    = 11;
 }
 
 message QueryRequest {
@@ -46,12 +41,22 @@ message QueryReply {
   repeated uint64 ans = 1;
 }
 
+message DataRequest {
+  string hash = 1;
+}
+
+message DataChunk {
+  bytes data = 1;
+  uint64 offset = 2;
+  uint64 total_size = 3;
+}
+
 service SpirDB {
   rpc GetDbParameters(google.protobuf.Empty) returns (DbParametersReply);
-  rpc GetDbMetadata(google.protobuf.Empty) returns (DbMetadataReply);
   rpc GetSpirParameters(google.protobuf.Empty) returns (SpirParametersReply);
-  rpc GetSpirHint(google.protobuf.Empty) returns (stream SpirHintRow);
 
   rpc Query(QueryRequest) returns (QueryReply);
   rpc BatchQuery(QueryRequest) returns (QueryReply);
+
+  rpc DownloadData(DataRequest) returns (stream DataChunk);
 }

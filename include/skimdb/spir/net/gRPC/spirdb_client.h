@@ -1,7 +1,11 @@
 #ifndef SPIRDB_CLIENT_H
 #define SPIRDB_CLIENT_H
 
+#include <chrono>
 #include <expected>
+#include <filesystem>
+#include <format>
+#include <fstream>
 #include <generator>
 #include <memory>
 #include <optional>
@@ -11,6 +15,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/detail/skimdb_logger.h>
 #include <skimdb/spir/skimdb_spir.h>
 
@@ -19,77 +24,59 @@
 
 namespace skim::spir::rpc {
 
-class SpirDBClient final {
+namespace fs = std::filesystem;
+
+class SpirDBClient {
 public:
-  explicit SpirDBClient(std::shared_ptr<grpc::Channel> channel) : stub_(SpirDB::NewStub(channel)) {
-    g_log->debug("rpc client created!");
+  explicit SpirDBClient(const std::string& addr = "127.0.0.1:50051") {
+    grpc::ChannelArguments args;
+
+    args.SetMaxReceiveMessageSize(-1);
+    args.SetMaxSendMessageSize(-1);
+
+    channel_ = grpc::CreateCustomChannel(addr, grpc::InsecureChannelCredentials(), args);
+
+    if (channel_->WaitForConnected(std::chrono::system_clock::now() +
+                                   std::chrono::seconds(g_spir_config.grpc_connect_timeout))) {
+      stub_ = SpirDB::NewStub(channel_);
+    }
   }
 
   auto setup() -> std::expected<void, std::string> {
     LogFun lf{"SpirDBClient::setup(...)"};
 
-    g_log->debug("fetching db parameters from server...");
+    if (channel_->GetState(false) != GRPC_CHANNEL_READY) {
+      return std::unexpected{"connection not established"};
+    }
+
+    g_log->info("fetching db parameters from server...");
 
     DbParametersReply db_ans;
-    if (auto res = m_unary_rpc_(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, DbParametersReply* reply) {
-            return stub_->GetDbParameters(ctx, req, reply);
-          }, google::protobuf::Empty{}, db_ans);
+
+    if (auto res = m_unary_rpc_([this](grpc::ClientContext* ctx,
+                                       const google::protobuf::Empty& req,
+                                       DbParametersReply* reply) { return stub_->GetDbParameters(ctx, req, reply); },
+                                google::protobuf::Empty{},
+                                db_ans);
         !res) {
       return std::unexpected{res.error().error_message()};
     }
-
-    g_log->debug("fetching db metadata from server...");
-
-    DbMetadataReply meta_ans;
-    if (auto res = m_unary_rpc_(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, DbMetadataReply* reply) {
-            return stub_->GetDbMetadata(ctx, req, reply);
-          }, google::protobuf::Empty{}, meta_ans);
-        !res) {
-      return std::unexpected{res.error().error_message()};
-    }
-
-    skimdb::kmer_index index;
-    const std::string& buffer = meta_ans.index();
-    std::istringstream is(buffer, std::ios::binary);
-    cereal::BinaryInputArchive ar(is);
-    ar(index);
-
-    std::vector<std::string> labels{meta_ans.labels().begin(), meta_ans.labels().end()};
-
-    g_log->debug("fetching spir parameters from server...");
-
-    SpirParametersReply spir_ans;
-    if (auto res = m_unary_rpc_(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirParametersReply* reply) {
-            return stub_->GetSpirParameters(ctx, req, reply);
-          }, google::protobuf::Empty{}, spir_ans);
-        !res) {
-      return std::unexpected{res.error().error_message()};
-    }
-
-    g_log->debug("fetching spir hint from server...");
-
-    std::vector<std::uint64_t> hint_data;
-
-    if (auto res = m_unary_stream_rpc_<google::protobuf::Empty, SpirHintRow>(
-          [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req) {
-            return stub_->GetSpirHint(ctx, req);
-          }, 
-          google::protobuf::Empty{},
-          [&](const SpirHintRow& row) {
-            hint_data.insert(hint_data.end(), row.hint_row().begin(), row.hint_row().end());
-          });
-        !res) {
-      return std::unexpected{res.error().error_message()};
-    }
-
-    g_log->debug("initializing client state...");
 
     skimdb_parameters skim_conf{.k = db_ans.k(), .s = db_ans.s(), .t = db_ans.t()};
 
-    skimdb_metadata skim_meta{.index = std::move(index), .labels = std::move(labels)};
+    g_log->info("fetching spir parameters from server...");
+
+    SpirParametersReply spir_ans;
+
+    if (auto res = m_unary_rpc_(
+            [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirParametersReply* reply) {
+              return stub_->GetSpirParameters(ctx, req, reply);
+            },
+            google::protobuf::Empty{},
+            spir_ans);
+        !res) {
+      return std::unexpected{res.error().error_message()};
+    }
 
     spirdb_parameters spir_conf{.n = spir_ans.n(),
                                 .sigma = spir_ans.sigma(),
@@ -99,18 +86,45 @@ public:
                                 .block_size = spir_ans.block_size(),
                                 .rle_blocks = spir_ans.rle_blocks(),
                                 .sqrt_N = spir_ans.sqrt_n(),
-                                .seed = spir_ans.seed()};
+                                .seed = spir_ans.seed(),
+                                .metadata_hash = spir_ans.metadata_hash(),
+                                .hint_c_hash = spir_ans.hint_c_hash()};
 
-    spir_matrix hint_c{std::move(hint_data), spir_ans.sqrt_n(), spir_ans.n(), spir_ans.log_p()};
+    fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.metadata_hash;
+    fs::path hint_c_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.hint_c_hash;
 
-    state_.emplace(std::move(skim_conf), std::move(skim_meta), std::move(spir_conf), std::move(hint_c));
+    if (fs::exists(metadata_path) && fs::exists(hint_c_path)) {
+      g_log->info("client metadata and hint_c found locally!");
+    } else {
+      g_log->info("downloading client metadata and hint_c from server...");
+
+      auto res = m_get_data_(g_spir_config.client_metadata_dir, spir_conf.metadata_hash);
+
+      if (!res) {
+        return std::unexpected{res.error()};
+      }
+
+      res = m_get_data_(g_spir_config.client_hint_c_dir, spir_conf.hint_c_hash);
+
+      if (!res) {
+        return std::unexpected{res.error()};
+      }
+    }
+
+    g_log->info("loading client state...");
+
+    auto res = load_client(skim_conf, spir_conf);
+
+    if (!res) {
+      return std::unexpected{res.error()};
+    }
+
+    state_ = std::move(res.value());
 
     return {};
   }
 
-  auto ready() const -> bool {
-    return state_.has_value();
-  }
+  auto ready() const -> bool { return state_.has_value(); }
 
 #ifdef SKIMDB_USE_RLWE
   void init_rlwe() {
@@ -188,15 +202,19 @@ public:
     auto qu_data = query_state.qu_vec.span();
 
     grpc::ClientContext ctx;
-
-    QueryRequest req;
-    req.mutable_qu()->Assign(qu_data.begin(), qu_data.end());
-
     QueryReply reply;
-    grpc::Status status = stub_->Query(&ctx, req, &reply);
-    if (!status.ok()) {
-      g_log->error("query failed: {}", status.error_message());
-      co_return;
+
+    {
+      LogFun lf_sub{"gRPC query request", spdlog::level::debug};
+
+      QueryRequest req;
+      req.mutable_qu()->Assign(qu_data.begin(), qu_data.end());
+
+      grpc::Status status = stub_->Query(&ctx, req, &reply);
+      if (!status.ok()) {
+        g_log->error("query failed: {}", status.error_message());
+        co_return;
+      }
     }
 
     std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};
@@ -207,38 +225,65 @@ public:
     co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos.first));
   }
 
-private:
+  auto skim_parameters() -> std::optional<skimdb_parameters> {
+    if (state_.has_value()) {
+      return state_.value().skim_parameters();
+    }
+    return std::nullopt;
+  }
+
+protected:
   template <typename RpcFn, typename Request, typename Reply>
   auto m_unary_rpc_(RpcFn&& rpc, const Request& req, Reply& reply) -> std::expected<void, grpc::Status> {
     grpc::ClientContext ctx;
     grpc::Status status = rpc(&ctx, req, &reply);
+
     if (!status.ok()) {
       return std::unexpected{status};
     }
+
     return {};
   };
 
-  template <typename Request, typename Reply, typename StreamFn, typename OnMessage>
-  auto m_unary_stream_rpc_(StreamFn&& create_reader, const Request& req, OnMessage&& on_message) -> std::expected<void, grpc::Status> {
+  auto m_get_data_(const std::string& dest, const std::string& hash) -> std::expected<void, std::string> {
     grpc::ClientContext ctx;
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(g_spir_config.grpc_download_timeout));
 
-    auto reader = create_reader(&ctx, req);
-    Reply reply;
+    DataRequest req;
+    req.set_hash(hash);
 
-    while (reader->Read(&reply)) {
-      on_message(reply);
+    auto reader = stub_->DownloadData(&ctx, req);
+
+    fs::path name = fs::path{dest} / fs::path{hash}.filename();
+    std::ofstream of{name, std::ios::binary};
+
+    if (!of) {
+      return std::unexpected{std::format("unable to create {}", name.string())};
+    }
+
+    DataChunk chunk;
+
+    while (reader->Read(&chunk)) {
+      of.write(chunk.data().data(), chunk.data().size());
+
+      if (!of) {
+        return std::unexpected{std::format("unable to create {}", name.string())};
+      }
     }
 
     grpc::Status status = reader->Finish();
+
     if (!status.ok()) {
-      return std::unexpected{status};
+      return std::unexpected{status.error_message()};
     }
 
     return {};
   }
 
   std::optional<spir_client_state> state_;
-  std::unique_ptr<SpirDB::Stub> stub_;
+
+  std::shared_ptr<grpc::Channel> channel_{nullptr};
+  std::unique_ptr<SpirDB::Stub> stub_{nullptr};
 #ifdef SKIMDB_USE_RLWE
   bool rlwe_mode_ = false;
 #endif
