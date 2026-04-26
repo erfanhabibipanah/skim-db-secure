@@ -74,7 +74,7 @@ auto main(int argc, char* argv[]) -> int {
     return encoding.length();
   });
 
-  g_log->debug("{} rles, {} rle lengths", kmer_count, rle_lengths.size());
+  log->debug("{} rles, {} rle lengths", kmer_count, rle_lengths.size());
 
   auto [min_it, max_it] = std::minmax_element(rle_lengths.begin(), rle_lengths.end());
   std::size_t min = *min_it;
