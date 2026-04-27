@@ -80,6 +80,7 @@ endfunction()
 # --------------------------------------------------------------------
 
 skimdb_add_tool(skimdb-index-create)
+skimdb_add_tool(skimdb-index-analyze)
 skimdb_add_tool(skimdb-index-query)
 skimdb_add_tool(skimdb-kmer-generate)
 
@@ -105,4 +106,5 @@ if(SKIMDB_BUILD_SPIR)
     skimdb_add_tool(skimdb-spir-serve-rpc spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
     skimdb_add_tool(skimdb-spir-query-rpc spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
     skimdb_add_tool(skimdb-spir-query-rpc-flood spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-spir-batched-rpc-flood spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
 endif()
