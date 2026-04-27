@@ -62,8 +62,8 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::spir::g_spir_config.client_hint_c_dir = cache_dir;
-  skim::spir::g_spir_config.client_metadata_dir = cache_dir;
+  skim::g_skim_config.spir_client_hint_c_dir = cache_dir;
+  skim::g_skim_config.spir_client_metadata_dir = cache_dir;
 
   log->info("loading spir db from {}...", in);
 

@@ -20,6 +20,7 @@ auto main(int argc, char* argv[]) -> int {
   std::string in{};
   std::string addr{"0.0.0.0:50051"};
   std::string cache_dir = "";
+  unsigned int nthreads = 8;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -28,6 +29,7 @@ auto main(int argc, char* argv[]) -> int {
       ("i,input", "spir database to serve", cxxopts::value<std::string>(in))
       ("a,address", "address [network:port] to serve on", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "server store directory", cxxopts::value<std::string>(cache_dir))
+      ("t,threads", "number of server threads", cxxopts::value<unsigned int>(nthreads)->default_value(std::to_string(nthreads)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -52,7 +54,7 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::spir::g_spir_config.server_store_dir = cache_dir;
+  skim::g_skim_config.spir_server_store_dir = cache_dir;
 
   if (in.empty()) {
     log->error("input database not specified!");
@@ -76,11 +78,15 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   skim::spir::rpc::SpirDBService service(std::move(*server_state));
-  grpc::ServerBuilder builder;
 
+  grpc::ServerBuilder builder;
+  grpc::ResourceQuota quota;
+
+  quota.SetMaxThreads(nthreads);
+
+  builder.SetResourceQuota(quota);
   builder.AddListeningPort(addr, grpc::InsecureServerCredentials());
   builder.RegisterService(&service);
-
   builder.SetMaxReceiveMessageSize(-1);
   builder.SetMaxSendMessageSize(-1);
 

@@ -85,7 +85,7 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::spir::g_spir_config.server_store_dir = cache_dir;
+  skim::g_skim_config.spir_server_store_dir = cache_dir;
 
   log->info("loading index from {}...", in);
 

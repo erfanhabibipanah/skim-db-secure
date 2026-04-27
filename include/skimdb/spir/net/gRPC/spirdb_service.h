@@ -64,7 +64,7 @@ public:
     LogFun lf{"SpirDBService::DownloadData(...)"};
 
     auto hash = request->hash();
-    fs::path path = fs::path{g_spir_config.server_store_dir} / fs::path{hash}.filename();
+    fs::path path = fs::path{g_skim_config.spir_server_store_dir} / fs::path{hash}.filename();
 
     g_log->trace("serving {} to {}...", path.string(), context->peer());
 
