@@ -15,6 +15,7 @@
 #include <grpcpp/grpcpp.h>
 
 #include <skimdb/detail/skimdb_logger.h>
+#include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/spir/skimdb_spir.h>
 
 #include "proto/spirdb.grpc.pb.h"
@@ -28,21 +29,18 @@ using shared_result_type = std::shared_ptr<labels_t>;
 
 
 struct kmer_req {
-  std::uint32_t value;
-  std::uint64_t row_idx;
+  skim::kmer_binary_t value;
+  std::size_t row_idx;
 
-  std::promise<shared_result_type> promise;
+  std::shared_ptr<std::promise<shared_result_type>> promise;
   std::shared_future<shared_result_type> future;
 
-  kmer_req() = default;
-
-  kmer_req(const kmer_req&) = delete;
-  kmer_req& operator=(const kmer_req&) = delete;
-
-  kmer_req(kmer_req&&) = default;
-  kmer_req& operator=(kmer_req&&) = default;
+  kmer_req(skim::kmer_binary_t v, std::size_t r)
+    : value(v),
+      row_idx(r),
+      promise(std::make_shared<std::promise<shared_result_type>>()),
+      future(promise->get_future().share()) {}
 };
-
 
 
 class batch_request {
@@ -139,10 +137,8 @@ public:
 
     std::unique_lock lock{mtx_};
 
-    kmer_req request;
-    request.value = value;
-    request.row_idx = i_row;
-    request.future = request.promise.get_future().share();
+    kmer_req request{value, i_row};
+    auto fut = request.future;
 
     for (auto &batch : queue_) {
       if (batch.free(i_part)) {
@@ -222,7 +218,7 @@ private:
     if (!status.ok()) {
       g_log->error("batch query failed: {}", status.error_message());
       for (auto& r : batch.requests()) {
-        r.promise.set_value(
+        r.promise->set_value(
           std::make_shared<labels_t>()
         );
       }
@@ -244,7 +240,7 @@ private:
       labels_t labels;
       std::ranges::copy(client.result(ans_mat, batch_state, r.row_idx), std::back_inserter(labels));
 
-      r.promise.set_value(
+      r.promise->set_value(
         std::make_shared<labels_t>(std::move(labels))
       );
     }
