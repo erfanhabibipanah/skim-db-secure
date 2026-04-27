@@ -144,11 +144,11 @@ public:
       if (batch.free(i_part)) {
         batch.set(i_part, i_col, std::move(request));
         cv_.notify_one();
-        return request.future;
+        return fut;
       } else if (batch[i_part] == i_col) {
         batch.add(std::move(request));
         cv_.notify_one();
-        return request.future;
+        return fut;
       }
     }
 
@@ -156,7 +156,7 @@ public:
     new_batch.set(i_part, i_col, std::move(request));
     queue_.push_back(std::move(new_batch));
     cv_.notify_one();
-    return request.future;
+    return fut;
   }
 
 private:
