@@ -24,7 +24,6 @@ void run_query(skim::spir::rpc::BatchedSpirDBClient& client, unsigned int l) {
   std::mt19937 rng(std::random_device{}());
   skim::kmer_distribution dist{param.k};
 
-  
   std::vector<std::shared_future<skim::spir::rpc::shared_result_type>> futures;
   futures.reserve(l);
 
@@ -89,8 +88,8 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::spir::g_spir_config.client_hint_c_dir = cache_dir;
-  skim::spir::g_spir_config.client_metadata_dir = cache_dir;
+  skim::g_skim_config.spir_client_hint_c_dir = cache_dir;
+  skim::g_skim_config.spir_client_metadata_dir = cache_dir;
 
   mlog->info("connecting to {}...", addr);
 
