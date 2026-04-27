@@ -37,7 +37,7 @@ public:
     channel_ = grpc::CreateCustomChannel(addr, grpc::InsecureChannelCredentials(), args);
 
     if (channel_->WaitForConnected(std::chrono::system_clock::now() +
-                                   std::chrono::seconds(g_spir_config.grpc_connect_timeout))) {
+                                   std::chrono::seconds(g_skim_config.grpc_connect_timeout))) {
       stub_ = SpirDB::NewStub(channel_);
     }
   }
@@ -90,21 +90,21 @@ public:
                                 .metadata_hash = spir_ans.metadata_hash(),
                                 .hint_c_hash = spir_ans.hint_c_hash()};
 
-    fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.metadata_hash;
-    fs::path hint_c_path = fs::path(g_spir_config.client_metadata_dir) / spir_conf.hint_c_hash;
+    fs::path metadata_path = fs::path(g_skim_config.spir_client_metadata_dir) / spir_conf.metadata_hash;
+    fs::path hint_c_path = fs::path(g_skim_config.spir_client_metadata_dir) / spir_conf.hint_c_hash;
 
     if (fs::exists(metadata_path) && fs::exists(hint_c_path)) {
       g_log->info("client metadata and hint_c found locally!");
     } else {
       g_log->info("downloading client metadata and hint_c from server...");
 
-      auto res = m_get_data_(g_spir_config.client_metadata_dir, spir_conf.metadata_hash);
+      auto res = m_get_data_(g_skim_config.spir_client_metadata_dir, spir_conf.metadata_hash);
 
       if (!res) {
         return std::unexpected{res.error()};
       }
 
-      res = m_get_data_(g_spir_config.client_hint_c_dir, spir_conf.hint_c_hash);
+      res = m_get_data_(g_skim_config.spir_client_hint_c_dir, spir_conf.hint_c_hash);
 
       if (!res) {
         return std::unexpected{res.error()};
@@ -196,7 +196,7 @@ protected:
 
   auto m_get_data_(const std::string& dest, const std::string& hash) -> std::expected<void, std::string> {
     grpc::ClientContext ctx;
-    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(g_spir_config.grpc_download_timeout));
+    ctx.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(g_skim_config.grpc_download_timeout));
 
     DataRequest req;
     req.set_hash(hash);

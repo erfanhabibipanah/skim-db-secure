@@ -49,16 +49,17 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::spir::g_spir_config.client_hint_c_dir = cache_dir;
-  skim::spir::g_spir_config.client_metadata_dir = cache_dir;
+  skim::g_skim_config.spir_client_hint_c_dir = cache_dir;
+  skim::g_skim_config.spir_client_metadata_dir = cache_dir;
 
   log->info("connecting to {}...", addr);
 
   skim::spir::rpc::SpirDBClient client{addr};
 
   auto res = client.setup();
+
   if (!res) {
-    log->error("rpc setup failed: {}", res.error());
+    log->error("gRPC setup failed: {}", res.error());
     return -1;
   }
 

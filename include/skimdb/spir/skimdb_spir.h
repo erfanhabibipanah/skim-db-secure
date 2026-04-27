@@ -39,17 +39,6 @@ namespace skim::spir {
 namespace fs = std::filesystem;
 
 
-struct spir_runtime_config {
-  unsigned int grpc_connect_timeout{5};             // gRPC connection timeout (seconds)
-  unsigned int grpc_download_timeout{300};          // gRPC data download timeout (seconds)
-  std::string server_store_dir{".skimdb-server"};   // path to directory where server stores hint data
-  std::string client_metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
-  std::string client_hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
-};
-
-spir_runtime_config g_spir_config;
-
-
 class spir_server_state final {
 public:
   // TODO: check that this does not blow up things...
@@ -257,7 +246,7 @@ private:
 
   {
     std::string rand_name = std::to_string(std::random_device{}());
-    fs::path temp_metadata_path = fs::path(g_spir_config.server_store_dir) / rand_name;
+    fs::path temp_metadata_path = fs::path(g_skim_config.spir_server_store_dir) / rand_name;
 
     {
       std::ofstream os{temp_metadata_path, std::ios::binary};
@@ -278,7 +267,7 @@ private:
     metadata_hash = hash_res.value();
 
     std::error_code ec;
-    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_store_dir) / metadata_hash, ec);
+    fs::rename(temp_metadata_path, fs::path(g_skim_config.spir_server_store_dir) / metadata_hash, ec);
     if (ec) {
       return std::unexpected{"could not rename client metadata"};
     }
@@ -291,7 +280,7 @@ private:
 
   {
     std::string rand_name = std::to_string(std::random_device{}());
-    fs::path temp_metadata_path = fs::path(g_spir_config.server_store_dir) / rand_name;
+    fs::path temp_metadata_path = fs::path(g_skim_config.spir_server_store_dir) / rand_name;
 
     {
       std::ofstream os{temp_metadata_path, std::ios::binary};
@@ -312,7 +301,7 @@ private:
     hint_c_hash = hash_res.value();
 
     std::error_code ec;
-    fs::rename(temp_metadata_path, fs::path(g_spir_config.server_store_dir) / hint_c_hash, ec);
+    fs::rename(temp_metadata_path, fs::path(g_skim_config.spir_server_store_dir) / hint_c_hash, ec);
 
     if (ec) {
       return std::unexpected{"could not rename hint_c"};
@@ -557,8 +546,8 @@ private:
     -> std::expected<spir_client_state, std::string> {
   LogFun lf{"load_client(...)"};
 
-  fs::path metadata_path = fs::path(g_spir_config.client_metadata_dir) / spir_config.metadata_hash;
-  fs::path hint_c_path = fs::path(g_spir_config.client_hint_c_dir) / spir_config.hint_c_hash;
+  fs::path metadata_path = fs::path(g_skim_config.spir_client_metadata_dir) / spir_config.metadata_hash;
+  fs::path hint_c_path = fs::path(g_skim_config.spir_client_hint_c_dir) / spir_config.hint_c_hash;
 
   g_log->debug("loading client metadata from {}...", metadata_path.string());
 

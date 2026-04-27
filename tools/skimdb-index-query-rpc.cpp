@@ -53,19 +53,12 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("connecting to {}...", addr);
 
-  auto channel = grpc::CreateChannel(addr, grpc::InsecureChannelCredentials());
-
-  if (!channel->WaitForConnected(std::chrono::system_clock::now() + std::chrono::seconds(5))) {
-    log->error("unable to connect to {}!", addr);
-    return -1;
-  }
-
-  skim::rpc::SkimDBClient client{channel};
+  skim::rpc::SkimDBClient client{addr};
 
   auto res = client.parameters();
 
   if (!res) {
-    log->error("rpc failed, error: {}!", res.error());
+    log->error("gRPC failed, error: {}!", res.error());
     return -1;
   }
 

@@ -25,9 +25,20 @@ namespace skim::rpc {
 
 class SkimDBClient final {
 public:
-  explicit SkimDBClient(std::shared_ptr<grpc::Channel> channel) : stub_{SkimDB::NewStub(channel)} {
-    g_log->debug("gRPC client created!");
+  explicit SkimDBClient(const std::string& addr = "127.0.0.1:50051") {
+    grpc::ChannelArguments args;
+
+    args.SetMaxReceiveMessageSize(-1);
+    args.SetMaxSendMessageSize(-1);
+
+    channel_ = grpc::CreateCustomChannel(addr, grpc::InsecureChannelCredentials(), args);
+
+    if (channel_->WaitForConnected(std::chrono::system_clock::now() +
+                                   std::chrono::seconds(g_skim_config.grpc_connect_timeout))) {
+      stub_ = SkimDB::NewStub(channel_);
+    }
   }
+
 
   auto parameters() -> std::expected<skimdb::parameters_type, std::string> const {
     ParametersRequest req;
@@ -64,7 +75,8 @@ public:
   }
 
 private:
-    std::unique_ptr<SkimDB::Stub> stub_;
+  std::shared_ptr<grpc::Channel> channel_{nullptr};
+  std::unique_ptr<SkimDB::Stub> stub_{nullptr};
 };
 
 } // namespace skim::rpc
