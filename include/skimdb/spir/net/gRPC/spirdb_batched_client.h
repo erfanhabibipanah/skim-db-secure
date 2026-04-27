@@ -102,8 +102,8 @@ public:
         threads_{} {
     auto labels = std::make_shared<labels_t>();  // empty vector<string>
     std::promise<shared_result_type> p;
-    p.set_value(labels);
     empty_future_ = p.get_future().share();
+    p.set_value(labels);
 
     g_log->debug("batched rpc client created!");
   }
