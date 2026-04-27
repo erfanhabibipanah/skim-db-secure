@@ -30,10 +30,19 @@ using shared_result_type = std::shared_ptr<labels_t>;
 struct kmer_req {
   std::uint32_t value;
   std::uint64_t row_idx;
-  
+
   std::promise<shared_result_type> promise;
   std::shared_future<shared_result_type> future;
+
+  kmer_req() = default;
+
+  kmer_req(const kmer_req&) = delete;
+  kmer_req& operator=(const kmer_req&) = delete;
+
+  kmer_req(kmer_req&&) = default;
+  kmer_req& operator=(kmer_req&&) = default;
 };
+
 
 
 class batch_request {
