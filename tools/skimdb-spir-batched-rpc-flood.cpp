@@ -103,20 +103,20 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  auto start = std::chrono::high_resolution_clock::now();
+
   {
     std::vector<std::jthread> threads(nt);
-
-    auto start = std::chrono::high_resolution_clock::now();
 
     for (auto& t : threads) {
       t = std::jthread(run_query, std::ref(client), l);
     }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-
-    mlog->info("total throughput: {:.2f}", static_cast<double>(nt * l) / elapsed.count());
   }
+
+  auto end = std::chrono::high_resolution_clock::now();
+  std::chrono::duration<double> elapsed = end - start;
+
+  mlog->info("total throughput: {:.2f}", static_cast<double>(nt * l) / elapsed.count());
 
   mlog->info("done!");
 
