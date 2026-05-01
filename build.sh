@@ -6,6 +6,7 @@ JOBS=8
 usage() {
   echo "usage: $0 [OPTIONS]"
   echo "options:"
+  echi "  -B        build with big k-mer support (64bit encoding)"
   echo "  -T        build tools"
   echo "  -g        build gRPC support"
   echo "  -s        build SPIR support"
@@ -18,7 +19,7 @@ usage() {
 DIR=$(pwd)/release
 CMAKE_CALL="../"
 
-while getopts "Tgshvdj:r:l" arg; do
+while getopts "BTgshvdj:r:l" arg; do
   case $arg in
     h)
       usage
@@ -39,6 +40,9 @@ while getopts "Tgshvdj:r:l" arg; do
       ;;
     l)
       BUILD_LOG=1
+      ;;
+    B)
+      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_64BIT=ON"
       ;;
     T)
       CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_TOOLS=ON"

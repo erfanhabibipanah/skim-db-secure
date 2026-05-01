@@ -2,6 +2,10 @@
 #define SKIMDB_VERSION_H
 #include <string>
 namespace skim {
-  inline constexpr std::string version{"@PROJECT_VERSION@+@GIT_COMMIT@"};
-}
+#ifdef SKIMDB_64BIT
+inline const std::string version{"@PROJECT_VERSION@+@GIT_COMMIT@-kmer64"};
+#else
+inline const std::string version{"@PROJECT_VERSION@+@GIT_COMMIT@"};
+#endif
+} // namespace skim
 #endif // SKIMDB_VERSION_H
