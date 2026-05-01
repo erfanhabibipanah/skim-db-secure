@@ -29,24 +29,44 @@ namespace skim::solver {
 inline void greedy_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) {
   LogFun lf{"greedy_order_bitmaps"};
 
-  std::vector<std::size_t> sizes(bitmaps.size());
+  const std::size_t n = bitmaps.size();
 
-  for (auto&& [bitmap, size] : std::views::zip(bitmaps, sizes)) {
-    size = bitmap.cardinality();
+  // all this to parallelize sort
+  {
+    std::vector<std::size_t> sizes(n);
+
+    for (std::size_t i = 0; i < n; ++i) {
+      sizes[i] = bitmaps[i].cardinality();
+    }
+
+    std::vector<std::size_t> order(n);
+    std::iota(order.begin(), order.end(), 0);
+
+    std::sort(std::execution::par, order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+      return sizes[a] > sizes[b];
+    });
+
+    std::vector<bitmap_t> sbitmaps(n);
+    std::vector<std::string> slabels(n);
+
+    for (std::size_t i = 0; i < n; ++i) {
+      sbitmaps[i] = std::move(bitmaps[order[i]]);
+      slabels[i] = std::move(labels[order[i]]);
+    }
+
+    bitmaps = std::move(sbitmaps);
+    labels = std::move(slabels);
   }
-
-  auto bls_zip = std::views::zip(bitmaps, labels, sizes);
-  std::ranges::sort(bls_zip, std::ranges::greater{}, [](const auto& bls) { return std::get<2>(bls); });
 
   constexpr std::size_t min_win = 16;
   constexpr double win_factor = 0.25;
 
   // selected somewhat arbitrarily
-  auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(bitmaps.size())));
+  auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(n)));
 
   std::vector<std::size_t> indices(w - 1);
 
-  for (std::size_t i = 0, end = bitmaps.size() - w - 1; i < end; ++i) {
+  for (std::size_t i = 0, end = n - w - 1; i < end; ++i) {
     const auto& B = bitmaps[i];
 
     // we can't use views because TBB complains
