@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <execution>
 #include <expected>
 #include <filesystem>
 #include <generator>
@@ -43,25 +44,31 @@ inline void greedy_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std
   // selected somewhat arbitrarily
   auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(bitmaps.size())));
 
+  std::vector<std::size_t> indices(w - 1);
+
   for (std::size_t i = 0, end = bitmaps.size() - w - 1; i < end; ++i) {
-    auto& B = bitmaps[i];
+    const auto& B = bitmaps[i];
 
-    // this could be better expressed with ranges, but would be slower :(
-    std::size_t curr_dist{0};
-    std::size_t curr_pos{0};
+    // we can't use views because TBB complains
+    std::iota(indices.begin(), indices.end(), i + 1);
 
-    for (std::size_t j = i + 1; j < i + w; ++j) {
-      auto dist = (B & bitmaps[j]).cardinality();
-      if (curr_dist < dist) {
-        curr_dist = dist;
-        curr_pos = j;
-      }
-    }
+    auto [best_dist, best_pos] = std::transform_reduce(
+        std::execution::par,
+        indices.begin(),
+        indices.end(),
+        std::pair{std::size_t{0}, i + 1}, // identity
+        [](auto a, auto b) {              // reduction
+          return a.first >= b.first ? a : b;
+        },
+        [&](std::size_t j) -> std::pair<std::size_t, std::size_t> { // transform
+          return {(B & bitmaps[j]).cardinality(), j};
+        });
 
-    bitmaps[i + 1].swap(bitmaps[curr_pos]);
-    labels[i + 1].swap(labels[curr_pos]);
+    bitmaps[i + 1].swap(bitmaps[best_pos]);
+    labels[i + 1].swap(labels[best_pos]);
   }
 }
+
 } // namespace skim::solver
 
 
