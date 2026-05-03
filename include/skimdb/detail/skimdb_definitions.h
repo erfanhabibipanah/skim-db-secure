@@ -1,8 +1,11 @@
 #ifndef SKIMDB_DEFINITIONS_H
 #define SKIMDB_DEFINITIONS_H
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
+
+#include <roaring/roaring.hh>
 #include <roaring/roaring64map.hh>
 
 
@@ -29,16 +32,20 @@ inline auto operator!=(const skimdb_parameters& lhs, const skimdb_parameters& rh
 }
 
 
-// type to represent encoded k-mer
-using kmer_binary_t = std::uint64_t;
+#ifdef SKIMDB_64BIT
+inline constexpr bool g_use_64bit = true;
+#else
+inline constexpr bool g_use_64bit = false;
+#endif
 
+// type to represent encoded k-mer
+using kmer_binary_t = std::conditional_t<g_use_64bit, std::uint64_t, std::uint32_t>;
 
 // default bitmap type for k-mer handling (k-mer binary type must be storable in bitmap_t)
-using bitmap_t = roaring::Roaring64Map;
-
+using bitmap_t = std::conditional_t<g_use_64bit, roaring::Roaring64Map, roaring::Roaring>;
 
 // max k-mer size handled by skimdb
-inline constexpr std::size_t g_kmer_limit = 32;
+inline constexpr std::size_t g_kmer_limit = sizeof(kmer_binary_t) * CHAR_BIT;
 
 } // namespace skim
 

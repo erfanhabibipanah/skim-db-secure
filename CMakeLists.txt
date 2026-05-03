@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(skimdb VERSION 0.1.0 LANGUAGES CXX)
+project(skimdb VERSION 0.2.1 LANGUAGES CXX)
 
 # Get git commit hash
 find_package(Git QUIET)
@@ -23,6 +23,7 @@ configure_file(
   @ONLY
 )
 
+option(SKIMDB_64BIT "Build with 64bit k-mer encoding" OFF)
 option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
 option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)
 option(SKIMDB_BUILD_SPIR "Build SPIR implementation" OFF)
@@ -120,6 +121,10 @@ find_package(TBB REQUIRED)
 
 add_library(skimdb INTERFACE)
 add_library(skimdb::skimdb ALIAS skimdb)
+
+if(SKIMDB_64BIT)
+    target_compile_definitions(skimdb INTERFACE SKIMDB_64BIT)
+endif()
 
 target_include_directories(skimdb INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
