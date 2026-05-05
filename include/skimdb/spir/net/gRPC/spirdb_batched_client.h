@@ -133,6 +133,8 @@ public:
     auto [i_row, i_col] = pos.value();
     auto i_part = state_->row_to_partition(i_row);
 
+    g_log->trace("received query for kmer {}, position: ({}, {}), partition: {}", kmer, i_row, i_col, i_part);
+
     auto value = skim::detail::kmer_to_binary(kmer);
 
     std::unique_lock lock{mtx_};
@@ -142,16 +144,19 @@ public:
 
     for (auto &batch : queue_) {
       if (batch.free(i_part)) {
+        g_log->trace("adding request for kmer {} to existing batch with empty partition {})...", kmer, i_part);
         batch.set(i_part, i_col, std::move(request));
         cv_.notify_one();
         return fut;
       } else if (batch[i_part] == i_col) {
+        g_log->trace("adding request for kmer {} to existing batch with matching partition {}...", kmer, i_part);
         batch.add(std::move(request));
         cv_.notify_one();
         return fut;
       }
     }
 
+    g_log->trace("creating new batch for kmer {} with partition {}...", kmer, i_part);
     batch_request new_batch{state_->spir_parameters().batch_size};
     new_batch.set(i_part, i_col, std::move(request));
     queue_.push_back(std::move(new_batch));
@@ -203,6 +208,7 @@ private:
     auto batch_state = client.new_batch();
 
     for (std::size_t i = 0; i < batch_size; ++i) {
+      g_log->trace("updating batch partition {} with column index {}...", i, batch[i]);
       client.update_batch(batch_state, i, batch[i]);
     }
 
@@ -238,7 +244,7 @@ private:
 
     for (auto& r : batch.requests()) {
       labels_t labels;
-      std::ranges::copy(client.result(ans_mat, batch_state, r.row_idx), std::back_inserter(labels));
+      std::ranges::copy(client.result(ans_mat, batch_state, r.row_idx, state_->row_to_partition(r.row_idx)), std::back_inserter(labels));
 
       r.promise->set_value(
         std::make_shared<labels_t>(std::move(labels))
