@@ -127,33 +127,40 @@ inline void greedy_minmax_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vec
 
   g_log->info("reordering bitmaps...");
 
-  constexpr std::size_t min_win = 16;
+  constexpr std::size_t min_win = 64;
   constexpr double win_factor = 0.25;
 
-  // selected somewhat arbitrarily
   auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(n)));
 
   std::unordered_map<kmer_binary_t, std::size_t> S;
+  std::vector<std::size_t> indices(w - 1);
 
   for (std::size_t i = 0, end = n - w - 1; i < end; ++i) {
-    std::size_t min_dst = std::numeric_limits<std::size_t>::max();
-    std::size_t min_pos = i;
+    const auto& B = bitmaps[i];
 
-    for (std::size_t j = i + 1; j < i + w; ++j) {
-      auto dst = detail::max_distance(S, bitmaps[i], bitmaps[j]);
-      if (dst < min_dst) {
-        min_dst = dst;
-        min_pos = j;
-      }
-    }
+    std::iota(indices.begin(), indices.end(), i + 1);
+
+    auto [min_dst, min_pos] = std::transform_reduce(
+        std::execution::par,
+        indices.begin(),
+        indices.end(),
+        std::pair{std::numeric_limits<std::size_t>::max(), i},
+        [](auto a, auto b) {
+          return a.first <= b.first ? a : b; // min reduction
+        },
+        [&](std::size_t j) -> std::pair<std::size_t, std::size_t> {
+          return {detail::max_distance(S, B, bitmaps[j]), j};
+        });
 
     g_log->trace("iteration {}, swapping {} with {}", i, i + 1, min_pos);
 
-    bitmaps[i + 1].swap(bitmaps[min_pos]);
-    labels[i + 1].swap(labels[min_pos]);
+    std::swap(bitmaps[i + 1], bitmaps[min_pos]);
+    std::swap(labels[i + 1], labels[min_pos]);
 
     auto R = (bitmaps[i] ^ bitmaps[i + 1]);
-    for (auto r : R) { S[r]++; }
+    for (auto r : R) {
+      S[r]++;
+    }
   }
 }
 
