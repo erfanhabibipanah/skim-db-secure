@@ -6,8 +6,10 @@
 #include <execution>
 #include <expected>
 #include <filesystem>
+#include <limits>
 #include <ranges>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <fastxrd/fasta_buffered_reader.h>
@@ -18,6 +20,144 @@
 #include "detail/skimdb_util.h"
 
 #include "skimdb.h"
+
+
+namespace skim::solver {
+
+namespace detail {
+
+inline auto max_distance(const std::unordered_map<kmer_binary_t, std::size_t>& S, bitmap_t R, const bitmap_t& M)
+    -> std::size_t {
+
+  R ^= M;
+
+  std::size_t res = 0;
+
+  for (auto r : R) {
+    auto pos = S.find(r);
+    std::size_t val = (pos != S.end()) ? (pos->second) + 1 : 1;
+    if (val > res) {
+      res = val;
+    }
+  }
+  return res;
+}
+
+} // namespace detail
+
+inline void sort_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) {
+  LogFun lf{"sort_bitmaps(...)"};
+
+  std::size_t n = bitmaps.size();
+
+  // all this to parallelize sort
+  std::vector<std::size_t> sizes(n);
+
+  for (std::size_t i = 0; i < n; ++i) {
+    sizes[i] = bitmaps[i].cardinality();
+  }
+
+  std::vector<std::size_t> order(n);
+  std::iota(order.begin(), order.end(), 0);
+
+  std::sort(std::execution::par, order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
+    return sizes[a] > sizes[b];
+  });
+
+  std::vector<bitmap_t> sbitmaps(n);
+  std::vector<std::string> slabels(n);
+
+  for (std::size_t i = 0; i < n; ++i) {
+    sbitmaps[i] = std::move(bitmaps[order[i]]);
+    slabels[i] = std::move(labels[order[i]]);
+  }
+
+  bitmaps = std::move(sbitmaps);
+  labels = std::move(slabels);
+}
+
+inline void greedy_tsp_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) {
+  LogFun lf{"greedy_tsp_order_bitmaps(...)"};
+
+  std::size_t n = bitmaps.size();
+
+  sort_bitmaps(bitmaps, labels);
+
+  g_log->info("reordering bitmaps...");
+
+  constexpr std::size_t min_win = 16;
+  constexpr double win_factor = 0.25;
+
+  // selected somewhat arbitrarily
+  auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(n)));
+
+  std::vector<std::size_t> indices(w - 1);
+
+  for (std::size_t i = 0, end = n - w - 1; i < end; ++i) {
+    const auto& B = bitmaps[i];
+
+    // we can't use views because TBB complains
+    std::iota(indices.begin(), indices.end(), i + 1);
+
+    auto [best_dist, best_pos] = std::transform_reduce(
+        std::execution::par,
+        indices.begin(),
+        indices.end(),
+        std::pair{std::size_t{0}, i + 1}, // identity
+        [](auto a, auto b) {              // reduction
+          return a.first >= b.first ? a : b;
+        },
+        [&](std::size_t j) -> std::pair<std::size_t, std::size_t> { // transform
+          return {(B & bitmaps[j]).cardinality(), j};
+        });
+
+    g_log->trace("iteration {}, swapping {} with {}", i, i + 1, best_pos);
+
+    bitmaps[i + 1].swap(bitmaps[best_pos]);
+    labels[i + 1].swap(labels[best_pos]);
+  }
+}
+
+inline void greedy_minmax_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) {
+  LogFun lf{"greedy_minmax_order_bitmaps(...)"};
+
+  std::size_t n = bitmaps.size();
+
+  sort_bitmaps(bitmaps, labels);
+
+  g_log->info("reordering bitmaps...");
+
+  constexpr std::size_t min_win = 16;
+  constexpr double win_factor = 0.25;
+
+  // selected somewhat arbitrarily
+  auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(n)));
+
+  std::unordered_map<kmer_binary_t, std::size_t> S;
+
+  for (std::size_t i = 0, end = n - w - 1; i < end; ++i) {
+    std::size_t min_dst = std::numeric_limits<std::size_t>::max();
+    std::size_t min_pos = i;
+
+    for (std::size_t j = i + 1; j < i + w; ++j) {
+      auto dst = detail::max_distance(S, bitmaps[i], bitmaps[j]);
+      if (dst < min_dst) {
+        min_dst = dst;
+        min_pos = j;
+      }
+    }
+
+    g_log->trace("iteration {}, swapping {} with {}", i, i + 1, min_pos);
+
+    bitmaps[i + 1].swap(bitmaps[min_pos]);
+    labels[i + 1].swap(labels[min_pos]);
+
+    auto R = (bitmaps[i] ^ bitmaps[i + 1]);
+    for (auto r : R) { S[r]++; }
+  }
+}
+
+} // namespace skim::solver
 
 
 namespace skim {
@@ -100,6 +240,9 @@ public:
       bitmap = detail::populate_bitmap(dir, file, k, s, t);
     });
 
+    //solver::greedy_tsp_order_bitmaps(bitmaps, labels);
+    solver::greedy_minmax_order_bitmaps(bitmaps, labels);
+
     return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
@@ -136,7 +279,7 @@ public:
     g_log->info("{} kmers extracted from {} sequences", kmer_count, labels.size());
     g_log->info("largest kmer: {}", kmax);
 
-    solver::greedy_order_bitmaps(bitmaps, labels);
+    solver::greedy_tsp_order_bitmaps(bitmaps, labels);
 
     return build_index(bitmaps, std::move(labels), k, s, t);
   }
