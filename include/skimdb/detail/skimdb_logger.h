@@ -37,8 +37,12 @@ public:
   }
 
   ~LogFun() {
-    auto t = duration<double>(steady_clock::now() - tp_);
-    g_log->log(level_, "DONE: {} in {}", name_, as_time(t.count()));
+    auto t = duration<double>(steady_clock::now() - tp_).count();
+    if (t < 1.0) {
+      g_log->log(level_, "DONE: {} in {:.6f}s", name_, t);
+    } else {
+      g_log->log(level_, "DONE: {} in {}", name_, as_time(t));
+    }
   }
 
   LogFun(const LogFun&) = delete;

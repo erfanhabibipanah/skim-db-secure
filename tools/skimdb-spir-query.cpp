@@ -2,6 +2,8 @@
 #include <iostream>
 #include <string>
 
+#include <omp.h>
+
 #include <cxxopts.hpp>
 #include <fmtextra/prompted_input.h>
 
@@ -22,6 +24,8 @@ auto main(int argc, char* argv[]) -> int {
   std::string cache_dir = "";
   bool verbose = false;
   bool use_rlwe = false;
+  int server_threads = 0;
+  int client_threads = 0;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -30,6 +34,8 @@ auto main(int argc, char* argv[]) -> int {
       ("i,input", "spir database to query", cxxopts::value<std::string>(in))
       ("c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
+      ("server-threads", "OMP threads for server answer (0 = inherit)", cxxopts::value<int>(server_threads)->default_value("0"))
+      ("client-threads", "OMP threads for client prepare/result (0 = inherit)", cxxopts::value<int>(client_threads)->default_value("0"))
 #ifdef SKIMDB_USE_RLWE
       ("rlwe", "use Ring-LWE hybrid query mode", cxxopts::value<bool>(use_rlwe)->default_value("false"))
 #endif
@@ -94,6 +100,10 @@ auto main(int argc, char* argv[]) -> int {
 
   auto client_state = std::move(client_setup.value());
 
+  if (client_threads > 0) {
+    omp_set_num_threads(client_threads);
+  }
+
 #ifdef SKIMDB_USE_RLWE
   if (use_rlwe) {
     auto spir_conf = server_state.spir_parameters();
@@ -102,6 +112,12 @@ auto main(int argc, char* argv[]) -> int {
     client_state.init_rlwe(poly_degree, p_mod);
   }
 #endif
+
+  if (server_threads > 0 || client_threads > 0) {
+    log->info("threads: server={}, client={}",
+              server_threads > 0 ? server_threads : omp_get_max_threads(),
+              client_threads > 0 ? client_threads : omp_get_max_threads());
+  }
 
   log->info("client ready for queries...");
 
@@ -126,6 +142,9 @@ auto main(int argc, char* argv[]) -> int {
 
 #ifdef SKIMDB_USE_RLWE
     if (use_rlwe) {
+      if (client_threads > 0) {
+        omp_set_num_threads(client_threads);
+      }
       auto hybrid = client_state.prepare_query_hybrid(q);
       if (!hybrid) {
         log->warn("hybrid query failed: {}", hybrid.error());
@@ -134,11 +153,17 @@ auto main(int argc, char* argv[]) -> int {
       auto& query_state = hybrid->second;
 
       log->info("submitting query...");
+      if (server_threads > 0) {
+        omp_set_num_threads(server_threads);
+      }
       auto answer = server_state.answer(query_state.qu_vec);
       if (!answer) { log->warn("could not get answer: {}", answer.error()); continue; }
       auto answer_vec = answer.value();
       log->info("recovering result...");
 
+      if (client_threads > 0) {
+        omp_set_num_threads(client_threads);
+      }
       if (verbose) {
         log->info("query results:");
         for (auto label : client_state.result_hybrid(answer_vec, query_state, pos->first)) {
@@ -149,13 +174,16 @@ auto main(int argc, char* argv[]) -> int {
       }
     } else {
 #endif
+    if (client_threads > 0) {
+      omp_set_num_threads(client_threads);
+    }
     auto query_state = client_state.prepare_query(pos->second);
-#ifdef SKIMDB_USE_RLWE
-    // fall through to standard LWE path below
-#endif
 
     log->info("submitting query...");
 
+    if (server_threads > 0) {
+      omp_set_num_threads(server_threads);
+    }
     auto answer = server_state.answer(query_state.qu_vec);
 
     if (!answer) {
@@ -167,6 +195,9 @@ auto main(int argc, char* argv[]) -> int {
 
     log->info("recovering result...");
 
+    if (client_threads > 0) {
+      omp_set_num_threads(client_threads);
+    }
     if (verbose) {
       log->info("query results:");
       for (auto label : client_state.result(answer_vec, query_state, pos->first)) {
@@ -176,7 +207,7 @@ auto main(int argc, char* argv[]) -> int {
       log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state, pos->first)));
     }
 #ifdef SKIMDB_USE_RLWE
-    } // close else from RLWE branch
+    }
 #endif
   }
 
