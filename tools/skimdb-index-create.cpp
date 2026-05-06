@@ -8,7 +8,6 @@
  *  See accompanying LICENSE
  */
 
-#include "skimdb/detail/skimdb_definitions.h"
 #include <filesystem>
 #include <iostream>
 #include <string>

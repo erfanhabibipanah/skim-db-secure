@@ -7,12 +7,13 @@
 #include <cxxopts.hpp>
 #include <fmtextra/fmt_extra.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
-#include <skimdb/skimdb.h>
 #include <skimdb/detail/skimdb_encoding.h>
+#include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
 
 
 namespace fs = std::filesystem;
@@ -20,7 +21,7 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in{};
-  
+
   try {
     cxxopts::Options options(argv[0]);
 
@@ -40,8 +41,10 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-index-query");
+  auto log = spdlog::stdout_color_mt("skimdb-index-analyze");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input not specified!");
@@ -78,29 +81,28 @@ auto main(int argc, char* argv[]) -> int {
   info.reserve(data.size());
 
   for (std::size_t i = 0; i < data.size(); ++i) {
-    info.emplace_back(rle_info{data[i].length(), i});
+    info.emplace_back(rle_info{.length = data[i].length(), .idx = i});
   }
 
-  std::sort(info.begin(), info.end(),
-    [](const auto& a, const auto& b) {
-      return a.length < b.length;
-    });
+  std::sort(info.begin(), info.end(), [](const auto& a, const auto& b) { return a.length < b.length; });
 
-  std::size_t total_length = std::accumulate(info.begin(), info.end(), 0ULL,
-      [](std::size_t sum, const auto& p) { return sum + p.length; });
+  std::size_t total_length =
+      std::accumulate(info.begin(), info.end(), 0ULL, [](std::size_t sum, const auto& p) { return sum + p.length; });
   double mean = static_cast<double>(total_length) / info.size();
 
-  log->info("RLE length statistics: mean = {}, min = {}, Q1 = {}, median = {}, Q3 = {}, max = {}",
-    mean, 
-    info.front().length, 
-    info[info.size() / 4].length, 
-    info[info.size() / 2].length, 
-    info[3 * info.size() / 4].length, 
-    info.back().length);
+  log->info("RLE length statistics:");
+  log->info("  mean={:.3f}, min={}, Q1={}, median={}, Q3={}, max={}",
+            mean,
+            info.front().length,
+            info[info.size() / 4].length,
+            info[info.size() / 2].length,
+            info[3 * info.size() / 4].length,
+            info.back().length);
 
   const std::size_t n = std::min<std::size_t>(10, info.size());
 
-  log->info("largest rle lengths:");
+  log->info("largest RLE lengths:");
+
   for (std::size_t i = info.size() - n; i < info.size(); ++i) {
     std::size_t n_compressed = 0;
     std::size_t n_uncompressed = 0;
@@ -110,40 +112,45 @@ auto main(int argc, char* argv[]) -> int {
 
     for (auto block : data[info[i].idx].span()) {
       switch (skim::detail::get_block_encoding(block)) {
-        case skim::detail::g_encoding_uncompressed: {
-          n_uncompressed++;
-          std::size_t value = block & skim::detail::g_literal_mask;
-          auto set = std::popcount(value);
-          ones += set;
-          zeros += 15 - set;
-          break;
-        }
-        case skim::detail::g_encoding_one_run: {
-          n_compressed++;
-          ones += block & skim::detail::g_count_mask;
-          break;
-        }
-        case skim::detail::g_encoding_zero_run: {
-          n_compressed++;
-          zeros += block & skim::detail::g_count_mask;
-          break;
-        }
+      case skim::detail::g_encoding_uncompressed: {
+        n_uncompressed++;
+        std::size_t value = block & skim::detail::g_literal_mask;
+        auto set = std::popcount(value);
+        ones += set;
+        zeros += 15 - set;
+        break;
+      }
+      case skim::detail::g_encoding_one_run: {
+        n_compressed++;
+        ones += block & skim::detail::g_count_mask;
+        break;
+      }
+      case skim::detail::g_encoding_zero_run: {
+        n_compressed++;
+        zeros += block & skim::detail::g_count_mask;
+        break;
+      }
       }
     }
 
     double entropy = 0.0;
+
     if (ones > 0) {
       double p1 = static_cast<double>(ones) / (ones + zeros);
       entropy -= p1 * std::log2(p1);
     }
-    
+
     if (zeros > 0) {
       double p0 = static_cast<double>(zeros) / (ones + zeros);
       entropy -= p0 * std::log2(p0);
     }
 
-    log->info("  length = {}, compressed = {}, uncompressed = {}, entropy = {}",
-      info[i].length, n_compressed, n_uncompressed, entropy);
+    log->info("  {:02}: total={}, compressed={}, uncompressed={}, H={:.3f}",
+              info.size() - i,
+              info[i].length,
+              n_compressed,
+              n_uncompressed,
+              entropy);
   }
 
   return 0;
