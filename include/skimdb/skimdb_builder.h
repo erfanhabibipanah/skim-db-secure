@@ -40,6 +40,7 @@ inline auto max_distance(const std::unordered_map<kmer_binary_t, std::size_t>& S
       res = val;
     }
   }
+
   return res;
 }
 
@@ -76,28 +77,36 @@ inline void sort_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string
   labels = std::move(slabels);
 }
 
-inline void greedy_tsp_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) {
+inline void
+greedy_tsp_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels, std::size_t win_size = 0) {
   LogFun lf{"greedy_tsp_order_bitmaps(...)"};
 
   std::size_t n = bitmaps.size();
 
+  if (n < 3) {
+    return;
+  }
+
+  if (win_size == 0) {
+    win_size = n - 1;
+  }
+
   sort_bitmaps(bitmaps, labels);
 
-  g_log->info("reordering bitmaps...");
+  auto w = std::min(win_size, n - 1);
 
-  constexpr std::size_t min_win = 16;
-  constexpr double win_factor = 0.25;
+  g_log->info("reordering bitmaps, window size w={}...", w);
 
-  // selected somewhat arbitrarily
-  auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(n)));
+  std::vector<std::size_t> indices(w);
 
-  std::vector<std::size_t> indices(w - 1);
-
-  for (std::size_t i = 0, end = n - w - 1; i < end; ++i) {
+  for (std::size_t i = 0, end = n - 2; i < end; ++i) {
     const auto& B = bitmaps[i];
 
     // we can't use views because TBB complains
+    indices.resize(std::min(w, n - i - 1));
     std::iota(indices.begin(), indices.end(), i + 1);
+
+    g_log->trace("iteration {}, range {}..{}", i, indices.front(), indices.back());
 
     auto [best_dist, best_pos] = std::transform_reduce(
         std::execution::par,
@@ -118,27 +127,37 @@ inline void greedy_tsp_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector
   }
 }
 
-inline void greedy_minmax_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string>& labels) {
+inline void greedy_minmax_order_bitmaps(std::vector<bitmap_t>& bitmaps,
+                                        std::vector<std::string>& labels,
+                                        std::size_t win_size = 0) {
   LogFun lf{"greedy_minmax_order_bitmaps(...)"};
 
   std::size_t n = bitmaps.size();
 
+  if (n < 3) {
+    return;
+  }
+
+  if (win_size == 0) {
+    win_size = n - 1;
+  }
+
   sort_bitmaps(bitmaps, labels);
 
-  g_log->info("reordering bitmaps...");
+  auto w = std::min(win_size, n - 1);
 
-  constexpr std::size_t min_win = 64;
-  constexpr double win_factor = 0.25;
-
-  auto w = std::min(min_win, static_cast<std::size_t>(win_factor * static_cast<double>(n)));
+  g_log->info("reordering bitmaps, window size w={}...", w);
 
   std::unordered_map<kmer_binary_t, std::size_t> S;
-  std::vector<std::size_t> indices(w - 1);
+  std::vector<std::size_t> indices(w);
 
-  for (std::size_t i = 0, end = n - w - 1; i < end; ++i) {
+  for (std::size_t i = 0, end = n - 2; i < end; ++i) {
     const auto& B = bitmaps[i];
 
+    indices.resize(std::min(w, n - i - 1));
     std::iota(indices.begin(), indices.end(), i + 1);
+
+    g_log->trace("iteration {}, range {}..{}", i, indices.front(), indices.back());
 
     auto [min_dst, min_pos] = std::transform_reduce(
         std::execution::par,
@@ -158,8 +177,9 @@ inline void greedy_minmax_order_bitmaps(std::vector<bitmap_t>& bitmaps, std::vec
     std::swap(labels[i + 1], labels[min_pos]);
 
     auto R = (bitmaps[i] ^ bitmaps[i + 1]);
+
     for (auto r : R) {
-      S[r]++;
+      ++S[r];
     }
   }
 }
@@ -173,8 +193,11 @@ namespace fs = std::filesystem;
 
 class builder final {
 public:
-  [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps, std::vector<std::string> labels,
-                                        std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+  [[nodiscard]] static auto build_index(const std::vector<bitmap_t>& bitmaps,
+                                        std::vector<std::string> labels,
+                                        std::size_t k,
+                                        std::size_t s,
+                                        std::size_t t) -> skimdb {
     LogFun lf{"build_index(...)"};
 
     g_log->info("packing kmers into data with (k={}, s={}, t={})...", k, s, t);
@@ -236,7 +259,11 @@ public:
   [[nodiscard]] static auto build_file_index(const fs::path& dir,
                                              const std::vector<std::string>& files,
                                              std::vector<std::string> labels,
-                                             std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+                                             std::size_t k,
+                                             std::size_t s,
+                                             std::size_t t,
+                                             skimdb_rle_ordering order = skimdb_rle_ordering::none,
+                                             std::size_t w = 0) -> skimdb {
     LogFun lf{"build_file_index(dir, files, ...)"};
 
     std::vector<bitmap_t> bitmaps(files.size());
@@ -247,22 +274,34 @@ public:
       bitmap = detail::populate_bitmap(dir, file, k, s, t);
     });
 
-    //solver::greedy_tsp_order_bitmaps(bitmaps, labels);
-    solver::greedy_minmax_order_bitmaps(bitmaps, labels);
+    if (order == skimdb_rle_ordering::tsp) {
+      solver::greedy_tsp_order_bitmaps(bitmaps, labels, w);
+    } else if (order == skimdb_rle_ordering::minmax) {
+      solver::greedy_minmax_order_bitmaps(bitmaps, labels, w);
+    }
 
     return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
-  [[nodiscard]] static auto build_file_index(const fs::path& dir, const fs::path& f2l,
-                                             std::size_t k, std::size_t s, std::size_t t) -> skimdb {
+  [[nodiscard]] static auto build_file_index(const fs::path& dir,
+                                             const fs::path& f2l,
+                                             std::size_t k,
+                                             std::size_t s,
+                                             std::size_t t,
+                                             skimdb_rle_ordering order = skimdb_rle_ordering::none,
+                                             std::size_t w = 0) -> skimdb {
     LogFun lf{"build_file_index(dir, f2l, ...)"};
     auto [files, labels] = detail::load_f2l(f2l);
-    return build_file_index(dir, files, std::move(labels), k, s, t);
+    return build_file_index(dir, files, std::move(labels), k, s, t, order, w);
   }
 
   template <std::ranges::input_range Range>
-  [[nodiscard]] static auto build_range_index(Range&& range, std::size_t k, std::size_t s, std::size_t t)
-      -> skimdb {
+  [[nodiscard]] static auto build_range_index(Range&& range,
+                                              std::size_t k,
+                                              std::size_t s,
+                                              std::size_t t,
+                                              skimdb_rle_ordering order = skimdb_rle_ordering::none,
+                                              std::size_t w = 0) -> skimdb {
     LogFun lf{"build_range_index(...)"};
 
     std::vector<bitmap_t> bitmaps;
@@ -286,16 +325,24 @@ public:
     g_log->info("{} kmers extracted from {} sequences", kmer_count, labels.size());
     g_log->info("largest kmer: {}", kmax);
 
-    solver::greedy_tsp_order_bitmaps(bitmaps, labels);
+    if (order == skimdb_rle_ordering::tsp) {
+      solver::greedy_tsp_order_bitmaps(bitmaps, labels, w);
+    } else if (order == skimdb_rle_ordering::minmax) {
+      solver::greedy_minmax_order_bitmaps(bitmaps, labels, w);
+    }
 
     return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
-  [[nodiscard]] static auto build_dir_index(const fs::path& dir, std::size_t k, std::size_t s, std::size_t t)
-      -> skimdb {
+  [[nodiscard]] static auto build_dir_index(const fs::path& dir,
+                                            std::size_t k,
+                                            std::size_t s,
+                                            std::size_t t,
+                                            skimdb_rle_ordering order = skimdb_rle_ordering::none,
+                                            std::size_t w = 0) -> skimdb {
     LogFun lf{"build_dir_index(...)"};
     fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
-    return build_range_index(ffr.sequences(), k, s, t);
+    return build_range_index(ffr.sequences(), k, s, t, order, w);
   }
 
   // merges indexes with a disjoint set of labels
