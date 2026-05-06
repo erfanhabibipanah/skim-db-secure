@@ -4,6 +4,8 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <string_view>
 
 #include <roaring/roaring.hh>
 #include <roaring/roaring64map.hh>
@@ -47,6 +49,36 @@ using bitmap_t = std::conditional_t<g_use_64bit, roaring::Roaring64Map, roaring:
 // max k-mer size handled by skimdb
 inline constexpr std::size_t g_kmer_limit = sizeof(kmer_binary_t) * CHAR_BIT;
 
+  // available ordering strategies that can be used to build skimdb index
+enum class skimdb_rle_ordering : std::uint8_t { none, tsp, minmax };
+
+inline constexpr auto parse_rle_ordering(std::string_view s) -> skimdb_rle_ordering {
+  if (s == "none") {
+    return skimdb_rle_ordering::none;
+  }
+  if (s == "tsp") {
+    return skimdb_rle_ordering::tsp;
+  }
+  if (s == "minmax") {
+    return skimdb_rle_ordering::minmax;
+  }
+  throw std::runtime_error("Invalid RLE ordering strategy: " + std::string(s));
+}
+
 } // namespace skim
+
+namespace std {
+constexpr auto to_string(skim::skimdb_rle_ordering o) noexcept -> std::string {
+  switch (o) {
+  case skim::skimdb_rle_ordering::none:
+    return "none";
+  case skim::skimdb_rle_ordering::tsp:
+    return "tsp";
+  case skim::skimdb_rle_ordering::minmax:
+    return "minmax";
+  }
+  return "unknown";
+}
+} // namespace std
 
 #endif // SKIMDB_DEFINITIONS_H

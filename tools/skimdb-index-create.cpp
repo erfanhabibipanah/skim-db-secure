@@ -36,6 +36,9 @@ auto main(int argc, char* argv[]) -> int {
   std::uint64_t s = 9;
   std::uint64_t t = 2;
 
+  std::string S = "minmax";
+  std::size_t w = 1024;
+
   try {
     cxxopts::Options options(argv[0]);
 
@@ -46,6 +49,8 @@ auto main(int argc, char* argv[]) -> int {
       ("k", "k-mer size", cxxopts::value<std::uint64_t>(k)->default_value(std::to_string(k)))
       ("s", "syncmer s size", cxxopts::value<std::uint64_t>(s)->default_value(std::to_string(s)))
       ("t", "syncmer t parameter", cxxopts::value<std::uint64_t>(t)->default_value(std::to_string(t)))
+      ("S,solver", "RLE optimization solver {none|tsp|minmax}", cxxopts::value<std::string>(S)->default_value(S))
+      ("w,window", "RLE optimization window size", cxxopts::value<std::size_t>(w)->default_value(std::to_string(w)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -87,29 +92,38 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  skim::skimdb_rle_ordering solver;
+
+  try {
+    solver = skim::parse_rle_ordering(S);
+  } catch (...) {
+    log->error("incorrect solver, must be none|tsp|minmax");
+    return -1;
+  }
+
   log->info("indexing {}...", in);
 
   skim::skimdb db;
 
   if (lbl.empty()) {
-    db = skim::builder::build_dir_index(dir, k, s, t);
+    db = skim::builder::build_dir_index(dir, k, s, t, solver, w);
   } else {
-    db = skim::builder::build_file_index(dir, lbl, k, s, t);
+    db = skim::builder::build_file_index(dir, lbl, k, s, t, solver, w);
   }
 
-  log->info("index ready!");
-  log->info("saving index to {}...", out);
+    log->info("index ready!");
+    log->info("saving index to {}...", out);
 
-  auto res = db.save(out);
+    auto res = db.save(out);
 
-  if (!res) {
-    log->error("could not save {}, error: {}!", out, res.error());
-    return -1;
-  } else {
-    log->info("index saved, size: {}B ({})", res.value(), as_fsize{res.value()});
+    if (!res) {
+      log->error("could not save {}, error: {}!", out, res.error());
+      return -1;
+    } else {
+      log->info("index saved, size: {}B ({})", res.value(), as_fsize{res.value()});
+    }
+
+    log->info("done!");
+
+    return 0;
   }
-
-  log->info("done!");
-
-  return 0;
-}

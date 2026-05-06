@@ -57,6 +57,19 @@ public:
   [[nodiscard]] auto spir_parameters() const -> const spirdb_parameters& { return spir_config_; }
 
 
+  void update_batch_size(std::size_t new_batch_size) {
+    if (new_batch_size == 0 || spir_config_.sqrt_N / spir_config_.rle_blocks < new_batch_size) {
+      g_log->error("invalid batch size {}, max supported batch size is {}", new_batch_size,
+                   spir_config_.sqrt_N / spir_config_.rle_blocks);
+      return;
+    }
+
+    g_log->debug("updating batch size from {} to {}...", spir_config_.batch_size, new_batch_size);
+
+    spir_config_.batch_size = new_batch_size;
+  }
+
+
   [[nodiscard]] auto answer(const spir_matrix& qu) const -> std::expected<spir_matrix, std::string> {
     auto [q_rows, q_cols] = qu.dimensions();
 
@@ -80,6 +93,8 @@ public:
     std::size_t rles_per_batch = rles_per_col / spir_config_.batch_size;
     std::size_t remaining_rles = rles_per_col % spir_config_.batch_size;
 
+    g_log->trace("batch answer with {} rles per col, {} rles per batch, {} remaining rles...", rles_per_col, rles_per_batch, remaining_rles);
+
     for (std::size_t i = 0; i < spir_config_.batch_size; ++i) {
       std::size_t start_idx = i * rles_per_batch;
       std::size_t count = rles_per_batch;
@@ -90,6 +105,8 @@ public:
       } else {
         start_idx += remaining_rles;
       }
+
+      g_log->trace("processing batch partition {} with start rle index {} and count {}...", i, start_idx, count);
 
       partitioned_mat_vec(
           DB_, qu_mat.row(i), ans.span(), spir_config_.log_q, start_idx, count, spir_config_.rle_blocks);
@@ -665,11 +682,11 @@ public:
   }
 
 
-  [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row)
+  [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row, std::size_t i_batch = 0)
       -> std::generator<const std::string&> {
     LogFun lf{"spir_client_state::result(...)", spdlog::level::debug};
 
-    auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec.span(), spir_config_.log_q, i_row, spir_config_.rle_blocks);
+    auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec.row(i_batch), spir_config_.log_q, i_row, spir_config_.rle_blocks);
     d.div_delta(spir_config_.log_q - spir_config_.log_p);
     auto d_data = d.span();
 
