@@ -48,8 +48,8 @@ auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
   std::string cache_dir = "";
   unsigned int nt = 1;
-  unsigned int bt = 1;
-  double submit_threshold = 0.9;
+  int bt = std::thread::hardware_concurrency() * 2;
+  double submit_threshold = 0.75;
   unsigned int timeout = 100;
   unsigned int l = 100000;
 
@@ -60,7 +60,7 @@ auto main(int argc, char* argv[]) -> int {
       ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
       ("n,n-threads", "number of query threads", cxxopts::value<unsigned int>(nt)->default_value(std::to_string(nt)))
-      ("b,b-threads", "maximum number of batch threads to run concurrently", cxxopts::value<unsigned int>(bt)->default_value(std::to_string(bt)))
+      ("b,b-threads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
       ("t,timeout", "batch timeout in milliseconds", cxxopts::value<unsigned int>(timeout)->default_value(std::to_string(timeout)))
       ("s,submit", "batch submit threshold (%)", cxxopts::value<double>(submit_threshold)->default_value(std::to_string(submit_threshold)))
       ("l", "sample size per thread", cxxopts::value<unsigned int>(l)->default_value(std::to_string(l)))

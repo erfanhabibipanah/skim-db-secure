@@ -92,7 +92,7 @@ void consumer_thread(
 auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
   std::string cache_dir = "";
-  unsigned int bt = 8;
+  int bt = std::thread::hardware_concurrency() * 2;
   unsigned int timeout = 1000;
   double submit_threshold = 0.5;
   bool verbose = false;
@@ -103,7 +103,7 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
-      ("b,b-threads", "maximum number of batch threads to run concurrently", cxxopts::value<unsigned int>(bt)->default_value(std::to_string(bt)))
+      ("b,b-threads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
       ("t,timeout", "batch timeout in milliseconds", cxxopts::value<unsigned int>(timeout)->default_value(std::to_string(timeout)))
       ("s,submit", "batch submit threshold (%)", cxxopts::value<double>(submit_threshold)->default_value(std::to_string(submit_threshold)))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
