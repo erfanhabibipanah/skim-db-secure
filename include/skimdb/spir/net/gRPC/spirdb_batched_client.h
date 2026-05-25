@@ -18,6 +18,9 @@
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/spir/skimdb_spir.h>
 
+#include <tbb/task_arena.h>
+#include <tbb/global_control.h>
+
 #include "proto/spirdb.grpc.pb.h"
 #include "spirdb_client.h"
 
@@ -31,13 +34,15 @@ using shared_result_type = std::shared_ptr<labels_t>;
 struct kmer_req {
   skim::kmer_binary_t value;
   std::size_t row_idx;
+  std::size_t partition;
 
   std::shared_ptr<std::promise<shared_result_type>> promise;
   std::shared_future<shared_result_type> future;
 
-  kmer_req(skim::kmer_binary_t v, std::size_t r)
+  kmer_req(skim::kmer_binary_t v, std::size_t r, std::size_t p)
     : value(v),
       row_idx(r),
+      partition(p),
       promise(std::make_shared<std::promise<shared_result_type>>()),
       future(promise->get_future().share()) {}
 };
@@ -45,7 +50,14 @@ struct kmer_req {
 
 class batch_request {
 public:
-  explicit batch_request(std::size_t max) : count_{0}, max_{max}, occupied_(max, false), col_idxs_(max), created_at{std::chrono::steady_clock::now()} {}
+  explicit batch_request(std::size_t max) 
+    : count_{0}, 
+      max_{max}, 
+      occupied_(max, false),
+      col_idxs_(max),
+      created_at{std::chrono::steady_clock::now()} {
+    requests_.reserve(max);
+  }
 
   const std::uint64_t& operator[](std::size_t i) const { return col_idxs_[i]; }
 
@@ -90,16 +102,15 @@ private:
 
 class BatchedSpirDBClient : public SpirDBClient {
 public:
-  explicit BatchedSpirDBClient(std::size_t max_threads,
+  explicit BatchedSpirDBClient(int max_threads,
                                double submit_threshold, 
-                               std::uint64_t batch_timeout = 100,
+                               std::uint64_t batch_timeout_ms,
                                const std::string& addr = "127.0.0.1:50051")
       : SpirDBClient(addr),
-        max_threads_{max_threads},
         submit_threshold_{submit_threshold}, 
-        batch_timeout_{std::chrono::milliseconds(batch_timeout)},
-        leader_{&BatchedSpirDBClient::m_run_, this},
-        threads_{} {
+        batch_timeout_{std::chrono::milliseconds(batch_timeout_ms)},
+        arena_{max_threads},
+        leader_{&BatchedSpirDBClient::m_run_, this} {
     auto labels = std::make_shared<labels_t>();  // empty vector<string>
     std::promise<shared_result_type> p;
     empty_future_ = p.get_future().share();
@@ -109,16 +120,15 @@ public:
   }
 
   ~BatchedSpirDBClient() {
-    { std::lock_guard lk{mtx_}; done_ = true; }
+    { 
+      std::lock_guard lk{mtx_};
+      done_ = true; 
+    }
+
     cv_.notify_all();
     leader_.join();
-    
-    for (auto &t : threads_) {
-      if (t.joinable()) {
-        t.join();
-      }
-    }
-  }
+    // arena waits for tasks to finish automatically 
+  } 
 
   auto query(const std::string& s) -> std::generator<const std::string&> = delete;
 
@@ -133,30 +143,25 @@ public:
     auto [i_row, i_col] = pos.value();
     auto i_part = state_->row_to_partition(i_row);
 
-    g_log->trace("received query for kmer {}, position: ({}, {}), partition: {}", kmer, i_row, i_col, i_part);
-
     auto value = skim::detail::kmer_to_binary(kmer);
 
     std::unique_lock lock{mtx_};
 
-    kmer_req request{value, i_row};
+    kmer_req request{value, i_row, i_part};
     auto fut = request.future;
 
     for (auto &batch : queue_) {
       if (batch.free(i_part)) {
-        g_log->trace("adding request for kmer {} to existing batch with empty partition {})...", kmer, i_part);
         batch.set(i_part, i_col, std::move(request));
         cv_.notify_one();
         return fut;
       } else if (batch[i_part] == i_col) {
-        g_log->trace("adding request for kmer {} to existing batch with matching partition {}...", kmer, i_part);
         batch.add(std::move(request));
         cv_.notify_one();
         return fut;
       }
     }
 
-    g_log->trace("creating new batch for kmer {} with partition {}...", kmer, i_part);
     batch_request new_batch{state_->spir_parameters().batch_size};
     new_batch.set(i_part, i_col, std::move(request));
     queue_.push_back(std::move(new_batch));
@@ -185,17 +190,23 @@ private:
       }
 
       while (m_batch_ready_()) {
-        auto batch = std::move(queue_.front());
+        auto batch_ptr = std::make_shared<batch_request>(std::move(queue_.front()));
         queue_.pop_front();
 
-        threads_.emplace_back(&BatchedSpirDBClient::m_submit_, this, std::move(batch));
+        arena_.enqueue(
+          [this, batch_ptr]() {
+            m_submit_(std::move(*batch_ptr));
+          }
+        );
       }
     }
   }
 
   auto m_batch_ready_() const -> bool {
+    if (queue_.empty()) { return false; }
+
     double ratio = static_cast<double>(queue_.front().size()) / queue_.front().max();
-    return !queue_.empty() && (ratio >= submit_threshold_ || queue_.front().expired(batch_timeout_));
+    return ratio >= submit_threshold_ || queue_.front().expired(batch_timeout_);
   }
 
   void m_submit_(batch_request batch) {
@@ -208,7 +219,6 @@ private:
     auto batch_state = client.new_batch();
 
     for (std::size_t i = 0; i < batch_size; ++i) {
-      g_log->trace("updating batch partition {} with column index {}...", i, batch[i]);
       client.update_batch(batch_state, i, batch[i]);
     }
 
@@ -244,7 +254,7 @@ private:
 
     for (auto& r : batch.requests()) {
       labels_t labels;
-      std::ranges::copy(client.result(ans_mat, batch_state, r.row_idx, state_->row_to_partition(r.row_idx)), std::back_inserter(labels));
+      std::ranges::copy(client.result(ans_mat, batch_state, r.row_idx, r.partition), std::back_inserter(labels));
 
       r.promise->set_value(
         std::make_shared<labels_t>(std::move(labels))
@@ -256,7 +266,6 @@ private:
 
   double submit_threshold_;
   std::chrono::milliseconds batch_timeout_;
-  std::size_t max_threads_;
 
   std::shared_future<shared_result_type> empty_future_;
 
@@ -264,7 +273,7 @@ private:
   std::condition_variable cv_;
 
   std::jthread leader_;
-  std::vector<std::jthread> threads_;
+  tbb::task_arena arena_;
 
   bool done_ = false;
 };
