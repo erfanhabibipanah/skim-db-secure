@@ -13,7 +13,7 @@ struct skimdb_version_t {
   // *** UPDATE VERSION IF FILE FORMAT CHANGES!!! ***
   inline static constexpr unsigned int major = 0;
   inline static constexpr unsigned int minor = 2;
-  inline static constexpr unsigned int patch = 0;
+  inline static constexpr unsigned int patch = 1;
 
   template <class Archive>
   void save(Archive& ar) const {

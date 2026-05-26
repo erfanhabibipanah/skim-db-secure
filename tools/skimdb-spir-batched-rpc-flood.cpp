@@ -27,6 +27,9 @@ void run_query(skim::spir::rpc::BatchedSpirDBClient& client, unsigned int l) {
   std::vector<std::shared_future<skim::spir::rpc::shared_result_type>> futures;
   futures.reserve(l);
 
+  std::vector<std::string> res;
+  res.reserve(32); 
+
   auto start = std::chrono::high_resolution_clock::now();
 
   for (unsigned int i = 0; i < l; ++i) {
@@ -35,7 +38,8 @@ void run_query(skim::spir::rpc::BatchedSpirDBClient& client, unsigned int l) {
   }
 
   for (auto& f : futures) {
-    auto res = f.get();
+    std::ranges::copy(client.interpret(f), std::back_inserter(res));
+    res.clear();
   }
 
   auto end = std::chrono::high_resolution_clock::now();

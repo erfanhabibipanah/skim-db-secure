@@ -19,8 +19,9 @@ using spir_common_rng_t = std::mt19937_64;
 
 
 struct skimdb_metadata {
-  skimdb::kmer_index index;        // kmer to row index map
-  std::vector<std::string> labels; // annotated labels
+  skimdb::kmer_index index;                 // kmer to row index map
+  std::vector<std::uint64_t> kmer_metadata; // packed starting position and length of each kmer's RLE in the matrix
+  std::vector<std::string> labels;          // annotated labels
 };
 
 struct spirdb_parameters {
@@ -30,11 +31,9 @@ struct spirdb_parameters {
   std::size_t log_p; // plaintext modulus
   std::size_t log_q; // ciphertext modulus
 
+  std::size_t block_size; // number of runs that we logically treat as a single block when packing the matrix
   std::size_t batch_size; // number of qu vectors which can be processed in one batch
-
-  std::size_t block_size; // bytes of plaintext data we can pack into one block
-  std::size_t rle_blocks; // number of blocks needed per RLE encoding
-  std::size_t sqrt_N;     // matrix side length (blocks of data)
+  std::size_t sqrt_N;     // matrix side length (runs per row and column), should be a multiple of block_size
 
   std::uint64_t seed;         // seed for matrix A
 

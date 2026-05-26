@@ -65,6 +65,7 @@ struct QueryItem {
 
 void consumer_thread(
   FutureQueue<QueryItem>& fq,
+  skim::spir::rpc::BatchedSpirDBClient& client,
   std::shared_ptr<spdlog::logger> log,
   bool verbose
 ) {
@@ -72,13 +73,13 @@ void consumer_thread(
 
   while (fq.pop(item)) {
     try {
-      const auto& result = item.future.get();
-
-      log->info("{}: got {} label(s)", item.kmer, result->size());
-
       if (verbose) {
-        for (const auto& l : *result)
-          log->info("  {}", l);
+        log->info("query results:");
+        for (auto label : client.interpret(item.future)) {
+          log->info("  {}", label);
+        }
+      } else {
+        log->info("got {} label(s)", std::ranges::distance(client.interpret(item.future)));
       }
     } catch (const std::exception& e) {
       log->error("query failed: {}", e.what());
@@ -150,6 +151,7 @@ auto main(int argc, char* argv[]) -> int {
   std::jthread consumer{
     consumer_thread,
     std::ref(kmer_queue),
+    std::ref(client),
     log,
     verbose
   };

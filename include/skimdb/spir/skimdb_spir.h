@@ -54,9 +54,8 @@ public:
 
 
   void update_batch_size(std::size_t new_batch_size) {
-    if (new_batch_size == 0 || spir_config_.sqrt_N / spir_config_.rle_blocks < new_batch_size) {
-      g_log->error("invalid batch size {}, max supported batch size is {}", new_batch_size,
-                   spir_config_.sqrt_N / spir_config_.rle_blocks);
+    if (new_batch_size == 0 || spir_config_.sqrt_N / spir_config_.block_size < new_batch_size) {
+      g_log->error("invalid batch size {}, max supported batch size is {}", new_batch_size, spir_config_.sqrt_N / spir_config_.block_size);
       return;
     }
 
@@ -73,39 +72,34 @@ public:
       return std::unexpected{"invalid query vector dimensions"};
     }
 
-    return mat_vec(DB_, qu, spir_config_.log_q, spir_config_.rle_blocks);
+    return mat_vec(DB_, qu, spir_config_.log_q);
   }
 
   [[nodiscard]] auto batch_answer(const spir_matrix& qu_mat) const -> std::expected<spir_matrix, std::string> {
     auto [q_rows, q_cols] = qu_mat.dimensions();
-
     if (q_rows != spir_config_.batch_size || q_cols != spir_config_.sqrt_N) {
       return std::unexpected{"invalid query matrix dimensions"};
     }
 
     spir_matrix ans{spir_config_.sqrt_N, spir_config_.log_q};
+    auto dst = ans.span();
 
-    std::size_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
-    std::size_t rles_per_batch = rles_per_col / spir_config_.batch_size;
-    std::size_t remaining_rles = rles_per_col % spir_config_.batch_size;
-
-    g_log->trace("batch answer with {} rles per col, {} rles per batch, {} remaining rles...", rles_per_col, rles_per_batch, remaining_rles);
-
+    std::size_t blocks_per_col = spir_config_.sqrt_N / spir_config_.block_size;
+    std::size_t blocks_per_batch = blocks_per_col / spir_config_.batch_size;
+    std::size_t remaining_blocks = blocks_per_col % spir_config_.batch_size;
+    
     for (std::size_t i = 0; i < spir_config_.batch_size; ++i) {
-      std::size_t start_idx = i * rles_per_batch;
-      std::size_t count = rles_per_batch;
+      std::size_t start_idx, count;
 
-      if (i < remaining_rles) {
-        start_idx += i;
-        count += 1;
+      if (i < remaining_blocks) {
+        start_idx = i * (blocks_per_batch + 1) * spir_config_.block_size;
+        count = (blocks_per_batch + 1) * spir_config_.block_size;
       } else {
-        start_idx += remaining_rles;
+        start_idx = (i * blocks_per_batch + remaining_blocks) * spir_config_.block_size;
+        count = blocks_per_batch * spir_config_.block_size;
       }
 
-      g_log->trace("processing batch partition {} with start rle index {} and count {}...", i, start_idx, count);
-
-      partitioned_mat_vec(
-          DB_, qu_mat.row(i), ans.span(), spir_config_.log_q, start_idx, count, spir_config_.rle_blocks);
+      partitioned_mat_vec(DB_, qu_mat.row(i), dst.subspan(start_idx, count), spir_config_.log_q, start_idx, count);
     }
 
     return ans;
@@ -130,9 +124,8 @@ public:
               spir_config_.sigma,
               spir_config_.log_p,
               spir_config_.log_q,
-              spir_config_.batch_size,
               spir_config_.block_size,
-              spir_config_.rle_blocks,
+              spir_config_.batch_size,
               spir_config_.sqrt_N,
               spir_config_.seed,
               spir_config_.metadata_hash,
@@ -163,9 +156,8 @@ public:
               spir_config_.sigma,
               spir_config_.log_p,
               spir_config_.log_q,
-              spir_config_.batch_size,
               spir_config_.block_size,
-              spir_config_.rle_blocks,
+              spir_config_.batch_size,
               spir_config_.sqrt_N,
               spir_config_.seed,
               spir_config_.metadata_hash,
@@ -202,12 +194,13 @@ private:
                                std::size_t log_q,
                                std::size_t n,
                                double sigma,
+                               std::size_t block_size = 1,
                                std::size_t batch_size = 1,
                                std::uint64_t seed = std::random_device{}())
     -> std::expected<spir_server_state, std::string> {
   LogFun lf{"make_server(...)"};
 
-  if (log_p < 8 || log_p >= 32) {
+  if (log_p < 16 || log_p >= 32) {
     return std::unexpected{"unsupported plaintext modulus"};
   }
   if (log_q < 32 || log_q > 64) {
@@ -224,30 +217,56 @@ private:
   auto db_parts = std::move(db).explode();
 
   auto kmers = db_parts.data.size();
-  std::size_t max_rle = 0;
 
-  for (const auto& entry : db_parts.data) {
-    max_rle = std::max(max_rle, entry.length());
+  // need to store the starting position and length of each RLE in the matrix (in terms of blocks)
+  // encoding using uint64_t with lower 12 bits for length and upper 52 bits for starting positions
+  // this allows for up to 4095 blocks per RLE and a matrix with up to 2^52 blocks, which should be sufficient for our use case.
+
+  g_log->info("skimdb contains {} kmers, computing sqrt N...", kmers);
+
+  std::vector<std::uint16_t> rle_lengths(kmers, 0);
+  std::size_t max_len = 0;
+  
+#pragma omp parallel for schedule(static) reduction(max:max_len)
+  for (std::size_t i = 0; i < kmers; ++i) {
+    std::size_t rle_len = (db_parts.data[i].length() + block_size - 1) / block_size;
+    
+    max_len = std::max(max_len, rle_len);
+    rle_lengths[i] = static_cast<std::uint16_t>(rle_len);
   }
 
-  if (kmers == 0 || max_rle == 0) {
+  if (max_len > (1 << index::g_len_bits) - 1) {
+    return std::unexpected{"RLE length exceeds maximum supported length"};
+  }
+
+  std::vector<std::uint64_t> kmer_metadata(kmers, 0);
+
+  std::uint64_t run_sum = 0;
+#pragma omp parallel for reduction(inscan, +:run_sum)
+  for (std::size_t i = 0; i < kmers; ++i){
+    kmer_metadata[i] = run_sum;
+
+  #pragma omp scan exclusive(run_sum)
+
+    run_sum += rle_lengths[i];
+  }
+
+#pragma omp parallel for schedule(static)
+  for (std::size_t i = 0; i < kmers; ++i) {
+    kmer_metadata[i] = index::pack(kmer_metadata[i], rle_lengths[i]);
+  }
+
+  if (kmers == 0 || run_sum == 0) {
     return std::unexpected{"empty skimdb index"};
   }
 
-  std::size_t block_size = log_p / 8;
-  std::size_t rle_blocks = 2 * max_rle / block_size + ((2 * max_rle % block_size) ? 1 : 0);
-  std::size_t min_blocks = kmers * rle_blocks;
+  auto sqrt_N = min_sqrt_N(run_sum, block_size);
 
-  g_log->info("skimdb contains {} kmers, requires {} block(s) per RLE", kmers, rle_blocks);
+  g_log->info("skimdb contains {} total runs, requires matrix with sqrt(N) = {} for block size {}", run_sum * block_size, sqrt_N, block_size);
 
-  double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
-  auto rles_per_side = static_cast<std::size_t>(std::ceil(min_side / static_cast<double>(rle_blocks)));
+  g_log->info("packing RLE encodings into matrix format...");
 
-  std::size_t sqrt_N = rles_per_side * rle_blocks;
-
-  skimdb_matrix DB{std::move(db_parts.data), block_size, rle_blocks, sqrt_N};
-
-  g_log->info("spir matrix dimension sqrt(N) = {}", sqrt_N);
+  auto DB = populate_skimdb_matrix(db_parts.data, kmer_metadata, sqrt_N, block_size);
 
   spir_common_rng_t rng{seed};
 
@@ -256,7 +275,7 @@ private:
 
   // compute hint_c = DB * A
   g_log->info("precomputing hint matrix DB * A, be patient...");
-  auto hint_c = mat_mul(DB, A, log_q, rle_blocks);
+  auto hint_c = mat_mul(DB, A, log_q);
 
   g_log->info("saving client metadata...");
   std::string metadata_hash;
@@ -272,7 +291,7 @@ private:
       }
 
       cereal::BinaryOutputArchive archive{os};
-      archive(db_parts.index, db_parts.labels);
+      archive(db_parts.index, kmer_metadata, db_parts.labels);
     }
 
     auto hash_res = sha256_file(temp_metadata_path);
@@ -335,9 +354,8 @@ private:
                               .sigma = sigma,
                               .log_p = log_p,
                               .log_q = log_q,
-                              .batch_size = batch_size,
                               .block_size = block_size,
-                              .rle_blocks = rle_blocks,
+                              .batch_size = batch_size,
                               .sqrt_N = sqrt_N,
                               .seed = seed,
                               .metadata_hash = metadata_hash,
@@ -377,8 +395,9 @@ public:
            detail::is_syncmer(canonical, skim_config_.k, skim_config_.s, skim_config_.t);
   }
 
+  // convert a kmer to its corresponing position in the matrix (row index, column index, rle length in runs)
   [[nodiscard]] auto kmer_to_position(const std::string& s) const
-      -> std::optional<std::pair<std::size_t, std::size_t>> {
+      -> std::optional<std::tuple<std::size_t, std::size_t, std::size_t>> {
     LogFun lf{"spir_client_state::kmer_to_position(...)", spdlog::level::debug};
 
     auto kmer = detail::kmer_to_binary(s);
@@ -390,26 +409,43 @@ public:
       return std::nullopt;
     }
 
-    auto pos = res.value();
+    auto k_idx = res.value();
+    auto k_metadata = skim_metadata_.kmer_metadata[k_idx];
+    auto start_block = index::unpack_start(k_metadata);
 
-    std::size_t target_rle = pos * spir_config_.rle_blocks;
-    std::size_t i_col = target_rle / spir_config_.sqrt_N;
-    std::size_t i_row = target_rle % spir_config_.sqrt_N;
+    std::size_t start_run = start_block * spir_config_.block_size;
+    std::size_t i_col = start_run / spir_config_.sqrt_N;
+    std::size_t i_row = start_run % spir_config_.sqrt_N;
+    std::size_t rle_len = static_cast<std::size_t>(index::unpack_len(k_metadata)) * spir_config_.block_size;
 
-    return std::make_pair(i_row, i_col);
+    return std::make_tuple(i_row, i_col, rle_len);
   }
 
-  [[nodiscard]] auto row_to_partition(std::size_t i_row) const -> std::size_t {
-    std::size_t rle_idx = i_row / spir_config_.rle_blocks;
-    std::size_t rles_per_col = spir_config_.sqrt_N / spir_config_.rle_blocks;
-    std::size_t rles_per_batch = rles_per_col / spir_config_.batch_size;
-    std::size_t remaining_rles = rles_per_col % spir_config_.batch_size;
+  // convert a row index and rle length (runs) to the corresponding batch partition and number of batches
+  [[nodiscard]] auto row_to_partition(std::size_t i_row, std::size_t rle_len) const -> std::tuple<std::size_t, std::size_t> {
+    // convert to blocks first to guarantee that blocks are not split across batch partitions
+    std::size_t blocks_per_col = spir_config_.sqrt_N / spir_config_.block_size;
+    std::size_t blocks_per_batch = blocks_per_col / spir_config_.batch_size;
+    std::size_t remaining_blocks = blocks_per_col % spir_config_.batch_size;
 
-    if (rle_idx < remaining_rles * (rles_per_batch + 1)) {
-      return rle_idx / (rles_per_batch + 1);
+    std::size_t start_block = i_row / spir_config_.block_size;
+    std::size_t end_block = (i_row + rle_len - 1) / spir_config_.block_size;
+
+    std::size_t start_batch, end_batch, batch_count;
+    if (start_block < remaining_blocks * (blocks_per_batch + 1)) {
+      start_batch = start_block / (blocks_per_batch + 1);
     } else {
-      return (rle_idx - remaining_rles * (rles_per_batch + 1)) / rles_per_batch + remaining_rles;
+      start_batch = (start_block - remaining_blocks * (blocks_per_batch + 1)) / blocks_per_batch + remaining_blocks;
     }
+
+    if (end_block < remaining_blocks * (blocks_per_batch + 1)) {
+      end_batch = end_block / (blocks_per_batch + 1);
+    } else {
+      end_batch = (end_block - remaining_blocks * (blocks_per_batch + 1)) / blocks_per_batch + remaining_blocks;
+    }
+
+    batch_count = end_batch - start_batch + 1;
+    return std::make_tuple(start_batch, batch_count);
   }
 
 
@@ -457,7 +493,6 @@ public:
     return spirdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)};
   }
 
-
   void update_batch(spirdb_query_state& batch_state, std::size_t i_batch, std::size_t i_col) {
     LogFun lf{"spir_client_state::update_batch(...)", spdlog::level::trace};
 
@@ -466,15 +501,28 @@ public:
   }
 
 
-  [[nodiscard]] auto result(const spir_matrix& ans, const spirdb_query_state& query, std::size_t i_row, std::size_t i_batch = 0)
-      -> std::generator<const std::string&> {
-    LogFun lf{"spir_client_state::result(...)", spdlog::level::debug};
+  void recover(const spir_matrix& ans,
+               const spirdb_query_state& qu,
+               std::span<std::uint16_t> rle,
+               std::size_t i_row,
+               std::size_t count,
+               std::size_t i_batch = 0) {
+    LogFun lf{"spir_client_state::recover(...)", spdlog::level::debug};
 
-    auto d = sub_mat_vec_rows(ans, hint_c_, query.s_vec.row(i_batch), spir_config_.log_q, i_row, spir_config_.rle_blocks);
+    auto d = sub_mat_vec_rows(ans, hint_c_, qu.s_vec.row(i_batch), spir_config_.log_q, i_row, count);
     d.div_delta(spir_config_.log_q - spir_config_.log_p);
     auto d_data = d.span();
 
-    auto rle = m_recover_(d_data);
+    for (std::size_t i = 0; i < d_data.size(); ++i) {
+      rle[i] = static_cast<std::uint16_t>(d_data[i] & 0xFFFFull);
+    }
+  }
+
+  [[nodiscard]] auto interpret(std::vector<std::uint16_t> src) -> std::generator<const std::string&> {
+    LogFun lf{"spir_client_state::interpret(...)", spdlog::level::debug};
+
+    auto rle = detail::encoding{std::move(src)};
+
     for (auto idx : rle.select_idxs()) {
       if (idx >= skim_metadata_.labels.size()) {
         break;
@@ -492,58 +540,6 @@ private:
   auto m_get_rng_() -> spir_common_rng_t& {
     thread_local spir_common_rng_t rng(m_make_local_seed_());
     return rng;
-  }
-
-  auto m_recover_(std::span<const std::uint64_t> d_data) -> detail::encoding {
-    std::vector<std::uint16_t> rle_data;
-
-    switch (spir_config_.block_size) {
-    case 1: {
-      std::size_t out_len = spir_config_.rle_blocks / 2;
-
-      rle_data.resize(out_len);
-      auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
-
-      for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
-        dst[i] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);
-      }
-
-      break;
-    }
-    case 2: {
-      std::size_t out_len = spir_config_.rle_blocks;
-
-      rle_data.resize(out_len);
-      std::uint16_t* dst = rle_data.data();
-
-      for (std::size_t i = 0; i < out_len; ++i) {
-        dst[i] = static_cast<std::uint16_t>(d_data[i] & 0xFFFFull);
-      }
-
-      break;
-    }
-    case 3: {
-      std::size_t out_len = spir_config_.rle_blocks * 3 / 2 + ((spir_config_.rle_blocks * 3 % 2) ? 1 : 0);
-
-      rle_data.resize(out_len);
-      auto* dst = reinterpret_cast<std::uint8_t*>(rle_data.data());
-
-      for (std::size_t i = 0; i < spir_config_.rle_blocks; ++i) {
-        dst[i * 3 + 0] = static_cast<std::uint8_t>((d_data[i] >> 16) & 0xFFull);
-        dst[i * 3 + 1] = static_cast<std::uint8_t>((d_data[i] >> 8) & 0xFFull);
-        dst[i * 3 + 2] = static_cast<std::uint8_t>(d_data[i] & 0xFFull);
-      }
-
-      break;
-    }
-    default: {
-      // should never reach here since prepare_query would fail for unsupported log_p
-      g_log->error("unsupported log_p value in recover: {}", spir_config_.log_p);
-      break;
-    }
-    }
-
-    return detail::encoding{std::move(rle_data)};
   }
 
   skimdb_parameters skim_config_; // skimdb index parameters
@@ -580,11 +576,12 @@ private:
       cereal::BinaryInputArchive archive(is);
 
       skimdb::kmer_index index;
+      std::vector<std::uint64_t> kmer_metadata;
       std::vector<std::string> labels;
 
-      archive(index, labels);
+      archive(index, kmer_metadata, labels);
 
-      skim_metadata = skimdb_metadata{.index = std::move(index), .labels = std::move(labels)};
+      skim_metadata = skimdb_metadata{.index = std::move(index), .kmer_metadata = std::move(kmer_metadata), .labels = std::move(labels)};
     } catch (...) {
       return std::unexpected{"deserialization failed"};
     }

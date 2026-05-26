@@ -12,6 +12,7 @@
 #include <skimdb/skimdb.h>
 #include <skimdb/skimdb_version.h>
 #include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/spir/skimdb_spir_util.h>
 
 
 namespace fs = std::filesystem;
@@ -19,14 +20,14 @@ namespace fs = std::filesystem;
 
 auto main(int argc, char* argv[]) -> int {
   std::string in = "";
-  unsigned int logp = 22;
+  unsigned int block_size = 1;
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
       ("i,input", "input database file", cxxopts::value<std::string>(in))
-      ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
+      ("b,block_size", "number of runs per block", cxxopts::value<unsigned int>(block_size)->default_value(std::to_string(block_size)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -46,8 +47,8 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("SKiMdb ver. {}", skim::version);
 
-  if (logp < 8) {
-    log->error("logp must be at least 8");
+  if (block_size == 0) {
+    log->error("block size must be at least 1");
     return -1;
   }
 
@@ -76,27 +77,33 @@ auto main(int argc, char* argv[]) -> int {
   auto data = std::move(db).explode().data;
   auto kmer_count = data.size();
 
-  std::uint64_t max_rle = 0;
+  log->info("skimdb contains {} kmers, computing sqrt N...", kmer_count);
 
-  for (const auto& entry : data) {
-    max_rle = std::max(max_rle, entry.length());
+  std::vector<std::uint16_t> rle_lengths(kmer_count, 0);
+  std::size_t max_len = 0;
+
+#pragma omp parallel for schedule(static) reduction(max:max_len)
+  for (std::size_t i = 0; i < kmer_count; ++i) {
+    std::size_t rle_len = (data[i].length() + block_size - 1) / block_size;
+    
+    max_len = std::max(max_len, rle_len);
+    rle_lengths[i] = static_cast<std::uint16_t>(rle_len);
   }
 
-  log->info("kmer count: {}, max RLE length: {}", kmer_count, max_rle);
-  log->info("calculating minimum N for logp = {}...", logp);
+  if (max_len > (1 << skim::spir::index::g_len_bits) - 1) {
+    log->error("Longest RLE {} exceeds maximum supported length {}", max_len, (1 << skim::spir::index::g_len_bits) - 1);
+    return -1;
+  }
 
-  std::uint64_t bytes_per_rle = 2 * max_rle;
-  std::uint64_t bytes_per_block = logp / 8;
-  std::uint64_t blocks_per_rle = bytes_per_rle / bytes_per_block + ((bytes_per_rle % bytes_per_block) ? 1 : 0);
+  std::uint64_t run_sum = 0;
+#pragma omp parallel for reduction(+:run_sum)
+  for (std::size_t i = 0; i < kmer_count; ++i){
+    run_sum += rle_lengths[i];
+  }
 
-  log->info("blocks required per RLE: {}", blocks_per_rle);
+  auto sqrt_N = skim::spir::min_sqrt_N(run_sum, block_size);
 
-  std::uint64_t min_blocks = kmer_count * blocks_per_rle;
-  double min_side = std::ceil(std::sqrt(static_cast<double>(min_blocks)));
-  std::uint64_t rles_per_side = static_cast<std::uint64_t>(std::ceil(min_side / static_cast<double>(blocks_per_rle)));
-  std::uint64_t sqrt_N = rles_per_side * blocks_per_rle;
-
-  log->info("sqrt(N) = {}, N = {}", sqrt_N, sqrt_N * sqrt_N);
+  log->info("skimdb contains {} total runs, requires matrix with sqrt(N) = {} for block size {}", kmer_count, run_sum, sqrt_N, block_size);
 
   return 0;
 }

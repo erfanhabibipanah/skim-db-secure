@@ -134,12 +134,10 @@ auto main(int argc, char* argv[]) -> int {
     }
 
     double entropy = 0.0;
-
     if (ones > 0) {
       double p1 = static_cast<double>(ones) / (ones + zeros);
       entropy -= p1 * std::log2(p1);
     }
-
     if (zeros > 0) {
       double p0 = static_cast<double>(zeros) / (ones + zeros);
       entropy -= p0 * std::log2(p0);

@@ -82,9 +82,8 @@ public:
                                 .sigma = spir_ans.sigma(),
                                 .log_p = spir_ans.log_p(),
                                 .log_q = spir_ans.log_q(),
-                                .batch_size = spir_ans.batch_size(),
                                 .block_size = spir_ans.block_size(),
-                                .rle_blocks = spir_ans.rle_blocks(),
+                                .batch_size = spir_ans.batch_size(),
                                 .sqrt_N = spir_ans.sqrt_n(),
                                 .seed = spir_ans.seed(),
                                 .metadata_hash = spir_ans.metadata_hash(),
@@ -145,33 +144,51 @@ public:
       co_return;
     }
 
-    auto& pos = res.value();
+    auto [row, col, len] = res.value();
 
-    auto query_state = state_->prepare_query(pos.second);
-    auto qu_data = query_state.qu_vec.span();
+    // determine how many queries need to be made
+    const auto spir_parameters = state_->spir_parameters();
+    auto num_queries = (row + len + spir_parameters.sqrt_N - 1) / spir_parameters.sqrt_N;
 
-    grpc::ClientContext ctx;
-    QueryReply reply;
-
-    {
-      LogFun lf_sub{"gRPC query request", spdlog::level::debug};
-
-      QueryRequest req;
-      req.mutable_qu()->Assign(qu_data.begin(), qu_data.end());
-
-      grpc::Status status = stub_->Query(&ctx, req, &reply);
-      if (!status.ok()) {
-        g_log->error("query failed: {}", status.error_message());
-        co_return;
-      }
+    if (num_queries > 1) {
+      g_log->warn("query {} spans multiple columns ({})...", s, num_queries);
     }
 
-    std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};
+    std::vector<std::uint16_t> rle(len);
+    auto rle_span = std::span(rle);
+    
+    std::size_t offset = 0;
+    for (std::size_t i = 0; i < num_queries; ++i) {
+      auto query_state = state_->prepare_query(col + i);
+      auto qu_data = query_state.qu_vec.span();
 
-    auto pir_params = state_->spir_parameters();
-    spir_matrix ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
+      grpc::ClientContext ctx;
+      QueryReply reply;
 
-    co_yield std::ranges::elements_of(state_->result(ans_mat, query_state, pos.first));
+      {
+        LogFun lf_sub{"gRPC query request", spdlog::level::debug};
+
+        QueryRequest req;
+        req.mutable_qu()->Assign(qu_data.begin(), qu_data.end());
+
+        grpc::Status status = stub_->Query(&ctx, req, &reply);
+        if (!status.ok()) {
+          g_log->error("query failed: {}", status.error_message());
+          co_return;
+        }
+      }
+
+      std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};
+      spir_matrix ans_mat{std::move(ans_data), spir_parameters.sqrt_N, spir_parameters.log_q};
+      
+      std::size_t count = std::min(len - offset, spir_parameters.sqrt_N - row);
+      state_->recover(ans_mat, query_state, rle_span.subspan(offset, count), row, count, i);
+
+      offset += count;
+      row = 0; // subsequent queries (if any) will start from the top of the column
+    }
+
+    co_yield std::ranges::elements_of(state_->interpret(std::move(rle)));
   }
 
   auto skim_parameters() -> std::optional<skimdb_parameters> {

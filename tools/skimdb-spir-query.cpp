@@ -81,7 +81,8 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("creating client...");
 
-  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), server_state.spir_parameters());
+  auto spir_params = server_state.spir_parameters();
+  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), spir_params);
 
   if (!client_setup) {
     log->error("could not create client: {}", client_setup.error());
@@ -111,29 +112,54 @@ auto main(int argc, char* argv[]) -> int {
       continue;
     }
 
-    auto query_state = client_state.prepare_query(pos->second);
-
-    log->info("submitting query...");
-
-    auto answer = server_state.answer(query_state.qu_vec);
-
-    if (!answer) {
-      log->warn("could not get answer: {}", answer.error());
-      continue;
+    auto [row, col, len] = pos.value();
+    auto n_queries = (row + len + spir_params.sqrt_N - 1) / spir_params.sqrt_N;
+    log->debug("kmer at row {}, col {}, length {}, spans {} column(s)", row, col, len, n_queries);
+    
+    if (n_queries > 1) {
+      log->warn("query {} spans multiple columns ({})...", q, n_queries);
     }
 
-    auto answer_vec = answer.value();
+    std::vector<std::uint16_t> rle(len);
+    auto rle_span = std::span(rle);
 
-    log->info("recovering result...");
+    std::size_t offset = 0;
+    bool query_failed = false;
+    for (std::size_t i = 0; i < n_queries; ++i) {
+      log->debug("submitting query ({} of {})...", i + 1, n_queries);
+
+      auto query_state = client_state.prepare_query(col + i);
+      auto res = server_state.answer(query_state.qu_vec);
+
+      if (!res) {
+        log->warn("could not get answer: {}", res.error());
+        query_failed = true;
+        break;
+      }
+
+      auto ans = res.value();
+
+      log->debug("recovering result ({} of {})...", i + 1, n_queries);
+      
+      std::size_t count = std::min(len - offset, spir_params.sqrt_N - row);
+      client_state.recover(ans, query_state, rle_span.subspan(offset, count), row, count, i);
+
+      offset += count;
+      row = 0; // subsequent queries (if any) will start from the top of the next column 
+    }
+
+    if (query_failed) {
+      continue;
+    }
 
     if (verbose) {
       log->info("query results:");
 
-      for (auto label : client_state.result(answer_vec, query_state, pos->first)) {
+      for (auto label : client_state.interpret(std::move(rle))) {
         log->info("  {}", label);
       }
     } else {
-      log->info("got {} label(s)", std::ranges::distance(client_state.result(answer_vec, query_state, pos->first)));
+      log->info("got {} label(s)", std::ranges::distance(client_state.interpret(std::move(rle))));
     }
   }
 

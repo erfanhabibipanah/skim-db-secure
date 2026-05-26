@@ -1,6 +1,7 @@
 #ifndef SPIRDB_BATCHED_CLIENT_H
 #define SPIRDB_BATCHED_CLIENT_H
 
+#include <atomic>
 #include <expected>
 #include <future>
 #include <generator>
@@ -27,24 +28,38 @@
 
 namespace skim::spir::rpc {
 
-using labels_t = std::vector<std::string>;
-using shared_result_type = std::shared_ptr<labels_t>;
+using result_t = std::vector<std::uint16_t>;
+using shared_result_type = std::shared_ptr<result_t>;
 
 
 struct kmer_req {
-  skim::kmer_binary_t value;
-  std::size_t row_idx;
-  std::size_t partition;
+  skim::kmer_binary_t kmer;
+
+  result_t result;
+  std::atomic<int> wait; // number of fragments that have not yet returned results
 
   std::shared_ptr<std::promise<shared_result_type>> promise;
   std::shared_future<shared_result_type> future;
 
-  kmer_req(skim::kmer_binary_t v, std::size_t r, std::size_t p)
-    : value(v),
-      row_idx(r),
-      partition(p),
-      promise(std::make_shared<std::promise<shared_result_type>>()),
-      future(promise->get_future().share()) {}
+  kmer_req(skim::kmer_binary_t k, std::size_t len, std::size_t num_parts) 
+    : kmer(k), result(len), wait(static_cast<int>(num_parts)), 
+      promise(std::make_shared<std::promise<shared_result_type>>()), 
+      future(promise->get_future().share()) {};
+};
+
+
+struct kmer_fragment {
+  std::shared_ptr<kmer_req> parent_req;
+
+  std::size_t partition;  // batch partition index
+  std::size_t row_idx;    // starting index of the result with respect to the full column
+  std::size_t col_idx;    // column index to request within the partition
+
+  std::size_t offset;     // starting index within the parent request's result vector to write to
+  std::size_t len;        // length of the result fragment (in number of runs)
+
+  kmer_fragment(std::shared_ptr<kmer_req> req, std::size_t p, std::size_t r, std::size_t c, std::size_t o, std::size_t l)
+    : parent_req(std::move(req)), partition(p), row_idx(r), col_idx(c), offset(o), len(l) {}
 };
 
 
@@ -67,16 +82,23 @@ public:
 
   auto free(std::size_t p) const -> bool { return !occupied_[p]; }
 
-  auto set(std::size_t p, std::size_t col_idx, kmer_req&& req) -> bool {
-    if (!free(p)) { return false; }
-    occupied_[p] = true;
-    col_idxs_[p] = col_idx;
+  auto set(kmer_fragment&& req) -> bool {
+    if (!free(req.partition)) { return false; }
+    occupied_[req.partition] = true;
+    col_idxs_[req.partition] = req.col_idx;
     requests_.push_back(std::move(req));
     ++count_;
     return true;
   }
 
-  void add(kmer_req&& req) { requests_.push_back(std::move(req)); }
+  void add(kmer_fragment&& req) { 
+    if (free(req.partition) || col_idxs_[req.partition] != req.col_idx) { 
+      g_log->error("attempting to add request to batch partition {} with mismatching column index {} (existing column index is {})", req.partition, req.col_idx, col_idxs_[req.partition]);
+      return; 
+    }
+
+    requests_.push_back(std::move(req));
+  }
 
   auto created() const -> std::chrono::steady_clock::time_point { return created_at; }
 
@@ -85,7 +107,7 @@ public:
     return now >= created_at + timeout;
   }
 
-  auto requests() -> std::vector<kmer_req>& { return requests_; }
+  auto requests() -> std::vector<kmer_fragment>& { return requests_; }
 
 private:
   std::size_t count_;
@@ -94,7 +116,7 @@ private:
   std::vector<bool> occupied_;
   std::vector<std::size_t> col_idxs_;
   
-  std::vector<kmer_req> requests_;
+  std::vector<kmer_fragment> requests_;
 
   std::chrono::steady_clock::time_point created_at;
 };
@@ -111,10 +133,10 @@ public:
         batch_timeout_{std::chrono::milliseconds(batch_timeout_ms)},
         arena_{max_threads},
         leader_{&BatchedSpirDBClient::m_run_, this} {
-    auto labels = std::make_shared<labels_t>();  // empty vector<string>
+    auto null_res = std::make_shared<result_t>();  // empty vector<std::uint16_t>
     std::promise<shared_result_type> p;
     empty_future_ = p.get_future().share();
-    p.set_value(labels);
+    p.set_value(null_res);
 
     g_log->debug("batched rpc client created!");
   }
@@ -140,33 +162,78 @@ public:
 
     auto pos = state_->kmer_to_position(kmer);
     if (!pos.has_value()) { return empty_future_; }
-    auto [i_row, i_col] = pos.value();
-    auto i_part = state_->row_to_partition(i_row);
+    auto [i_row, i_col, len] = pos.value();
+    auto [i_part, p_len] = state_->row_to_partition(i_row, len);
 
-    auto value = skim::detail::kmer_to_binary(kmer);
+    if (p_len > 1) {
+      g_log->warn("kmer {} has RLE length {} and spans {} batch partitions", kmer, len, p_len);
+    }
+
+    const auto spir_params = state_->spir_parameters();
 
     std::unique_lock lock{mtx_};
 
-    kmer_req request{value, i_row, i_part};
-    auto fut = request.future;
+    // TODO : cache results for recently requested kmers to avoid repeated requests
+    auto req = std::make_shared<kmer_req>(detail::kmer_to_binary(kmer), len, p_len);
+    auto fut = req->future;
 
-    for (auto &batch : queue_) {
-      if (batch.free(i_part)) {
-        batch.set(i_part, i_col, std::move(request));
-        cv_.notify_one();
-        return fut;
-      } else if (batch[i_part] == i_col) {
-        batch.add(std::move(request));
-        cv_.notify_one();
-        return fut;
+    std::size_t blocks_per_col = spir_params.sqrt_N / spir_params.block_size;
+    std::size_t blocks_per_part = blocks_per_col / spir_params.batch_size;
+    std::size_t remaining_blocks = blocks_per_col % spir_params.batch_size;
+
+    std::size_t offset = 0;
+    for (std::size_t i = 0; i < p_len; ++i) {
+      std::size_t p = (i_part + i) % spir_params.batch_size; // wrap around to the beginning if partitions exceed batch size
+      std::size_t r = (i_row + offset) % spir_params.sqrt_N; // row index within the column for this fragment
+      std::size_t c = i_col + (i_part + i) / spir_params.batch_size; // move to the next column if we wrap around
+      
+      std::size_t l; // length of the fragment in number of runs
+      if (p < remaining_blocks) {
+        l = std::min(len - offset, (blocks_per_part + 1) * spir_params.block_size);
+      } else {
+        l = std::min(len - offset, blocks_per_part * spir_params.block_size);
       }
+
+      assert(offset + l <= len); // make sure we don't exceed the total length of the RLE
+
+      bool added = false;
+      for (auto& batch : queue_) {
+        if (batch.free(p)) {
+          batch.set(kmer_fragment(req, p, r, c, offset, l));
+          added = true;
+          break;
+        } else if (batch[p] == c) {
+          batch.add(kmer_fragment(req, p, r, c, offset, l));
+          added = true;
+          break;
+        }
+      }
+
+      if (!added) {
+        batch_request new_batch{spir_params.batch_size};
+        new_batch.set(kmer_fragment(req, p, r, c, offset, l));
+        queue_.push_back(std::move(new_batch));
+      }
+
+      offset += l;
     }
 
-    batch_request new_batch{state_->spir_parameters().batch_size};
-    new_batch.set(i_part, i_col, std::move(request));
-    queue_.push_back(std::move(new_batch));
     cv_.notify_one();
     return fut;
+  }
+
+  [[nodiscard]] auto interpret(std::shared_future<shared_result_type> fut) -> std::generator<const std::string&> {
+    if (!ready()) {
+      g_log->error("client not initialized! call setup() first...");
+      co_return;
+    }
+
+    auto res = fut.get(); // blocks if the result is not ready yet
+
+    // TODO : want to remove this copy
+    result_t rle(res->begin(), res->end());
+
+    co_yield std::ranges::elements_of(state_->interpret(std::move(rle)));
   }
 
 private:
@@ -219,6 +286,7 @@ private:
     auto batch_state = client.new_batch();
 
     for (std::size_t i = 0; i < batch_size; ++i) {
+      g_log->trace("updating batch partition {} with column index {}...", i, batch[i]);
       client.update_batch(batch_state, i, batch[i]);
     }
 
@@ -233,10 +301,13 @@ private:
     grpc::Status status = stub_->BatchQuery(&ctx, req, &reply);
     if (!status.ok()) {
       g_log->error("batch query failed: {}", status.error_message());
-      for (auto& r : batch.requests()) {
-        r.promise->set_value(
-          std::make_shared<labels_t>()
-        );
+      // TODO : handle failed batch query more gracefully, currently log the error but only return empty result if this fragment is the last one for its parent request
+      for (auto& fragment : batch.requests()) { 
+        if (fragment.parent_req->wait.fetch_sub(1) == 1) {
+          fragment.parent_req->promise->set_value(
+            std::make_shared<result_t>()
+          );
+        }
       }
       return;
     }
@@ -252,13 +323,16 @@ private:
       pir_params.log_q
     };
 
-    for (auto& r : batch.requests()) {
-      labels_t labels;
-      std::ranges::copy(client.result(ans_mat, batch_state, r.row_idx, r.partition), std::back_inserter(labels));
+    for (auto& fragment : batch.requests()) {
+      auto dst = std::span(fragment.parent_req->result).subspan(fragment.offset, fragment.len);
+      client.recover(ans_mat, batch_state, dst, fragment.row_idx, fragment.len, fragment.partition);
 
-      r.promise->set_value(
-        std::make_shared<labels_t>(std::move(labels))
-      );
+      if (fragment.parent_req->wait.fetch_sub(1) == 1) {
+        // this was the last fragment for this request, set the promise value
+        fragment.parent_req->promise->set_value(
+          std::make_shared<result_t>(std::move(fragment.parent_req->result))
+        );
+      }
     }
   }
 

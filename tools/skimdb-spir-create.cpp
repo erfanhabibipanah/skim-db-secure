@@ -24,6 +24,7 @@ auto main(int argc, char* argv[]) -> int {
   std::string cache_dir = "";
   unsigned int logp = 22;
   unsigned int logq = 64;
+  unsigned int block_size = 1;
   unsigned int batch_size = 1;
   std::size_t n = 1923;
   double sigma = 271.65;
@@ -95,7 +96,7 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("building spir server state...");
 
-  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma, batch_size);
+  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma, block_size, batch_size);
 
   if (!setup) {
     log->error("could not setup server state: {}", setup.error());
