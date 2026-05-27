@@ -1,5 +1,5 @@
-#ifndef SKIMDB_SPIR_MATRIX_H
-#define SKIMDB_SPIR_MATRIX_H
+#ifndef SKIMDB_SIPER_MATRIX_H
+#define SKIMDB_SIPER_MATRIX_H
 
 #include <cstddef>
 #include <cstdint>
@@ -16,24 +16,24 @@
 #include <skimdb/detail/skimdb_logger.h>
 
 
-namespace skim::spir {
+namespace skim::siper {
 
 // implements matrices (and vectors) with modular arithmetic
-class spir_matrix {
+class siper_matrix {
 public:
-  explicit spir_matrix() = default;
+  explicit siper_matrix() = default;
 
-  explicit spir_matrix(std::size_t rows, std::size_t cols, std::size_t log_mod)
+  explicit siper_matrix(std::size_t rows, std::size_t cols, std::size_t log_mod)
       : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)},
         data_(rows * cols, 0) {}
 
-  explicit spir_matrix(std::size_t n, std::size_t log_mod) : spir_matrix(1, n, log_mod) {}
+  explicit siper_matrix(std::size_t n, std::size_t log_mod) : siper_matrix(1, n, log_mod) {}
 
-  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::size_t rows, std::size_t cols, std::size_t log_mod)
+  explicit siper_matrix(std::vector<std::uint64_t>&& data, std::size_t rows, std::size_t cols, std::size_t log_mod)
       : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_{std::move(data)} {}
 
-  explicit spir_matrix(std::vector<std::uint64_t>&& data, std::size_t n, std::size_t log_mod)
-      : spir_matrix(std::move(data), 1, n, log_mod) {}
+  explicit siper_matrix(std::vector<std::uint64_t>&& data, std::size_t n, std::size_t log_mod)
+      : siper_matrix(std::move(data), 1, n, log_mod) {}
 
 
   void set(std::size_t i, std::size_t j, std::uint64_t x) { data_[i * c_ + j] = x & mask_; }
@@ -72,8 +72,8 @@ public:
   }
 
 
-  auto add(const spir_matrix& mat) -> spir_matrix& {
-    LogFun lf{"spir_matrix::add(...)", spdlog::level::debug};
+  auto add(const siper_matrix& mat) -> siper_matrix& {
+    LogFun lf{"siper_matrix::add(...)", spdlog::level::debug};
 
     auto* dst = data_.data();
     std::size_t n = data_.size();
@@ -89,8 +89,8 @@ public:
   }
 
 
-  auto div_delta(std::size_t log_delta) -> spir_matrix& {
-    LogFun lf{"spir_matrix::div_delta(...)", spdlog::level::debug};
+  auto div_delta(std::size_t log_delta) -> siper_matrix& {
+    LogFun lf{"siper_matrix::div_delta(...)", spdlog::level::debug};
 
     auto* dst = data_.data();
     std::size_t n = data_.size();
@@ -106,12 +106,12 @@ public:
   }
 
 
-  auto transpose() const -> spir_matrix {
-    LogFun lf{"spir_matrix::transpose()", spdlog::level::debug};
+  auto transpose() const -> siper_matrix {
+    LogFun lf{"siper_matrix::transpose()", spdlog::level::debug};
 
     const auto* src = data_.data();
 
-    spir_matrix out{c_, r_, log_mod_};
+    siper_matrix out{c_, r_, log_mod_};
     auto dst = out.span();
 
   #pragma omp parallel for schedule(static)
@@ -142,7 +142,7 @@ private:
 };
 
 
-void mat_vec(const spir_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, std::size_t log_q) {
+void mat_vec(const siper_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, std::size_t log_q) {
   std::size_t m_rows = 0; // declared explicitely for libomp
   std::size_t m_cols = 0;
 
@@ -166,11 +166,11 @@ void mat_vec(const spir_matrix& mat, std::span<const std::uint64_t> vec, std::sp
 
 
 // client side, prepare query (A*s)
-inline auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::size_t log_q) -> spir_matrix {
-  LogFun lf{"mat_vec(spir_matrix, ...)", spdlog::level::debug};
+inline auto mat_vec(const siper_matrix& mat, const siper_matrix& vec, std::size_t log_q) -> siper_matrix {
+  LogFun lf{"mat_vec(siper_matrix, ...)", spdlog::level::debug};
 
   auto [m_rows, _] = mat.dimensions();
-  spir_matrix out{m_rows, log_q};
+  siper_matrix out{m_rows, log_q};
 
   mat_vec(mat, vec.span(), out.span(), log_q);
 
@@ -179,8 +179,12 @@ inline auto mat_vec(const spir_matrix& mat, const spir_matrix& vec, std::size_t 
 
 
 // client side, answer recovery: computing (ans - hint_c*s) for a range of blocks making up the target rle.
-inline auto sub_mat_vec_rows(const spir_matrix &ans, const spir_matrix &hint, std::span<const std::uint64_t> s_data,
-    std::size_t log_q, std::size_t i_start, std::size_t n_rows) -> spir_matrix {
+inline auto sub_mat_vec_rows(const siper_matrix& ans,
+                             const siper_matrix& hint,
+                             std::span<const std::uint64_t> s_data,
+                             std::size_t log_q,
+                             std::size_t i_start,
+                             std::size_t n_rows) -> siper_matrix {
   LogFun lf{"sub_mat_vec_rows(...)", spdlog::level::debug};
 
   std::size_t r = 0;
@@ -191,7 +195,7 @@ inline auto sub_mat_vec_rows(const spir_matrix &ans, const spir_matrix &hint, st
 
   const auto h_data = hint.span();
 
-  spir_matrix out{n_rows, log_q};
+  siper_matrix out{n_rows, log_q};
 
 #pragma omp parallel for schedule(static)
   for (std::size_t i = 0; i < n_rows; ++i) {
@@ -236,8 +240,8 @@ public:
 
 private:
   std::vector<std::uint16_t> data_; // row major flat storage
-  std::size_t block_size_; // number of runs stored in each block 
-  std::size_t sqrt_N_; // runs per row and column, should be multiple of block_size
+  std::size_t block_size_;          // number of runs stored in each block
+  std::size_t sqrt_N_;              // runs per row and column, should be multiple of block_size
 };
 
 
@@ -254,25 +258,25 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
   const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
 
 #pragma omp parallel for schedule(static)
-	for (std::size_t i = 0; i < count; ++i) {
-		std::size_t s = i + start;
-		std::uint64_t sum = 0;
+  for (std::size_t i = 0; i < count; ++i) {
+    std::size_t s = i + start;
+    std::uint64_t sum = 0;
 
-		for (std::size_t j = 0; j < m_cols; ++j) {
-			sum += src[i * m_cols + j] * vec[j];
-		}
-		
-		dst[i] = sum & mask;
-	}
+    for (std::size_t j = 0; j < m_cols; ++j) {
+      sum += src[i * m_cols + j] * vec[j];
+    }
+
+    dst[i] = sum & mask;
+  }
 }
 
 
-inline auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::size_t log_q)
-    -> spir_matrix {
+inline auto mat_vec(const skimdb_matrix& db, const siper_matrix& vec, std::size_t log_q)
+    -> siper_matrix {
   LogFun lf{"mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();
-  spir_matrix out{db_r, log_q};
+  siper_matrix out{db_r, log_q};
 
   partitioned_mat_vec(db, vec.span(), out.span(), log_q, 0, db_r);
 
@@ -281,15 +285,15 @@ inline auto mat_vec(const skimdb_matrix& db, const spir_matrix& vec, std::size_t
 
 
 // server setup (hint_c = DB*A)
-inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::size_t log_q)
-    -> spir_matrix {
+inline auto mat_mul(const skimdb_matrix& db, const siper_matrix& mat_a, std::size_t log_q)
+    -> siper_matrix {
   LogFun lf{"mat_mul(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();
   auto [a_r, a_c] = mat_a.dimensions();
 
   auto trans_a = mat_a.transpose();
-  spir_matrix out{a_c, db_r, log_q};
+  siper_matrix out{a_c, db_r, log_q};
 
   for (std::size_t i = 0; i < a_c; ++i) {
     partitioned_mat_vec(db, trans_a.row(i), out.row(i), log_q, 0, db_r);
@@ -298,6 +302,6 @@ inline auto mat_mul(const skimdb_matrix& db, const spir_matrix& mat_a, std::size
   return out.transpose();
 }
 
-} // namespace skim::spir
+} // namespace skim::siper
 
-#endif // SKIMDB_SPIR_MATRIX_H
+#endif // SKIMDB_SIPER_MATRIX_H

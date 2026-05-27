@@ -9,7 +9,7 @@ usage() {
   echi "  -B        build with big k-mer support (64bit encoding)"
   echo "  -T        build tools"
   echo "  -g        build gRPC support"
-  echo "  -s        build SPIR support"
+  echo "  -s        build SiPeR support"
   echo "  -h        display this help"
   echo "  -v        enable verbose mode"
   echo "  -d        enable debug mode"
@@ -51,7 +51,7 @@ while getopts "BTgshvdj:r:l" arg; do
       CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_GRPC=ON"
       ;;
     s)
-      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_SPIR=ON"
+      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_SIPER=ON"
       ;;
   esac
 done

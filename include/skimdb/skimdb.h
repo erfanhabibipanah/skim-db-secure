@@ -33,9 +33,9 @@ namespace fs = std::filesystem;
 struct skim_runtime_config {
   unsigned int grpc_connect_timeout{5};                  // gRPC connection timeout (seconds)
   unsigned int grpc_download_timeout{300};               // gRPC data download timeout (seconds)
-  std::string spir_server_store_dir{".skimdb-server"};   // path to directory where server stores hint data
-  std::string spir_client_metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
-  std::string spir_client_hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
+  std::string siper_server_store_dir{".skimdb-server"};   // path to directory where server stores hint data
+  std::string siper_client_metadata_dir{".skimdb-cache"}; // path to directory to store metadata on client's side
+  std::string siper_client_hint_c_dir{".skimdb-cache"};   // path to directory to store hint_c on client's side
 };
 
 skim_runtime_config g_skim_config;

@@ -1,5 +1,5 @@
-#ifndef SKIMDB_SPIR_UTIL_H
-#define SKIMDB_SPIR_UTIL_H
+#ifndef SKIMDB_SIPER_UTIL_H
+#define SKIMDB_SIPER_UTIL_H
 
 #include <cmath>
 #include <expected>
@@ -14,7 +14,7 @@
 #include <openssl/evp.h>
 
 
-namespace skim::spir {
+namespace skim::siper {
 
 namespace fs = std::filesystem;
 
@@ -111,6 +111,6 @@ auto sha256_file(const fs::path& path) -> std::expected<std::string, std::string
   return oss.str();
 }
 
-} // namespace skim::spir
+} // namespace skim::siper
 
-#endif // SKIMDB_SPIR_UTIL_H
+#endif // SKIMDB_SIPER_UTIL_H

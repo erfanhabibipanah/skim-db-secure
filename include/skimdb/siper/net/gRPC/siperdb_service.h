@@ -1,5 +1,5 @@
-#ifndef SPIRDB_SERVICE_H
-#define SPIRDB_SERVICE_H
+#ifndef SIPERDB_SERVICE_H
+#define SIPERDB_SERVICE_H
 
 #include <cstdint>
 #include <utility>
@@ -10,20 +10,22 @@
 #include <grpcpp/grpcpp.h>
 
 #include <skimdb/detail/skimdb_logger.h>
-#include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/siper/skimdb_siper.h>
 
-#include "proto/spirdb.grpc.pb.h"
+#include "proto/siperdb.grpc.pb.h"
 
 
-namespace skim::spir::rpc {
+namespace skim::siper::rpc {
 
-class SpirDBService final : public SpirDB::Service {
+class SiperDBService final : public SiperDB::Service {
 public:
-  explicit SpirDBService(spir_server_state&& state) : state_(std::move(state)) { g_log->debug("rpc service created!"); }
+  explicit SiperDBService(siper_server_state&& state) : state_{std::move(state)} {
+    g_log->debug("rpc service created!");
+  }
 
-  grpc::Status GetDbParameters(grpc::ServerContext* context, const google::protobuf::Empty*,
-                               DbParametersReply* reply) override {
-    LogFun lf{"SpirDBService::GetDbParameters(...)", spdlog::level::debug};
+  grpc::Status
+  GetDbParameters(grpc::ServerContext* context, const google::protobuf::Empty*, DbParametersReply* reply) override {
+    LogFun lf{"SiperDBService::GetDbParameters(...)", spdlog::level::debug};
     g_log->trace("serving db parameters request from {}...", context->peer());
 
     auto [k, s, t] = state_.skim_parameters();
@@ -35,23 +37,24 @@ public:
     return grpc::Status::OK;
   }
 
-  grpc::Status GetSpirParameters(grpc::ServerContext* context, const google::protobuf::Empty*,
-                                 SpirParametersReply* reply) override {
-    LogFun lf{"SpirDBService::GetSpirParameters(...)", spdlog::level::debug};
-    g_log->trace("serving spir parameters request from {}...", context->peer());
+  grpc::Status GetSiperParameters(grpc::ServerContext* context,
+                                  const google::protobuf::Empty*,
+                                  SiperParametersReply* reply) override {
+    LogFun lf{"SiperDBService::GetSiperParameters(...)", spdlog::level::debug};
+    g_log->trace("serving siper parameters request from {}...", context->peer());
 
-    auto spir_params = state_.spir_parameters();
+    auto siper_params = state_.siper_parameters();
 
-    reply->set_n(spir_params.n);
-    reply->set_sigma(spir_params.sigma);
-    reply->set_log_p(spir_params.log_p);
-    reply->set_log_q(spir_params.log_q);
-    reply->set_block_size(spir_params.block_size);
-    reply->set_batch_size(spir_params.batch_size);
-    reply->set_sqrt_n(spir_params.sqrt_N);
-    reply->set_seed(spir_params.seed);
-    reply->set_metadata_hash(spir_params.metadata_hash);
-    reply->set_hint_c_hash(spir_params.hint_c_hash);
+    reply->set_n(siper_params.n);
+    reply->set_sigma(siper_params.sigma);
+    reply->set_log_p(siper_params.log_p);
+    reply->set_log_q(siper_params.log_q);
+    reply->set_block_size(siper_params.block_size);
+    reply->set_batch_size(siper_params.batch_size);
+    reply->set_sqrt_n(siper_params.sqrt_N);
+    reply->set_seed(siper_params.seed);
+    reply->set_metadata_hash(siper_params.metadata_hash);
+    reply->set_hint_c_hash(siper_params.hint_c_hash);
 
     return grpc::Status::OK;
   }
@@ -60,10 +63,10 @@ public:
   grpc::Status DownloadData(grpc::ServerContext* context,
                             const DataRequest* request,
                             grpc::ServerWriter<DataChunk>* writer) override {
-    LogFun lf{"SpirDBService::DownloadData(...)"};
+    LogFun lf{"SiperDBService::DownloadData(...)"};
 
     auto hash = request->hash();
-    fs::path path = fs::path{g_skim_config.spir_server_store_dir} / fs::path{hash}.filename();
+    fs::path path = fs::path{g_skim_config.siper_server_store_dir} / fs::path{hash}.filename();
 
     g_log->trace("serving {} to {}...", path.string(), context->peer());
 
@@ -102,19 +105,19 @@ public:
   }
 
   grpc::Status Query(grpc::ServerContext* context, const QueryRequest* request, QueryReply* reply) override {
-    LogFun lf{"SpirDBService::Query(...)"};
-    g_log->trace("serving spir query request from {}...", context->peer());
+    LogFun lf{"SiperDBService::Query(...)"};
+    g_log->trace("serving siper query request from {}...", context->peer());
 
-    // TODO: we should consider making spir_matrix non-owning :-)
+    // TODO: we should consider making siper_matrix non-owning :-)
     //       this way we could eliminate construction of query_vec
     //       and operate on request->qu.data() directly
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
 
-    if (query_vec_data.size() != state_.spir_parameters().sqrt_N) {
+    if (query_vec_data.size() != state_.siper_parameters().sqrt_N) {
       return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size"};
     }
 
-    spir_matrix query_vec{std::move(query_vec_data), state_.spir_parameters().sqrt_N, state_.spir_parameters().log_q};
+    siper_matrix query_vec{std::move(query_vec_data), state_.siper_parameters().sqrt_N, state_.siper_parameters().log_q};
     auto ans = state_.answer(query_vec);
 
     if (!ans) {
@@ -128,18 +131,18 @@ public:
   }
 
   grpc::Status BatchQuery(grpc::ServerContext* context, const QueryRequest* request, QueryReply* reply) override {
-    LogFun lf{"SpirDBService::BatchQuery(...)"};
-    g_log->trace("serving spir batch query request from {}...", context->peer());
+    LogFun lf{"SiperDBService::BatchQuery(...)"};
+    g_log->trace("serving siper batch query request from {}...", context->peer());
 
-    auto spir_params = state_.spir_parameters();
+    auto siper_params = state_.siper_parameters();
 
     std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
 
-    if (query_vec_data.size() != spir_params.sqrt_N * spir_params.batch_size) {
+    if (query_vec_data.size() != siper_params.sqrt_N * siper_params.batch_size) {
       return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size"};
     }
 
-    spir_matrix query_vec{std::move(query_vec_data), spir_params.batch_size, spir_params.sqrt_N, spir_params.log_q};
+    siper_matrix query_vec{std::move(query_vec_data), siper_params.batch_size, siper_params.sqrt_N, siper_params.log_q};
     auto ans = state_.batch_answer(query_vec);
 
     if (!ans) {
@@ -153,9 +156,9 @@ public:
   }
 
 private:
-  spir_server_state state_;
+  siper_server_state state_;
 };
 
-} // namespace skim::spir::rpc
+} // namespace skim::siper::rpc
 
-#endif // SPIRDB_SERVICE_H
+#endif // SIPERDB_SERVICE_H

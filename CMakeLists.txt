@@ -26,7 +26,7 @@ configure_file(
 option(SKIMDB_64BIT "Build with 64bit k-mer encoding" OFF)
 option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
 option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)
-option(SKIMDB_BUILD_SPIR "Build SPIR implementation" OFF)
+option(SKIMDB_BUILD_SIPER "Build SiPeR implementation" OFF)
 
 # Compile commands
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -163,7 +163,7 @@ if(SKIMDB_BUILD_GRPC)
     add_subdirectory(include/skimdb/net/gRPC)
 endif()
 
-# SPIR
-if (SKIMDB_BUILD_SPIR)
-    add_subdirectory(include/skimdb/spir/net/gRPC)
+# SiPeR
+if (SKIMDB_BUILD_SIPER)
+    add_subdirectory(include/skimdb/siper/net/gRPC)
 endif()

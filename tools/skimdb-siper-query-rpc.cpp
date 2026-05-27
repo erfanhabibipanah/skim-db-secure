@@ -9,8 +9,8 @@
 #include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb_version.h>
-#include <skimdb/spir/net/gRPC/spirdb_client.h>
-#include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/siper/net/gRPC/siperdb_client.h>
+#include <skimdb/siper/skimdb_siper.h>
 
 
 auto main(int argc, char* argv[]) -> int {
@@ -39,7 +39,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-spir-query-rpc");
+  auto log = spdlog::stdout_color_mt("skimdb-siper-query-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   log->info("SKiMdb ver. {}", skim::version);
@@ -49,12 +49,12 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::g_skim_config.spir_client_hint_c_dir = cache_dir;
-  skim::g_skim_config.spir_client_metadata_dir = cache_dir;
+  skim::g_skim_config.siper_client_hint_c_dir = cache_dir;
+  skim::g_skim_config.siper_client_metadata_dir = cache_dir;
 
   log->info("connecting to {}...", addr);
 
-  skim::spir::rpc::SpirDBClient client{addr};
+  skim::siper::rpc::SiperDBClient client{addr};
 
   auto res = client.setup();
 

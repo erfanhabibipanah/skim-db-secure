@@ -10,19 +10,22 @@
 
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/skimdb_version.h>
-#include <skimdb/spir/net/gRPC/spirdb_client.h>
+#include <skimdb/siper/net/gRPC/siperdb_batched_client.h>
 
 
-auto mlog = spdlog::stdout_color_mt("skimdb-spir-query-rpc-flood");
+auto mlog = spdlog::stdout_color_mt("skimdb-siper-batch-rpc-flood");
 
 
-void run_query(skim::spir::rpc::SpirDBClient& client, unsigned int l) {
+void run_query(skim::siper::rpc::BatchedSiperDBClient& client, unsigned int l) {
   skim::skimdb_parameters param = client.skim_parameters().value();
 
   mlog->info("running thread {} with l={}...", std::this_thread::get_id(), l);
 
   std::mt19937 rng(std::random_device{}());
   skim::kmer_distribution dist{param.k};
+
+  std::vector<std::shared_future<skim::siper::rpc::shared_result_type>> futures;
+  futures.reserve(l);
 
   std::vector<std::string> res;
   res.reserve(32);
@@ -31,7 +34,11 @@ void run_query(skim::spir::rpc::SpirDBClient& client, unsigned int l) {
 
   for (unsigned int i = 0; i < l; ++i) {
     auto kmer = dist(rng);
-    std::ranges::copy(client.query(kmer), std::back_inserter(res));
+    futures.push_back(client.request(kmer));
+  }
+
+  for (auto& f : futures) {
+    std::ranges::copy(client.interpret(f), std::back_inserter(res));
     res.clear();
   }
 
@@ -45,6 +52,9 @@ auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
   std::string cache_dir = "";
   unsigned int nt = 1;
+  int bt = std::thread::hardware_concurrency() * 2;
+  double submit_threshold = 0.75;
+  unsigned int timeout = 100;
   unsigned int l = 100000;
 
   try {
@@ -53,7 +63,10 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
-      ("t,threads", "number of query threads", cxxopts::value<unsigned int>(nt)->default_value(std::to_string(nt)))
+      ("n,n-threads", "number of query threads", cxxopts::value<unsigned int>(nt)->default_value(std::to_string(nt)))
+      ("b,b-threads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
+      ("t,timeout", "batch timeout in milliseconds", cxxopts::value<unsigned int>(timeout)->default_value(std::to_string(timeout)))
+      ("s,submit", "batch submit threshold (%)", cxxopts::value<double>(submit_threshold)->default_value(std::to_string(submit_threshold)))
       ("l", "sample size per thread", cxxopts::value<unsigned int>(l)->default_value(std::to_string(l)))
       ("h,help", "print this help");
 
@@ -79,12 +92,12 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::g_skim_config.spir_client_hint_c_dir = cache_dir;
-  skim::g_skim_config.spir_client_metadata_dir = cache_dir;
+  skim::g_skim_config.siper_client_hint_c_dir = cache_dir;
+  skim::g_skim_config.siper_client_metadata_dir = cache_dir;
 
   mlog->info("connecting to {}...", addr);
 
-  skim::spir::rpc::SpirDBClient client{addr};
+  skim::siper::rpc::BatchedSiperDBClient client{bt, submit_threshold, timeout, addr};
 
   auto res = client.setup();
 

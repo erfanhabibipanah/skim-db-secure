@@ -94,19 +94,19 @@ if(SKIMDB_BUILD_GRPC)
 endif()
 
 # --------------------------------------------------------------------
-# SPIR tools
+# SiPeR tools
 # --------------------------------------------------------------------
 
-if(SKIMDB_BUILD_SPIR)
+if(SKIMDB_BUILD_SIPER)
     find_package(OpenMP REQUIRED)
     find_package(OpenSSL REQUIRED)
-    skimdb_add_tool(skimdb-spir-create spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-spir-dbsize OpenMP::OpenMP_CXX OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-spir-reconfigure OpenMP::OpenMP_CXX OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-spir-query OpenMP::OpenMP_CXX OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-spir-serve-rpc spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-spir-query-rpc spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-spir-query-rpc-flood spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-spir-batched-rpc spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-spir-batched-rpc-flood spirdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-create siperdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-dbsize OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-reconfigure OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-query OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-serve-rpc siperdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-query-rpc siperdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-query-rpc-flood siperdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-batched-rpc siperdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
+    skimdb_add_tool(skimdb-siper-batched-rpc-flood siperdb::proto OpenMP::OpenMP_CXX OpenSSL::Crypto)
 endif()

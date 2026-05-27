@@ -1,5 +1,5 @@
-#ifndef SPIRDB_CLIENT_H
-#define SPIRDB_CLIENT_H
+#ifndef SIPERDB_CLIENT_H
+#define SIPERDB_CLIENT_H
 
 #include <chrono>
 #include <expected>
@@ -17,18 +17,18 @@
 
 #include <skimdb/detail/skimdb_definitions.h>
 #include <skimdb/detail/skimdb_logger.h>
-#include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/siper/skimdb_siper.h>
 
-#include "proto/spirdb.grpc.pb.h"
+#include "proto/siperdb.grpc.pb.h"
 
 
-namespace skim::spir::rpc {
+namespace skim::siper::rpc {
 
 namespace fs = std::filesystem;
 
-class SpirDBClient {
+class SiperDBClient {
 public:
-  explicit SpirDBClient(const std::string& addr = "127.0.0.1:50051") {
+  explicit SiperDBClient(const std::string& addr = "127.0.0.1:50051") {
     grpc::ChannelArguments args;
 
     args.SetMaxReceiveMessageSize(-1);
@@ -38,12 +38,12 @@ public:
 
     if (channel_->WaitForConnected(std::chrono::system_clock::now() +
                                    std::chrono::seconds(g_skim_config.grpc_connect_timeout))) {
-      stub_ = SpirDB::NewStub(channel_);
+      stub_ = SiperDB::NewStub(channel_);
     }
   }
 
   auto setup() -> std::expected<void, std::string> {
-    LogFun lf{"SpirDBClient::setup(...)"};
+    LogFun lf{"SiperDBClient::setup(...)"};
 
     if (channel_->GetState(false) != GRPC_CHANNEL_READY) {
       return std::unexpected{"connection not established"};
@@ -64,46 +64,46 @@ public:
 
     skimdb_parameters skim_conf{.k = db_ans.k(), .s = db_ans.s(), .t = db_ans.t()};
 
-    g_log->info("fetching spir parameters from server...");
+    g_log->info("fetching siper parameters from server...");
 
-    SpirParametersReply spir_ans;
+    SiperParametersReply siper_ans;
 
     if (auto res = m_unary_rpc_(
-            [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SpirParametersReply* reply) {
-              return stub_->GetSpirParameters(ctx, req, reply);
+            [this](grpc::ClientContext* ctx, const google::protobuf::Empty& req, SiperParametersReply* reply) {
+              return stub_->GetSiperParameters(ctx, req, reply);
             },
             google::protobuf::Empty{},
-            spir_ans);
+            siper_ans);
         !res) {
       return std::unexpected{res.error().error_message()};
     }
 
-    spirdb_parameters spir_conf{.n = spir_ans.n(),
-                                .sigma = spir_ans.sigma(),
-                                .log_p = spir_ans.log_p(),
-                                .log_q = spir_ans.log_q(),
-                                .block_size = spir_ans.block_size(),
-                                .batch_size = spir_ans.batch_size(),
-                                .sqrt_N = spir_ans.sqrt_n(),
-                                .seed = spir_ans.seed(),
-                                .metadata_hash = spir_ans.metadata_hash(),
-                                .hint_c_hash = spir_ans.hint_c_hash()};
+    siperdb_parameters siper_conf{.n = siper_ans.n(),
+                                  .sigma = siper_ans.sigma(),
+                                  .log_p = siper_ans.log_p(),
+                                  .log_q = siper_ans.log_q(),
+                                  .block_size = siper_ans.block_size(),
+                                  .batch_size = siper_ans.batch_size(),
+                                  .sqrt_N = siper_ans.sqrt_n(),
+                                  .seed = siper_ans.seed(),
+                                  .metadata_hash = siper_ans.metadata_hash(),
+                                  .hint_c_hash = siper_ans.hint_c_hash()};
 
-    fs::path metadata_path = fs::path(g_skim_config.spir_client_metadata_dir) / spir_conf.metadata_hash;
-    fs::path hint_c_path = fs::path(g_skim_config.spir_client_metadata_dir) / spir_conf.hint_c_hash;
+    fs::path metadata_path = fs::path(g_skim_config.siper_client_metadata_dir) / siper_conf.metadata_hash;
+    fs::path hint_c_path = fs::path(g_skim_config.siper_client_metadata_dir) / siper_conf.hint_c_hash;
 
     if (fs::exists(metadata_path) && fs::exists(hint_c_path)) {
       g_log->info("client metadata and hint_c found locally!");
     } else {
       g_log->info("downloading client metadata and hint_c from server...");
 
-      auto res = m_get_data_(g_skim_config.spir_client_metadata_dir, spir_conf.metadata_hash);
+      auto res = m_get_data_(g_skim_config.siper_client_metadata_dir, siper_conf.metadata_hash);
 
       if (!res) {
         return std::unexpected{res.error()};
       }
 
-      res = m_get_data_(g_skim_config.spir_client_hint_c_dir, spir_conf.hint_c_hash);
+      res = m_get_data_(g_skim_config.siper_client_hint_c_dir, siper_conf.hint_c_hash);
 
       if (!res) {
         return std::unexpected{res.error()};
@@ -112,7 +112,7 @@ public:
 
     g_log->info("loading client state...");
 
-    auto res = load_client(skim_conf, spir_conf);
+    auto res = load_client(skim_conf, siper_conf);
 
     if (!res) {
       return std::unexpected{res.error()};
@@ -126,7 +126,7 @@ public:
   auto ready() const -> bool { return state_.has_value(); }
 
   auto query(const std::string& s) -> std::generator<const std::string&> {
-    LogFun lf{"SpirDBClient::query(...)"};
+    LogFun lf{"SiperDBClient::query(...)"};
 
     if (!ready()) {
       g_log->error("client not initialized! call setup() first...");
@@ -147,8 +147,8 @@ public:
     auto [row, col, len] = res.value();
 
     // determine how many queries need to be made
-    const auto spir_parameters = state_->spir_parameters();
-    auto num_queries = (row + len + spir_parameters.sqrt_N - 1) / spir_parameters.sqrt_N;
+    const auto siper_parameters = state_->siper_parameters();
+    auto num_queries = (row + len + siper_parameters.sqrt_N - 1) / siper_parameters.sqrt_N;
 
     if (num_queries > 1) {
       g_log->warn("query {} spans multiple columns ({})...", s, num_queries);
@@ -156,7 +156,7 @@ public:
 
     std::vector<std::uint16_t> rle(len);
     auto rle_span = std::span(rle);
-    
+
     std::size_t offset = 0;
     for (std::size_t i = 0; i < num_queries; ++i) {
       auto query_state = state_->prepare_query(col + i);
@@ -179,9 +179,9 @@ public:
       }
 
       std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};
-      spir_matrix ans_mat{std::move(ans_data), spir_parameters.sqrt_N, spir_parameters.log_q};
-      
-      std::size_t count = std::min(len - offset, spir_parameters.sqrt_N - row);
+      siper_matrix ans_mat{std::move(ans_data), siper_parameters.sqrt_N, siper_parameters.log_q};
+
+      std::size_t count = std::min(len - offset, siper_parameters.sqrt_N - row);
       state_->recover(ans_mat, query_state, rle_span.subspan(offset, count), row, count, i);
 
       offset += count;
@@ -246,12 +246,12 @@ protected:
     return {};
   }
 
-  std::optional<spir_client_state> state_; // client state (initialized on setup)
+  std::optional<siper_client_state> state_; // client state (initialized on setup)
 
   std::shared_ptr<grpc::Channel> channel_{nullptr};
-  std::unique_ptr<SpirDB::Stub> stub_{nullptr};
+  std::unique_ptr<SiperDB::Stub> stub_{nullptr};
 };
 
-} // namespace skim::spir::rpc
+} // namespace skim::siper::rpc
 
-#endif // SPIRDB_CLIENT_H
+#endif // SIPERDB_CLIENT

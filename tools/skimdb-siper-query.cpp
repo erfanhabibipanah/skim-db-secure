@@ -11,7 +11,7 @@
 
 #include <skimdb/skimdb.h>
 #include <skimdb/skimdb_version.h>
-#include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/siper/skimdb_siper.h>
 
 
 namespace fs = std::filesystem;
@@ -26,7 +26,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "spir database to query", cxxopts::value<std::string>(in))
+      ("i,input", "siper database to query", cxxopts::value<std::string>(in))
       ("c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");
@@ -43,7 +43,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-spir-query");
+  auto log = spdlog::stdout_color_mt("skimdb-siper-query");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   log->info("SKiMdb ver. {}", skim::version);
@@ -58,10 +58,10 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::g_skim_config.spir_client_hint_c_dir = cache_dir;
-  skim::g_skim_config.spir_client_metadata_dir = cache_dir;
+  skim::g_skim_config.siper_client_hint_c_dir = cache_dir;
+  skim::g_skim_config.siper_client_metadata_dir = cache_dir;
 
-  log->info("loading spir db from {}...", in);
+  log->info("loading siper db from {}...", in);
 
   fs::path dir{in};
 
@@ -70,7 +70,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  auto setup = skim::spir::load_server(dir);
+  auto setup = skim::siper::load_server(dir);
 
   if (!setup) {
     log->error("could not load {}, error: {}!", in, setup.error());
@@ -81,8 +81,8 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("creating client...");
 
-  auto spir_params = server_state.spir_parameters();
-  auto client_setup = skim::spir::load_client(server_state.skim_parameters(), spir_params);
+  auto siper_params = server_state.siper_parameters();
+  auto client_setup = skim::siper::load_client(server_state.skim_parameters(), siper_params);
 
   if (!client_setup) {
     log->error("could not create client: {}", client_setup.error());
@@ -107,15 +107,16 @@ auto main(int argc, char* argv[]) -> int {
     }
 
     auto pos = client_state.kmer_to_position(q);
+
     if (!pos) {
       log->info("kmer not found in DB: {}", q);
       continue;
     }
 
     auto [row, col, len] = pos.value();
-    auto n_queries = (row + len + spir_params.sqrt_N - 1) / spir_params.sqrt_N;
+    auto n_queries = (row + len + siper_params.sqrt_N - 1) / siper_params.sqrt_N;
     log->debug("kmer at row {}, col {}, length {}, spans {} column(s)", row, col, len, n_queries);
-    
+
     if (n_queries > 1) {
       log->warn("query {} spans multiple columns ({})...", q, n_queries);
     }
@@ -125,6 +126,7 @@ auto main(int argc, char* argv[]) -> int {
 
     std::size_t offset = 0;
     bool query_failed = false;
+
     for (std::size_t i = 0; i < n_queries; ++i) {
       log->debug("submitting query ({} of {})...", i + 1, n_queries);
 
@@ -140,12 +142,12 @@ auto main(int argc, char* argv[]) -> int {
       auto ans = res.value();
 
       log->debug("recovering result ({} of {})...", i + 1, n_queries);
-      
-      std::size_t count = std::min(len - offset, spir_params.sqrt_N - row);
+
+      std::size_t count = std::min(len - offset, siper_params.sqrt_N - row);
       client_state.recover(ans, query_state, rle_span.subspan(offset, count), row, count, i);
 
       offset += count;
-      row = 0; // subsequent queries (if any) will start from the top of the next column 
+      row = 0; // subsequent queries (if any) will start from the top of the next column
     }
 
     if (query_failed) {

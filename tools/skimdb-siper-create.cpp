@@ -12,7 +12,7 @@
 
 #include <skimdb/skimdb.h>
 #include <skimdb/skimdb_version.h>
-#include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/siper/skimdb_siper.h>
 
 
 namespace fs = std::filesystem;
@@ -55,7 +55,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-spir-server-create");
+  auto log = spdlog::stdout_color_mt("skimdb-siper-server-create");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   log->info("SKiMdb ver. {}", skim::version);
@@ -82,7 +82,7 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::g_skim_config.spir_server_store_dir = cache_dir;
+  skim::g_skim_config.siper_server_store_dir = cache_dir;
 
   log->info("loading index from {}...", in);
 
@@ -94,9 +94,9 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  log->info("building spir server state...");
+  log->info("building siper server state...");
 
-  auto setup = skim::spir::make_server(std::move(db), logp, logq, n, sigma, block_size, batch_size);
+  auto setup = skim::siper::make_server(std::move(db), logp, logq, n, sigma, block_size, batch_size);
 
   if (!setup) {
     log->error("could not setup server state: {}", setup.error());

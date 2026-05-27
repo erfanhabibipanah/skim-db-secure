@@ -11,7 +11,7 @@
 
 #include <skimdb/skimdb.h>
 #include <skimdb/skimdb_version.h>
-#include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/siper/skimdb_siper.h>
 
 
 namespace fs = std::filesystem;
@@ -26,8 +26,8 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "input spir database file", cxxopts::value<std::string>(in))
-      ("b,batch-size","new batch size for SPIR database", cxxopts::value<unsigned int>(batch_size))
+      ("i,input", "input siper database file", cxxopts::value<std::string>(in))
+      ("b,batch-size","new batch size for siper database", cxxopts::value<unsigned int>(batch_size))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -44,7 +44,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-spir-dbsize");
+  auto log = spdlog::stdout_color_mt("skimdb-siper-dbsize");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   log->info("SKiMdb ver. {}", skim::version);
@@ -61,9 +61,9 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  log->info("loading spirdb from {}...", in);
+  log->info("loading siperdb from {}...", in);
 
-  skim::spir::spir_server_state state;
+  skim::siper::siper_server_state state;
   auto res = state.load(dir);
 
   if (!res) {
@@ -72,12 +72,12 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   if (update_batch_size) {
-    log->info("previous batch size is {}...", state.spir_parameters().batch_size);
+    log->info("previous batch size is {}...", state.siper_parameters().batch_size);
     state.update_batch_size(batch_size);
-    log->info("batch size set to {}.", state.spir_parameters().batch_size);
+    log->info("batch size set to {}.", state.siper_parameters().batch_size);
   }
 
-  log->info("saving spirdb to {}...", in);
+  log->info("saving siperdb to {}...", in);
 
   auto save_res = state.save(dir);
   if (!save_res) {

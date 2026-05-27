@@ -1,5 +1,5 @@
-#ifndef SKIMDB_SPIR_DEFINITIONS_H
-#define SKIMDB_SPIR_DEFINITIONS_H
+#ifndef SKIMDB_SIPER_DEFINITIONS_H
+#define SKIMDB_SIPER_DEFINITIONS_H
 
 #include <cstddef>
 #include <cstdint>
@@ -9,13 +9,13 @@
 
 #include <skimdb/skimdb.h>
 
-#include "skimdb_spir_matrix.h"
+#include "skimdb_siper_matrix.h"
 
 
-namespace skim::spir {
+namespace skim::siper {
 
-// random number generator that SPIR client and server agree to use
-using spir_common_rng_t = std::mt19937_64;
+// random number generator that SiPeR client and server agree to use
+using siper_common_rng_t = std::mt19937_64;
 
 
 struct skimdb_metadata {
@@ -24,7 +24,7 @@ struct skimdb_metadata {
   std::vector<std::string> labels;          // annotated labels
 };
 
-struct spirdb_parameters {
+struct siperdb_parameters {
   std::size_t n;  // LWE dimension
   double sigma;   // LWE error distribution stddev
 
@@ -41,11 +41,11 @@ struct spirdb_parameters {
   std::string hint_c_hash;    // hash of hint_c (for verification)
 };
 
-struct spirdb_query_state {
-  spir_matrix s_vec;  // secret vector
-  spir_matrix qu_vec; // encrypted query vector
+struct siperdb_query_state {
+  siper_matrix s_vec;  // secret vector
+  siper_matrix qu_vec; // encrypted query vector
 };
 
-} // namespace skim::spir
+} // namespace skim::siper
 
-#endif // SKIMDB_SPIR_DEFINITIONS_H
+#endif // SKIMDB_SIPER_DEFINITIONS_H

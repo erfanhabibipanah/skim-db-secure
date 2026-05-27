@@ -9,8 +9,8 @@
 #include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb_version.h>
-#include <skimdb/spir/net/gRPC/spirdb_service.h>
-#include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/siper/net/gRPC/siperdb_service.h>
+#include <skimdb/siper/skimdb_siper.h>
 
 
 namespace fs = std::filesystem;
@@ -26,7 +26,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "spir database to serve", cxxopts::value<std::string>(in))
+      ("i,input", "siper database to serve", cxxopts::value<std::string>(in))
       ("a,address", "address [network:port] to serve on", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "server store directory", cxxopts::value<std::string>(cache_dir))
       ("t,threads", "number of server threads", cxxopts::value<unsigned int>(nthreads)->default_value(std::to_string(nthreads)))
@@ -44,7 +44,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-spir-serve-rpc");
+  auto log = spdlog::stdout_color_mt("skimdb-siper-serve-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   log->info("SKiMdb ver. {}", skim::version);
@@ -54,14 +54,14 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  skim::g_skim_config.spir_server_store_dir = cache_dir;
+  skim::g_skim_config.siper_server_store_dir = cache_dir;
 
   if (in.empty()) {
     log->error("input database not specified!");
     return -1;
   }
 
-  log->info("loading spir db from {}...", in);
+  log->info("loading siper db from {}...", in);
 
   fs::path dir{in};
 
@@ -70,14 +70,14 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  auto server_state = skim::spir::load_server(dir);
+  auto server_state = skim::siper::load_server(dir);
 
   if (!server_state) {
     log->error("could not load {}, error: {}!", in, server_state.error());
     return -1;
   }
 
-  skim::spir::rpc::SpirDBService service(std::move(*server_state));
+  skim::siper::rpc::SiperDBService service(std::move(*server_state));
 
   grpc::ServerBuilder builder;
   grpc::ResourceQuota quota;

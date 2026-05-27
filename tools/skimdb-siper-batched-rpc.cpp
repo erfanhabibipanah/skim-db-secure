@@ -14,12 +14,12 @@
 #include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb_version.h>
-#include <skimdb/spir/net/gRPC/spirdb_batched_client.h>
-#include <skimdb/spir/skimdb_spir.h>
+#include <skimdb/siper/net/gRPC/siperdb_batched_client.h>
+#include <skimdb/siper/skimdb_siper.h>
 
 
 template <typename T>
-class FutureQueue {
+class future_queue {
 public:
   void push(T value) {
     {
@@ -29,15 +29,17 @@ public:
     cv_.notify_one();
   }
 
-  bool pop(T& out) {
+  auto pop(T& out) -> bool {
     std::unique_lock lock(m_);
     cv_.wait(lock, [&] { return done_ || !q_.empty(); });
 
-    if (q_.empty())
+    if (q_.empty()) {
       return false;
+    }
 
     out = std::move(q_.front());
     q_.pop();
+
     return true;
   }
 
@@ -57,19 +59,17 @@ private:
 };
 
 
-struct QueryItem {
+struct query_item {
   std::string kmer;
-  std::shared_future<skim::spir::rpc::shared_result_type> future;
+  std::shared_future<skim::siper::rpc::shared_result_type> future;
 };
 
 
-void consumer_thread(
-  FutureQueue<QueryItem>& fq,
-  skim::spir::rpc::BatchedSpirDBClient& client,
-  std::shared_ptr<spdlog::logger> log,
-  bool verbose
-) {
-  QueryItem item;
+void consumer_thread(future_queue<query_item>& fq,
+                     skim::siper::rpc::BatchedSiperDBClient& client,
+                     std::shared_ptr<spdlog::logger> log,
+                     bool verbose) {
+  query_item item;
 
   while (fq.pop(item)) {
     try {
@@ -122,7 +122,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-spir-query-rpc");
+  auto log = spdlog::stdout_color_mt("skimdb-siper-query-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   log->info("SKiMdb ver. {}", skim::version);
@@ -132,13 +132,12 @@ auto main(int argc, char* argv[]) -> int {
     cache_dir = ".";
   }
 
-  
-  skim::g_skim_config.spir_client_hint_c_dir = cache_dir;
-  skim::g_skim_config.spir_client_metadata_dir = cache_dir;
+  skim::g_skim_config.siper_client_hint_c_dir = cache_dir;
+  skim::g_skim_config.siper_client_metadata_dir = cache_dir;
 
   log->info("connecting to {}...", addr);
 
-  skim::spir::rpc::BatchedSpirDBClient client{bt, submit_threshold, timeout, addr};
+  skim::siper::rpc::BatchedSiperDBClient client{bt, submit_threshold, timeout, addr};
 
   auto res = client.setup();
 
@@ -147,7 +146,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  FutureQueue<QueryItem> kmer_queue;
+  future_queue<query_item> kmer_queue;
   std::jthread consumer{
     consumer_thread,
     std::ref(kmer_queue),
@@ -167,7 +166,7 @@ auto main(int argc, char* argv[]) -> int {
     }
 
     auto fut = client.request(q);
-    kmer_queue.push(QueryItem{q, std::move(fut)});
+    kmer_queue.push(query_item{q, std::move(fut)});
   }
 
   log->info("all queries submitted, waiting for results...");

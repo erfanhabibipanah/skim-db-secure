@@ -1,7 +1,7 @@
-// spirdb.proto
+// siperdb.proto
 syntax = "proto3";
 
-package skim.spir;
+package skim.siper;
 
 import "google/protobuf/empty.proto";
 
@@ -11,7 +11,7 @@ message DbParametersReply {
   uint64 t = 3;
 }
 
-message SpirParametersReply {
+message SiperParametersReply {
   uint64 n              = 1;
   double sigma          = 2;
 
@@ -48,9 +48,9 @@ message DataChunk {
   uint64 total_size = 3;
 }
 
-service SpirDB {
+service SiperDB {
   rpc GetDbParameters(google.protobuf.Empty) returns (DbParametersReply);
-  rpc GetSpirParameters(google.protobuf.Empty) returns (SpirParametersReply);
+  rpc GetSiperParameters(google.protobuf.Empty) returns (SiperParametersReply);
 
   rpc Query(QueryRequest) returns (QueryReply);
   rpc BatchQuery(QueryRequest) returns (QueryReply);

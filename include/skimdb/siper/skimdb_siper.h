@@ -1,8 +1,7 @@
-#ifndef SKIMDB_SPIR_H
-#define SKIMDB_SPIR_H
+#ifndef SKIMDB_SIPER_H
+#define SKIMDB_SIPER_H
 
 #include <algorithm>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -14,7 +13,6 @@
 #include <string>
 #include <system_error>
 #include <utility>
-#include <vector>
 
 #include <cereal/archives/binary.hpp>
 #include <cereal/types/string.hpp>
@@ -29,77 +27,79 @@
 #include <skimdb/skimdb.h>
 
 #include "skimdb/skimdb_config.h"
-#include "skimdb_spir_definitions.h"
-#include "skimdb_spir_matrix.h"
-#include "skimdb_spir_util.h"
+#include "skimdb_siper_definitions.h"
+#include "skimdb_siper_matrix.h"
+#include "skimdb_siper_util.h"
 
 
-namespace skim::spir {
+namespace skim::siper {
 
 namespace fs = std::filesystem;
 
 
-class spir_server_state final {
+class siper_server_state final {
 public:
   // TODO: check that this does not blow up things...
-  spir_server_state() = default;
+  siper_server_state() = default;
 
-  explicit spir_server_state(skimdb_matrix&& DB, skimdb_parameters&& skim_config, spirdb_parameters&& spir_config)
-      : DB_{std::move(DB)}, skim_config_{std::move(skim_config)}, spir_config_{std::move(spir_config)} {}
+  explicit siper_server_state(skimdb_matrix&& DB, skimdb_parameters&& skim_config, siperdb_parameters&& siper_config)
+      : DB_{std::move(DB)}, skim_config_{std::move(skim_config)}, siper_config_{std::move(siper_config)} {}
 
 
   [[nodiscard]] auto skim_parameters() const -> const skimdb_parameters& { return skim_config_; }
 
-  [[nodiscard]] auto spir_parameters() const -> const spirdb_parameters& { return spir_config_; }
+  [[nodiscard]] auto siper_parameters() const -> const siperdb_parameters& { return siper_config_; }
 
 
   void update_batch_size(std::size_t new_batch_size) {
-    if (new_batch_size == 0 || spir_config_.sqrt_N / spir_config_.block_size < new_batch_size) {
-      g_log->error("invalid batch size {}, max supported batch size is {}", new_batch_size, spir_config_.sqrt_N / spir_config_.block_size);
+    if (new_batch_size == 0 || siper_config_.sqrt_N / siper_config_.block_size < new_batch_size) {
+      g_log->error("invalid batch size {}, max supported batch size is {}",
+                   new_batch_size,
+                   siper_config_.sqrt_N / siper_config_.block_size);
       return;
     }
 
-    g_log->debug("updating batch size from {} to {}...", spir_config_.batch_size, new_batch_size);
+    g_log->debug("updating batch size from {} to {}...", siper_config_.batch_size, new_batch_size);
 
-    spir_config_.batch_size = new_batch_size;
+    siper_config_.batch_size = new_batch_size;
   }
 
 
-  [[nodiscard]] auto answer(const spir_matrix& qu) const -> std::expected<spir_matrix, std::string> {
+  [[nodiscard]] auto answer(const siper_matrix& qu) const -> std::expected<siper_matrix, std::string> {
     auto [q_rows, q_cols] = qu.dimensions();
 
-    if (q_rows != 1 || q_cols != spir_config_.sqrt_N) {
+    if (q_rows != 1 || q_cols != siper_config_.sqrt_N) {
       return std::unexpected{"invalid query vector dimensions"};
     }
 
-    return mat_vec(DB_, qu, spir_config_.log_q);
+    return mat_vec(DB_, qu, siper_config_.log_q);
   }
 
-  [[nodiscard]] auto batch_answer(const spir_matrix& qu_mat) const -> std::expected<spir_matrix, std::string> {
+  [[nodiscard]] auto batch_answer(const siper_matrix& qu_mat) const -> std::expected<siper_matrix, std::string> {
     auto [q_rows, q_cols] = qu_mat.dimensions();
-    if (q_rows != spir_config_.batch_size || q_cols != spir_config_.sqrt_N) {
+    if (q_rows != siper_config_.batch_size || q_cols != siper_config_.sqrt_N) {
       return std::unexpected{"invalid query matrix dimensions"};
     }
 
-    spir_matrix ans{spir_config_.sqrt_N, spir_config_.log_q};
+    siper_matrix ans{siper_config_.sqrt_N, siper_config_.log_q};
     auto dst = ans.span();
 
-    std::size_t blocks_per_col = spir_config_.sqrt_N / spir_config_.block_size;
-    std::size_t blocks_per_batch = blocks_per_col / spir_config_.batch_size;
-    std::size_t remaining_blocks = blocks_per_col % spir_config_.batch_size;
-    
-    for (std::size_t i = 0; i < spir_config_.batch_size; ++i) {
+    std::size_t blocks_per_col = siper_config_.sqrt_N / siper_config_.block_size;
+    std::size_t blocks_per_batch = blocks_per_col / siper_config_.batch_size;
+    std::size_t remaining_blocks = blocks_per_col % siper_config_.batch_size;
+
+    for (std::size_t i = 0; i < siper_config_.batch_size; ++i) {
       std::size_t start_idx, count;
 
       if (i < remaining_blocks) {
-        start_idx = i * (blocks_per_batch + 1) * spir_config_.block_size;
-        count = (blocks_per_batch + 1) * spir_config_.block_size;
+        start_idx = i * (blocks_per_batch + 1) * siper_config_.block_size;
+        count = (blocks_per_batch + 1) * siper_config_.block_size;
       } else {
-        start_idx = (i * blocks_per_batch + remaining_blocks) * spir_config_.block_size;
-        count = blocks_per_batch * spir_config_.block_size;
+        start_idx = (i * blocks_per_batch + remaining_blocks) * siper_config_.block_size;
+        count = blocks_per_batch * siper_config_.block_size;
       }
 
-      partitioned_mat_vec(DB_, qu_mat.row(i), dst.subspan(start_idx, count), spir_config_.log_q, start_idx, count);
+      partitioned_mat_vec(DB_, qu_mat.row(i), dst.subspan(start_idx, count), siper_config_.log_q, start_idx, count);
     }
 
     return ans;
@@ -120,16 +120,16 @@ public:
               skim_config_.k,
               skim_config_.s,
               skim_config_.t,
-              spir_config_.n,
-              spir_config_.sigma,
-              spir_config_.log_p,
-              spir_config_.log_q,
-              spir_config_.block_size,
-              spir_config_.batch_size,
-              spir_config_.sqrt_N,
-              spir_config_.seed,
-              spir_config_.metadata_hash,
-              spir_config_.hint_c_hash);
+              siper_config_.n,
+              siper_config_.sigma,
+              siper_config_.log_p,
+              siper_config_.log_q,
+              siper_config_.block_size,
+              siper_config_.batch_size,
+              siper_config_.sqrt_N,
+              siper_config_.seed,
+              siper_config_.metadata_hash,
+              siper_config_.hint_c_hash);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("deserialization failed {}", e.what())};
     }
@@ -152,16 +152,16 @@ public:
               skim_config_.k,
               skim_config_.s,
               skim_config_.t,
-              spir_config_.n,
-              spir_config_.sigma,
-              spir_config_.log_p,
-              spir_config_.log_q,
-              spir_config_.block_size,
-              spir_config_.batch_size,
-              spir_config_.sqrt_N,
-              spir_config_.seed,
-              spir_config_.metadata_hash,
-              spir_config_.hint_c_hash);
+              siper_config_.n,
+              siper_config_.sigma,
+              siper_config_.log_p,
+              siper_config_.log_q,
+              siper_config_.block_size,
+              siper_config_.batch_size,
+              siper_config_.sqrt_N,
+              siper_config_.seed,
+              siper_config_.metadata_hash,
+              siper_config_.hint_c_hash);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};
     }
@@ -174,12 +174,12 @@ public:
 private:
   skimdb_matrix DB_{};              // matrix representation of rle encodings
   skimdb_parameters skim_config_{}; // skimdb index parameters
-  spirdb_parameters spir_config_{}; // SPIR parameters
+  siperdb_parameters siper_config_{}; // SIPER parameters
 };
 
 
-[[nodiscard]] auto load_server(const fs::path& path) -> std::expected<spir_server_state, std::string> {
-  spir_server_state state;
+[[nodiscard]] auto load_server(const fs::path& path) -> std::expected<siper_server_state, std::string> {
+  siper_server_state state;
   auto res = state.load(path);
 
   if (!res) {
@@ -197,7 +197,7 @@ private:
                                std::size_t block_size = 1,
                                std::size_t batch_size = 1,
                                std::uint64_t seed = std::random_device{}())
-    -> std::expected<spir_server_state, std::string> {
+    -> std::expected<siper_server_state, std::string> {
   LogFun lf{"make_server(...)"};
 
   if (log_p < 16 || log_p >= 32) {
@@ -226,11 +226,11 @@ private:
 
   std::vector<std::uint16_t> rle_lengths(kmers, 0);
   std::size_t max_len = 0;
-  
-#pragma omp parallel for schedule(static) reduction(max:max_len)
+
+#pragma omp parallel for schedule(static) reduction(max : max_len)
   for (std::size_t i = 0; i < kmers; ++i) {
     std::size_t rle_len = (db_parts.data[i].length() + block_size - 1) / block_size;
-    
+
     max_len = std::max(max_len, rle_len);
     rle_lengths[i] = static_cast<std::uint16_t>(rle_len);
   }
@@ -268,9 +268,9 @@ private:
 
   auto DB = populate_skimdb_matrix(db_parts.data, kmer_metadata, sqrt_N, block_size);
 
-  spir_common_rng_t rng{seed};
+  siper_common_rng_t rng{seed};
 
-  spir_matrix A{sqrt_N, n, log_q};
+  siper_matrix A{sqrt_N, n, log_q};
   A.fill(rng);
 
   // compute hint_c = DB * A
@@ -282,7 +282,7 @@ private:
 
   {
     std::string rand_name = std::to_string(std::random_device{}());
-    fs::path temp_metadata_path = fs::path(g_skim_config.spir_server_store_dir) / rand_name;
+    fs::path temp_metadata_path = fs::path(g_skim_config.siper_server_store_dir) / rand_name;
 
     {
       std::ofstream os{temp_metadata_path, std::ios::binary};
@@ -303,7 +303,7 @@ private:
     metadata_hash = hash_res.value();
 
     std::error_code ec;
-    fs::rename(temp_metadata_path, fs::path(g_skim_config.spir_server_store_dir) / metadata_hash, ec);
+    fs::rename(temp_metadata_path, fs::path(g_skim_config.siper_server_store_dir) / metadata_hash, ec);
     if (ec) {
       return std::unexpected{"could not rename client metadata"};
     }
@@ -316,7 +316,7 @@ private:
 
   {
     std::string rand_name = std::to_string(std::random_device{}());
-    fs::path temp_metadata_path = fs::path(g_skim_config.spir_server_store_dir) / rand_name;
+    fs::path temp_metadata_path = fs::path(g_skim_config.siper_server_store_dir) / rand_name;
 
     {
       std::ofstream os{temp_metadata_path, std::ios::binary};
@@ -337,7 +337,7 @@ private:
     hint_c_hash = hash_res.value();
 
     std::error_code ec;
-    fs::rename(temp_metadata_path, fs::path(g_skim_config.spir_server_store_dir) / hint_c_hash, ec);
+    fs::rename(temp_metadata_path, fs::path(g_skim_config.siper_server_store_dir) / hint_c_hash, ec);
 
     if (ec) {
       return std::unexpected{"could not rename hint_c"};
@@ -350,42 +350,41 @@ private:
 
   skimdb_parameters skim_conf{.k = k, .s = s, .t = t};
 
-  spirdb_parameters spir_conf{.n = n,
-                              .sigma = sigma,
-                              .log_p = log_p,
-                              .log_q = log_q,
-                              .block_size = block_size,
-                              .batch_size = batch_size,
-                              .sqrt_N = sqrt_N,
-                              .seed = seed,
-                              .metadata_hash = metadata_hash,
-                              .hint_c_hash = hint_c_hash};
+  siperdb_parameters siper_conf{.n = n,
+                                .sigma = sigma,
+                                .log_p = log_p,
+                                .log_q = log_q,
+                                .block_size = block_size,
+                                .batch_size = batch_size,
+                                .sqrt_N = sqrt_N,
+                                .seed = seed,
+                                .metadata_hash = metadata_hash,
+                                .hint_c_hash = hint_c_hash};
 
-  return spir_server_state{std::move(DB), std::move(skim_conf), std::move(spir_conf)};
+  return siper_server_state{std::move(DB), std::move(skim_conf), std::move(siper_conf)};
 }
 
 
-class spir_client_state {
+class siper_client_state {
 public:
-  using rng_type = spir_common_rng_t;
+  using rng_type = siper_common_rng_t;
 
-  explicit spir_client_state(skimdb_parameters skim_config, skimdb_metadata skim_metadata,
-                             spirdb_parameters spir_config, spir_matrix hint_c,
-                             std::uint64_t seed = std::random_device{}())
-    : skim_config_{std::move(skim_config)},
-      skim_metadata_{std::move(skim_metadata)},
-      spir_config_{std::move(spir_config)},
-      A_{spir_config_.sqrt_N, spir_config_.n, spir_config_.log_q},
-      hint_c_{std::move(hint_c)},
-      main_seed_{seed} {
-    spir_common_rng_t rng{spir_config_.seed};
+  explicit siper_client_state(skimdb_parameters skim_config,
+                              skimdb_metadata skim_metadata,
+                              siperdb_parameters siper_config,
+                              siper_matrix hint_c,
+                              std::uint64_t seed = std::random_device{}())
+      : skim_config_{std::move(skim_config)}, skim_metadata_{std::move(skim_metadata)},
+        siper_config_{std::move(siper_config)}, A_{siper_config_.sqrt_N, siper_config_.n, siper_config_.log_q},
+        hint_c_{std::move(hint_c)}, main_seed_{seed} {
+    siper_common_rng_t rng{siper_config_.seed};
     A_.fill(rng);
   }
 
 
   [[nodiscard]] auto skim_parameters() const -> skimdb_parameters { return skim_config_; }
 
-  [[nodiscard]] auto spir_parameters() const -> spirdb_parameters { return spir_config_; }
+  [[nodiscard]] auto siper_parameters() const -> siperdb_parameters { return siper_config_; }
 
 
   [[nodiscard]] auto is_valid_kmer(const std::string& str) const -> bool {
@@ -398,7 +397,7 @@ public:
   // convert a kmer to its corresponing position in the matrix (row index, column index, rle length in runs)
   [[nodiscard]] auto kmer_to_position(const std::string& s) const
       -> std::optional<std::tuple<std::size_t, std::size_t, std::size_t>> {
-    LogFun lf{"spir_client_state::kmer_to_position(...)", spdlog::level::debug};
+    LogFun lf{"siper_client_state::kmer_to_position(...)", spdlog::level::debug};
 
     auto kmer = detail::kmer_to_binary(s);
     auto canonical = std::min(kmer, detail::reverse_complement(kmer, skim_config_.k));
@@ -413,10 +412,10 @@ public:
     auto k_metadata = skim_metadata_.kmer_metadata[k_idx];
     auto start_block = index::unpack_start(k_metadata);
 
-    std::size_t start_run = start_block * spir_config_.block_size;
-    std::size_t i_col = start_run / spir_config_.sqrt_N;
-    std::size_t i_row = start_run % spir_config_.sqrt_N;
-    std::size_t rle_len = static_cast<std::size_t>(index::unpack_len(k_metadata)) * spir_config_.block_size;
+    std::size_t start_run = start_block * siper_config_.block_size;
+    std::size_t i_col = start_run / siper_config_.sqrt_N;
+    std::size_t i_row = start_run % siper_config_.sqrt_N;
+    std::size_t rle_len = static_cast<std::size_t>(index::unpack_len(k_metadata)) * siper_config_.block_size;
 
     return std::make_tuple(i_row, i_col, rle_len);
   }
@@ -424,12 +423,12 @@ public:
   // convert a row index and rle length (runs) to the corresponding batch partition and number of batches
   [[nodiscard]] auto row_to_partition(std::size_t i_row, std::size_t rle_len) const -> std::tuple<std::size_t, std::size_t> {
     // convert to blocks first to guarantee that blocks are not split across batch partitions
-    std::size_t blocks_per_col = spir_config_.sqrt_N / spir_config_.block_size;
-    std::size_t blocks_per_batch = blocks_per_col / spir_config_.batch_size;
-    std::size_t remaining_blocks = blocks_per_col % spir_config_.batch_size;
+    std::size_t blocks_per_col = siper_config_.sqrt_N / siper_config_.block_size;
+    std::size_t blocks_per_batch = blocks_per_col / siper_config_.batch_size;
+    std::size_t remaining_blocks = blocks_per_col % siper_config_.batch_size;
 
-    std::size_t start_block = i_row / spir_config_.block_size;
-    std::size_t end_block = (i_row + rle_len - 1) / spir_config_.block_size;
+    std::size_t start_block = i_row / siper_config_.block_size;
+    std::size_t end_block = (i_row + rle_len - 1) / siper_config_.block_size;
 
     std::size_t start_batch, end_batch, batch_count;
     if (start_block < remaining_blocks * (blocks_per_batch + 1)) {
@@ -449,68 +448,68 @@ public:
   }
 
 
-  [[nodiscard]] auto prepare_query(std::size_t i_col) -> spirdb_query_state {
-    LogFun lf{"spir_client_state::prepare_query(...)", spdlog::level::debug};
+  [[nodiscard]] auto prepare_query(std::size_t i_col) -> siperdb_query_state {
+    LogFun lf{"siper_client_state::prepare_query(...)", spdlog::level::debug};
 
     auto& rng = m_get_rng_();
 
-    spir_matrix s{spir_config_.n, spir_config_.log_q};
+    siper_matrix s{siper_config_.n, siper_config_.log_q};
     s.fill(rng);
 
-    dgpp::uniform_rejection dist{spir_config_.sigma};
-    spir_matrix e{spir_config_.sqrt_N, spir_config_.log_q};
+    dgpp::uniform_rejection dist{siper_config_.sigma};
+    siper_matrix e{siper_config_.sqrt_N, siper_config_.log_q};
     e.fill(rng, dist);
 
-    std::size_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
+    std::size_t delta = 1ull << (siper_config_.log_q - siper_config_.log_p);
 
-    auto qu = mat_vec(A_, s, spir_config_.log_q);
+    auto qu = mat_vec(A_, s, siper_config_.log_q);
     qu.add(e);
     qu.set(i_col, qu.get(i_col) + delta);
 
-    return spirdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)};
+    return siperdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)};
   }
 
 
-  [[nodiscard]] auto new_batch() -> spirdb_query_state {
-    LogFun lf{"spir_client_state::new_batch(...)"};
+  [[nodiscard]] auto new_batch() -> siperdb_query_state {
+    LogFun lf{"siper_client_state::new_batch(...)"};
 
     auto& rng = m_get_rng_();
 
-    spir_matrix s{spir_config_.batch_size, spir_config_.n, spir_config_.log_q};
+    siper_matrix s{siper_config_.batch_size, siper_config_.n, siper_config_.log_q};
     s.fill(rng);
 
-    dgpp::uniform_rejection dist{spir_config_.sigma};
-    spir_matrix e{spir_config_.batch_size, spir_config_.sqrt_N, spir_config_.log_q};
+    dgpp::uniform_rejection dist{siper_config_.sigma};
+    siper_matrix e{siper_config_.batch_size, siper_config_.sqrt_N, siper_config_.log_q};
     e.fill(rng, dist);
 
-    spir_matrix qu{spir_config_.batch_size, spir_config_.sqrt_N, spir_config_.log_q};
+    siper_matrix qu{siper_config_.batch_size, siper_config_.sqrt_N, siper_config_.log_q};
 
-    for (std::size_t i = 0; i < spir_config_.batch_size; ++i) {
-      mat_vec(A_, s.row(i), qu.row(i), spir_config_.log_q);
+    for (std::size_t i = 0; i < siper_config_.batch_size; ++i) {
+      mat_vec(A_, s.row(i), qu.row(i), siper_config_.log_q);
     }
     qu.add(e);
 
-    return spirdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)};
+    return siperdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)};
   }
 
-  void update_batch(spirdb_query_state& batch_state, std::size_t i_batch, std::size_t i_col) {
-    LogFun lf{"spir_client_state::update_batch(...)", spdlog::level::trace};
+  void update_batch(siperdb_query_state& batch_state, std::size_t i_batch, std::size_t i_col) {
+    LogFun lf{"siper_client_state::update_batch(...)", spdlog::level::trace};
 
-    std::uint64_t delta = 1ull << (spir_config_.log_q - spir_config_.log_p);
+    std::uint64_t delta = 1ull << (siper_config_.log_q - siper_config_.log_p);
     batch_state.qu_vec.set(i_batch, i_col, batch_state.qu_vec.get(i_batch, i_col) + delta);
   }
 
 
-  void recover(const spir_matrix& ans,
-               const spirdb_query_state& qu,
+  void recover(const siper_matrix& ans,
+               const siperdb_query_state& qu,
                std::span<std::uint16_t> rle,
                std::size_t i_row,
                std::size_t count,
                std::size_t i_batch = 0) {
-    LogFun lf{"spir_client_state::recover(...)", spdlog::level::debug};
+    LogFun lf{"siper_client_state::recover(...)", spdlog::level::debug};
 
-    auto d = sub_mat_vec_rows(ans, hint_c_, qu.s_vec.row(i_batch), spir_config_.log_q, i_row, count);
-    d.div_delta(spir_config_.log_q - spir_config_.log_p);
+    auto d = sub_mat_vec_rows(ans, hint_c_, qu.s_vec.row(i_batch), siper_config_.log_q, i_row, count);
+    d.div_delta(siper_config_.log_q - siper_config_.log_p);
     auto d_data = d.span();
 
     for (std::size_t i = 0; i < d_data.size(); ++i) {
@@ -519,7 +518,7 @@ public:
   }
 
   [[nodiscard]] auto interpret(std::vector<std::uint16_t> src) -> std::generator<const std::string&> {
-    LogFun lf{"spir_client_state::interpret(...)", spdlog::level::debug};
+    LogFun lf{"siper_client_state::interpret(...)", spdlog::level::debug};
 
     auto rle = detail::encoding{std::move(src)};
 
@@ -537,30 +536,30 @@ private:
     return main_seed_ ^ (tid * 0x9e3779b97f4a7c15ULL); // Fibonacci hashing
   }
 
-  auto m_get_rng_() -> spir_common_rng_t& {
-    thread_local spir_common_rng_t rng(m_make_local_seed_());
+  auto m_get_rng_() -> siper_common_rng_t& {
+    thread_local siper_common_rng_t rng(m_make_local_seed_());
     return rng;
   }
 
   skimdb_parameters skim_config_; // skimdb index parameters
   skimdb_metadata skim_metadata_; // skimdb metadata (kmer index, labels)
 
-  spirdb_parameters spir_config_; // SPIR parameters
+  siperdb_parameters siper_config_; // SIPER parameters
 
-  spir_matrix A_;      // matrix A
-  spir_matrix hint_c_; // hint matrix from server
+  siper_matrix A_;      // matrix A
+  siper_matrix hint_c_; // hint matrix from server
 
   std::uint64_t main_seed_;
 };
 
 [[nodiscard]] auto load_client(skimdb_parameters skim_config,
-                               spirdb_parameters spir_config,
+                               siperdb_parameters siper_config,
                                std::uint64_t seed = std::random_device{}())
-    -> std::expected<spir_client_state, std::string> {
+    -> std::expected<siper_client_state, std::string> {
   LogFun lf{"load_client(...)"};
 
-  fs::path metadata_path = fs::path(g_skim_config.spir_client_metadata_dir) / spir_config.metadata_hash;
-  fs::path hint_c_path = fs::path(g_skim_config.spir_client_hint_c_dir) / spir_config.hint_c_hash;
+  fs::path metadata_path = fs::path(g_skim_config.siper_client_metadata_dir) / siper_config.metadata_hash;
+  fs::path hint_c_path = fs::path(g_skim_config.siper_client_hint_c_dir) / siper_config.hint_c_hash;
 
   g_log->debug("loading client metadata from {}...", metadata_path.string());
 
@@ -589,7 +588,7 @@ private:
 
   g_log->debug("loading hint_c from {}...", hint_c_path.string());
 
-  spir_matrix hint_c;
+  siper_matrix hint_c;
 
   {
     std::ifstream is{hint_c_path, std::ios::binary};
@@ -607,10 +606,10 @@ private:
 
   g_log->debug("constructing client state...");
 
-  return spir_client_state{
-      std::move(skim_config), std::move(skim_metadata), std::move(spir_config), std::move(hint_c), seed};
+  return siper_client_state{
+      std::move(skim_config), std::move(skim_metadata), std::move(siper_config), std::move(hint_c), seed};
 }
 
-} // namespace skim::spir
+} // namespace skim::siper
 
-#endif // SKIMDB_SPIR_H
+#endif // SKIMDB_SIPER_H
