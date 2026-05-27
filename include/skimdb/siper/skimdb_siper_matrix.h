@@ -240,39 +240,46 @@ public:
 
 private:
   std::vector<std::uint16_t> data_; // row major flat storage
-  std::size_t block_size_;          // number of runs stored in each block
-  std::size_t sqrt_N_;              // runs per row and column, should be multiple of block_size
+  std::size_t block_size_{0};       // number of runs stored in each block
+  std::size_t sqrt_N_{0};           // runs per row and column, should be multiple of block_size
 };
 
 
 void partitioned_mat_vec(const skimdb_matrix& mat,
-                         std::span<const std::uint64_t> vec,
-                         std::span<std::uint64_t> dst,
+                         std::span<const uint64_t> vec,
+                         std::span<uint64_t> dst,
                          std::size_t log_q,
                          std::size_t start,
                          std::size_t count) {
+  LogFun lf{"partitioned_mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
+
   std::size_t m_cols = 0;
   std::tie(std::ignore, m_cols) = mat.dimensions();
 
   auto src = mat.span().subspan(start * m_cols, count * m_cols);
-  const std::uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
+
+  const uint64_t mask = (log_q >= 64) ? ~0ull : ((1ull << log_q) - 1);
+
+  const auto* __restrict__ s = src.data();
+  const uint64_t* __restrict__ v = vec.data();
+  uint64_t* __restrict__ d = dst.data();
 
 #pragma omp parallel for schedule(static)
   for (std::size_t i = 0; i < count; ++i) {
-    std::size_t s = i + start;
-    std::uint64_t sum = 0;
+    const auto* row = s + i * m_cols;
+    uint64_t sum = 0;
 
+#pragma omp simd reduction(+ : sum)
     for (std::size_t j = 0; j < m_cols; ++j) {
-      sum += src[i * m_cols + j] * vec[j];
+      sum += row[j] * v[j];
     }
 
-    dst[i] = sum & mask;
+    d[i] = sum & mask;
   }
 }
 
 
-inline auto mat_vec(const skimdb_matrix& db, const siper_matrix& vec, std::size_t log_q)
-    -> siper_matrix {
+inline auto mat_vec(const skimdb_matrix& db, const siper_matrix& vec, std::size_t log_q) -> siper_matrix {
   LogFun lf{"mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();
