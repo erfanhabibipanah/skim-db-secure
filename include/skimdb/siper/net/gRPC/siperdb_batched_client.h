@@ -46,12 +46,12 @@ struct kmer_request {
 struct kmer_fragment {
   std::shared_ptr<kmer_request> parent_req;
 
-  std::size_t partition;  // batch partition index
-  std::size_t row_idx;    // starting index of the result with respect to the full column
-  std::size_t col_idx;    // column index to request within the partition
+  std::size_t partition; // batch partition index
+  std::size_t row_idx;   // starting index of the result with respect to the full column
+  std::size_t col_idx;   // column index to request within the partition
 
-  std::size_t offset;     // starting index within the parent request's result vector to write to
-  std::size_t len;        // length of the result fragment (in number of runs)
+  std::size_t offset; // starting index within the parent request's result vector to write to
+  std::size_t len;    // length of the result fragment (in number of runs)
 
   kmer_fragment(
       std::shared_ptr<kmer_request> req, std::size_t p, std::size_t r, std::size_t c, std::size_t o, std::size_t l)
@@ -68,11 +68,11 @@ public:
 
   auto operator[](std::size_t i) const -> const std::uint64_t& { return col_idxs_[i]; }
 
-  auto size() const -> std::size_t { return count_; }
+  [[nodiscard]] auto size() const -> std::size_t { return count_; }
 
-  auto max() const -> std::size_t { return max_; }
+  [[nodiscard]] auto max() const -> std::size_t { return max_; }
 
-  auto free(std::size_t p) const -> bool { return !occupied_[p]; }
+  [[nodiscard]] auto free(std::size_t p) const -> bool { return !occupied_[p]; }
 
   auto set(kmer_fragment&& req) -> bool {
     if (!free(req.partition)) {
@@ -85,28 +85,16 @@ public:
     return true;
   }
 
-  auto add(kmer_fragment&& req) -> bool {
-    if (free(req.partition) || col_idxs_[req.partition] != req.col_idx) {
-      g_log->error("attempting to add request to batch partition {} with mismatching column index {} (existing column "
-                   "index is {})",
-                   req.partition,
-                   req.col_idx,
-                   col_idxs_[req.partition]);
-      return false;
-    }
+  void add(kmer_fragment&& req) { requests_.emplace_back(std::move(req)); }
 
-    requests_.emplace_back(std::move(req));
-    return true;
-  }
+  [[nodiscard]] auto created() const -> std::chrono::steady_clock::time_point { return created_at; }
 
-  auto created() const -> std::chrono::steady_clock::time_point { return created_at; }
-
-  auto expired(std::chrono::milliseconds timeout) const -> bool {
+  [[nodiscard]] auto expired(std::chrono::milliseconds timeout) const -> bool {
     auto now = std::chrono::steady_clock::now();
     return now >= created_at + timeout;
   }
 
-  auto requests() -> std::vector<kmer_fragment>& { return requests_; }
+  [[nodiscard]] auto requests() -> std::vector<kmer_fragment>& { return requests_; }
 
 private:
   std::size_t count_{0};
@@ -128,8 +116,8 @@ public:
                                 std::uint64_t batch_timeout_ms,
                                 const std::string& addr = "127.0.0.1:50051")
       : SiperDBClient(addr), submit_threshold_{submit_threshold},
-        batch_timeout_{std::chrono::milliseconds(batch_timeout_ms)}, arena_{max_threads},
-        leader_{&BatchedSiperDBClient::m_run_, this} {
+        batch_timeout_{std::chrono::milliseconds(batch_timeout_ms)}, leader_{&BatchedSiperDBClient::m_run_, this},
+        arena_{max_threads} {
     auto null_res = std::make_shared<result_t>(); // empty vector<std::uint16_t>
     std::promise<shared_result_type> p;
     empty_future_ = p.get_future().share();
@@ -172,8 +160,6 @@ public:
 
     const auto siper_params = state_->siper_parameters();
 
-    std::unique_lock lock{mtx_};
-
     // TODO: cache results for recently requested kmers to avoid repeated requests
     auto req = std::make_shared<kmer_request>(detail::kmer_to_binary(kmer), len, p_len);
     auto fut = req->future;
@@ -197,26 +183,27 @@ public:
         l = std::min(len - offset, blocks_per_part * siper_params.block_size);
       }
 
-      assert(offset + l <= len); // make sure we don't exceed the total length of the RLE
+      {
+        std::unique_lock lock{mtx_};
 
-      bool added = false;
-
-      for (auto& batch : queue_) {
-        if (batch.free(p)) {
-          batch.set(kmer_fragment(req, p, r, c, offset, l));
-          added = true;
-          break;
-        } else if (batch[p] == c) {
-          batch.add(kmer_fragment(req, p, r, c, offset, l));
-          added = true;
-          break;
+        bool added = false;
+        for (auto& batch : queue_) {
+          if (batch.free(p)) {
+            batch.set(kmer_fragment(req, p, r, c, offset, l));
+            added = true;
+            break;
+          } else if (batch[p] == c) {
+            batch.add(kmer_fragment(req, p, r, c, offset, l));
+            added = true;
+            break;
+          }
         }
-      }
 
-      if (!added) {
-        batch_request new_batch{siper_params.batch_size};
-        new_batch.set(kmer_fragment(req, p, r, c, offset, l));
-        queue_.push_back(std::move(new_batch));
+        if (!added) {
+          batch_request new_batch{siper_params.batch_size};
+          new_batch.set(kmer_fragment(req, p, r, c, offset, l));
+          queue_.push_back(std::move(new_batch));
+        }
       }
 
       offset += l;
@@ -232,7 +219,7 @@ public:
       co_return;
     }
 
-    auto res = fut.get(); // blocks if the result is not ready yet
+    const auto& res = fut.get(); // blocks if the result is not ready yet
 
     // TODO: want to remove this copy
     result_t rle(res->begin(), res->end());
@@ -255,7 +242,7 @@ private:
       }
 
       next = queue_.front().created() + batch_timeout_;
-      cv_.wait_until(lock, next, [&]{ return (m_batch_ready_() || done_); });
+      cv_.wait_until(lock, next, [&] { return (m_batch_ready_() || done_); });
 
       if (done_) {
         return;
@@ -265,19 +252,17 @@ private:
         auto batch_ptr = std::make_shared<batch_request>(std::move(queue_.front()));
         queue_.pop_front();
 
-        arena_.enqueue(
-          [this, batch_ptr]() {
-            m_submit_(std::move(*batch_ptr));
-          }
-        );
+        arena_.enqueue([this, batch_ptr]() { m_submit_(std::move(*batch_ptr)); });
       }
     }
   }
 
-  auto m_batch_ready_() const -> bool {
-    if (queue_.empty()) { return false; }
+  [[nodiscard]] auto m_batch_ready_() const -> bool {
+    if (queue_.empty()) {
+      return false;
+    }
 
-    double ratio = static_cast<double>(queue_.front().size()) / queue_.front().max();
+    double ratio = static_cast<double>(queue_.front().size()) / static_cast<double>(queue_.front().max());
     return ratio >= submit_threshold_ || queue_.front().expired(batch_timeout_);
   }
 
@@ -291,7 +276,6 @@ private:
     auto batch_state = client.new_batch();
 
     for (std::size_t i = 0; i < batch_size; ++i) {
-      g_log->trace("updating batch partition {} with column index {}...", i, batch[i]);
       client.update_batch(batch_state, i, batch[i]);
     }
 
@@ -327,9 +311,7 @@ private:
 
       if (fragment.parent_req->wait.fetch_sub(1) == 1) {
         // this was the last fragment for this request, set the promise value
-        fragment.parent_req->promise->set_value(
-          std::make_shared<result_t>(std::move(fragment.parent_req->result))
-        );
+        fragment.parent_req->promise->set_value(std::make_shared<result_t>(std::move(fragment.parent_req->result)));
       }
     }
   }
