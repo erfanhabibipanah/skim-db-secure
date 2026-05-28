@@ -11,7 +11,6 @@
 #include <generator>
 #include <random>
 #include <string>
-#include <system_error>
 #include <utility>
 
 #include <cereal/archives/binary.hpp>
@@ -172,8 +171,8 @@ public:
   }
 
 private:
-  skimdb_matrix DB_{};              // matrix representation of rle encodings
-  skimdb_parameters skim_config_{}; // skimdb index parameters
+  skimdb_matrix DB_{};                // matrix representation of rle encodings
+  skimdb_parameters skim_config_{};   // skimdb index parameters
   siperdb_parameters siper_config_{}; // SIPER parameters
 };
 
@@ -220,7 +219,8 @@ private:
 
   // need to store the starting position and length of each RLE in the matrix (in terms of blocks)
   // encoding using uint64_t with lower 12 bits for length and upper 52 bits for starting positions
-  // this allows for up to 4095 blocks per RLE and a matrix with up to 2^52 blocks, which should be sufficient for our use case.
+  // allows for up to 4095 blocks per RLE and a matrix with up to 2^52 blocks, which should be
+  // sufficient for our use case.
 
   g_log->info("skimdb contains {} kmers, computing sqrt N...", kmers);
 
@@ -242,11 +242,11 @@ private:
   std::vector<std::uint64_t> kmer_metadata(kmers, 0);
 
   std::uint64_t run_sum = 0;
-#pragma omp parallel for reduction(inscan, +:run_sum)
-  for (std::size_t i = 0; i < kmers; ++i){
+#pragma omp parallel for reduction(inscan, + : run_sum)
+  for (std::size_t i = 0; i < kmers; ++i) {
     kmer_metadata[i] = run_sum;
 
-  #pragma omp scan exclusive(run_sum)
+#pragma omp scan exclusive(run_sum)
 
     run_sum += rle_lengths[i];
   }
@@ -262,7 +262,10 @@ private:
 
   auto sqrt_N = min_sqrt_N(run_sum, block_size);
 
-  g_log->info("skimdb contains {} total runs, requires matrix with sqrt(N) = {} for block size {}", run_sum * block_size, sqrt_N, block_size);
+  g_log->info("skimdb contains {} total runs, requires matrix with sqrt(N) = {} for block size {}",
+              run_sum * block_size,
+              sqrt_N,
+              block_size);
 
   g_log->info("packing RLE encodings into matrix format...");
 
@@ -421,7 +424,8 @@ public:
   }
 
   // convert a row index and rle length (runs) to the corresponding batch partition and number of batches
-  [[nodiscard]] auto row_to_partition(std::size_t i_row, std::size_t rle_len) const -> std::tuple<std::size_t, std::size_t> {
+  [[nodiscard]] auto row_to_partition(std::size_t i_row, std::size_t rle_len) const
+      -> std::tuple<std::size_t, std::size_t> {
     // convert to blocks first to guarantee that blocks are not split across batch partitions
     std::size_t blocks_per_col = siper_config_.sqrt_N / siper_config_.block_size;
     std::size_t blocks_per_batch = blocks_per_col / siper_config_.batch_size;
@@ -552,9 +556,9 @@ private:
   std::uint64_t main_seed_;
 };
 
-[[nodiscard]] auto load_client(skimdb_parameters skim_config,
-                               siperdb_parameters siper_config,
-                               std::uint64_t seed = std::random_device{}())
+
+[[nodiscard]] auto
+load_client(skimdb_parameters skim_config, siperdb_parameters siper_config, std::uint64_t seed = std::random_device{}())
     -> std::expected<siper_client_state, std::string> {
   LogFun lf{"load_client(...)"};
 
@@ -580,7 +584,8 @@ private:
 
       archive(index, kmer_metadata, labels);
 
-      skim_metadata = skimdb_metadata{.index = std::move(index), .kmer_metadata = std::move(kmer_metadata), .labels = std::move(labels)};
+      skim_metadata = skimdb_metadata{
+          .index = std::move(index), .kmer_metadata = std::move(kmer_metadata), .labels = std::move(labels)};
     } catch (...) {
       return std::unexpected{"deserialization failed"};
     }

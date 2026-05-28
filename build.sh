@@ -6,7 +6,7 @@ JOBS=8
 usage() {
   echo "usage: $0 [OPTIONS]"
   echo "options:"
-  echi "  -B        build with big k-mer support (64bit encoding)"
+  echo "  -B        build with big k-mer support (64bit encoding)"
   echo "  -T        build tools"
   echo "  -g        build gRPC support"
   echo "  -s        build SiPeR support"

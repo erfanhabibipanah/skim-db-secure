@@ -25,8 +25,8 @@ struct skimdb_metadata {
 };
 
 struct siperdb_parameters {
-  std::size_t n;  // LWE dimension
-  double sigma;   // LWE error distribution stddev
+  std::size_t n; // LWE dimension
+  double sigma;  // LWE error distribution stddev
 
   std::size_t log_p; // plaintext modulus
   std::size_t log_q; // ciphertext modulus
@@ -35,10 +35,10 @@ struct siperdb_parameters {
   std::size_t batch_size; // number of qu vectors which can be processed in one batch
   std::size_t sqrt_N;     // matrix side length (runs per row and column), should be a multiple of block_size
 
-  std::uint64_t seed;         // seed for matrix A
+  std::uint64_t seed; // seed for matrix A
 
-  std::string metadata_hash;  // hash of client metadata (for verification)
-  std::string hint_c_hash;    // hash of hint_c (for verification)
+  std::string metadata_hash; // hash of client metadata (for verification)
+  std::string hint_c_hash;   // hash of hint_c (for verification)
 };
 
 struct siperdb_query_state {
