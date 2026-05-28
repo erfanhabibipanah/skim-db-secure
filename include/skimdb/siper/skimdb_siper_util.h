@@ -20,36 +20,29 @@ namespace fs = std::filesystem;
 
 namespace index {
 
-inline constexpr uint64_t g_len_bits = 12;
-inline constexpr uint64_t g_len_mask = (1ULL << g_len_bits) - 1;
+inline constexpr std::uint64_t g_len_bits = 12;
+inline constexpr std::uint64_t g_len_mask = (1ULL << g_len_bits) - 1;
 
-inline uint64_t pack(uint64_t start, uint16_t len) {
-  return (start << g_len_bits) | len;
-}
+inline auto pack(std::uint64_t start, std::uint16_t len) -> std::uint64_t { return (start << g_len_bits) | len; }
 
-inline uint64_t unpack_start(uint64_t v) {
-  return v >> g_len_bits;
-}
+inline auto unpack_start(std::uint64_t v) -> std::uint64_t { return v >> g_len_bits; }
 
-inline uint16_t unpack_len(uint64_t v) {
-  return static_cast<uint16_t>(v & g_len_mask);
-}
+inline auto unpack_len(std::uint64_t v) -> std::uint16_t { return static_cast<std::uint16_t>(v & g_len_mask); }
 
 } // namespace index
 
 
 auto min_sqrt_N(std::size_t min_blocks, std::size_t block_size) -> std::size_t {
   std::size_t min_cells = min_blocks * block_size;
-  std::size_t min_side = static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(min_cells))));
+  auto min_side = static_cast<std::size_t>(std::ceil(std::sqrt(static_cast<double>(min_cells))));
   return (min_side + block_size - 1) / block_size * block_size;
 }
 
 
 auto populate_skimdb_matrix(const std::vector<skim::detail::encoding>& data,
                             const std::vector<std::uint64_t>& metadata,
-                            std::size_t sqrt_N, 
-                            std::size_t block_size)
-    -> skimdb_matrix {
+                            std::size_t sqrt_N,
+                            std::size_t block_size) -> skimdb_matrix {
   std::vector<std::uint16_t> packed_data(sqrt_N * sqrt_N, 0);
 
 #pragma omp parallel for schedule(static)

@@ -30,7 +30,8 @@ public:
   explicit siper_matrix(std::size_t n, std::size_t log_mod) : siper_matrix(1, n, log_mod) {}
 
   explicit siper_matrix(std::vector<std::uint64_t>&& data, std::size_t rows, std::size_t cols, std::size_t log_mod)
-      : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)}, data_{std::move(data)} {}
+      : r_{rows}, c_{cols}, log_mod_{log_mod}, mask_{(log_mod >= 64) ? ~0ull : ((1ull << log_mod) - 1)},
+        data_{std::move(data)} {}
 
   explicit siper_matrix(std::vector<std::uint64_t>&& data, std::size_t n, std::size_t log_mod)
       : siper_matrix(std::move(data), 1, n, log_mod) {}
@@ -40,21 +41,23 @@ public:
 
   void set(std::size_t i, std::uint64_t x) { data_[i] = x & mask_; }
 
-  auto get(std::size_t i, std::size_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
+  [[nodiscard]] auto get(std::size_t i, std::size_t j) const -> std::uint64_t { return data_[i * c_ + j]; }
 
-  auto get(std::size_t i) const -> std::uint64_t { return data_[i]; }
-
-
-  auto span() -> std::span<std::uint64_t> { return data_; }
-
-  auto span() const -> std::span<const std::uint64_t> { return data_; }
-
-  auto row(std::size_t i) -> std::span<std::uint64_t> { return std::span{data_}.subspan(i * c_, c_); }
-
-  auto row(std::size_t i) const -> std::span<const std::uint64_t> { return std::span{data_}.subspan(i * c_, c_); }
+  [[nodiscard]] auto get(std::size_t i) const -> std::uint64_t { return data_[i]; }
 
 
-  auto dimensions() const -> std::tuple<std::size_t, std::size_t> { return std::make_tuple(r_, c_); }
+  [[nodiscard]] auto span() -> std::span<std::uint64_t> { return data_; }
+
+  [[nodiscard]] auto span() const -> std::span<const std::uint64_t> { return data_; }
+
+  [[nodiscard]] auto row(std::size_t i) -> std::span<std::uint64_t> { return std::span{data_}.subspan(i * c_, c_); }
+
+  [[nodiscard]] auto row(std::size_t i) const -> std::span<const std::uint64_t> {
+    return std::span{data_}.subspan(i * c_, c_);
+  }
+
+
+  [[nodiscard]] auto dimensions() const -> std::tuple<std::size_t, std::size_t> { return std::make_tuple(r_, c_); }
 
 
   template <typename URBG>
@@ -106,7 +109,7 @@ public:
   }
 
 
-  auto transpose() const -> siper_matrix {
+  [[nodiscard]] auto transpose() const -> siper_matrix {
     LogFun lf{"siper_matrix::transpose()", spdlog::level::debug};
 
     const auto* src = data_.data();
@@ -114,7 +117,7 @@ public:
     siper_matrix out{c_, r_, log_mod_};
     auto dst = out.span();
 
-  #pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static)
     for (std::size_t i = 0; i < r_; ++i) {
       for (std::size_t j = 0; j < c_; ++j) {
         dst[j * r_ + i] = src[i * c_ + j];
@@ -142,7 +145,10 @@ private:
 };
 
 
-void mat_vec(const siper_matrix& mat, std::span<const std::uint64_t> vec, std::span<std::uint64_t> dst, std::size_t log_q) {
+void mat_vec(const siper_matrix& mat,
+             std::span<const std::uint64_t> vec,
+             std::span<std::uint64_t> dst,
+             std::size_t log_q) {
   std::size_t m_rows = 0; // declared explicitely for libomp
   std::size_t m_cols = 0;
 
@@ -155,7 +161,7 @@ void mat_vec(const siper_matrix& mat, std::span<const std::uint64_t> vec, std::s
   for (std::size_t i = 0; i < m_rows; ++i) {
     std::uint64_t sum = 0;
 
-  #pragma omp simd reduction(+:sum)
+#pragma omp simd reduction(+ : sum)
     for (std::size_t j = 0; j < m_cols; ++j) {
       sum += (mat_data[i * m_cols + j] * vec[j]) & mask;
     }
@@ -201,7 +207,7 @@ inline auto sub_mat_vec_rows(const siper_matrix& ans,
   for (std::size_t i = 0; i < n_rows; ++i) {
     std::uint64_t sum = 0;
 
-  #pragma omp simd reduction(+:sum)
+#pragma omp simd reduction(+ : sum)
     for (std::size_t j = 0; j < c; ++j) {
       sum += (h_data[(i_start + i) * c + j] * s_data[j]) & mask;
     }
@@ -218,20 +224,20 @@ class skimdb_matrix {
 public:
   explicit skimdb_matrix() = default;
 
-  explicit skimdb_matrix(std::vector<std::uint16_t>&& data,
-                         std::size_t block_size,
-                         std::size_t sqrt_N)
-    : data_{std::move(data)}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
+  explicit skimdb_matrix(std::vector<std::uint16_t>&& data, std::size_t block_size, std::size_t sqrt_N)
+      : data_{std::move(data)}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
 
 
-  auto span() -> std::span<std::uint16_t> { return data_; }
+  [[nodiscard]] auto span() -> std::span<std::uint16_t> { return data_; }
 
-  auto span() const -> std::span<const std::uint16_t> { return data_; }
+  [[nodiscard]] auto span() const -> std::span<const std::uint16_t> { return data_; }
 
 
-  auto block_size() const -> std::size_t { return block_size_; }
+  [[nodiscard]] auto block_size() const -> std::size_t { return block_size_; }
 
-  auto dimensions() const -> std::tuple<std::size_t, std::size_t> { return std::make_tuple(sqrt_N_, sqrt_N_); } 
+  [[nodiscard]] auto dimensions() const -> std::tuple<std::size_t, std::size_t> {
+    return std::make_tuple(sqrt_N_, sqrt_N_);
+  }
 
   template <typename Archive>
   void serialize(Archive& archive) {
@@ -292,8 +298,7 @@ inline auto mat_vec(const skimdb_matrix& db, const siper_matrix& vec, std::size_
 
 
 // server setup (hint_c = DB*A)
-inline auto mat_mul(const skimdb_matrix& db, const siper_matrix& mat_a, std::size_t log_q)
-    -> siper_matrix {
+inline auto mat_mul(const skimdb_matrix& db, const siper_matrix& mat_a, std::size_t log_q) -> siper_matrix {
   LogFun lf{"mat_mul(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();
