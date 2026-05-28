@@ -28,7 +28,7 @@ using result_t = std::vector<std::uint16_t>;
 using shared_result_type = std::shared_ptr<result_t>;
 
 
-struct kmer_req {
+struct kmer_request {
   skim::kmer_binary_t kmer;
 
   result_t result;
@@ -37,15 +37,14 @@ struct kmer_req {
   std::shared_ptr<std::promise<shared_result_type>> promise;
   std::shared_future<shared_result_type> future;
 
-  kmer_req(skim::kmer_binary_t k, std::size_t len, std::size_t num_parts) 
-    : kmer(k), result(len), wait(static_cast<int>(num_parts)), 
-      promise(std::make_shared<std::promise<shared_result_type>>()), 
-      future(promise->get_future().share()) {};
+  kmer_request(skim::kmer_binary_t k, std::size_t len, std::size_t num_parts)
+      : kmer{k}, result(len), wait{static_cast<int>(num_parts)},
+        promise{std::make_shared<std::promise<shared_result_type>>()}, future{promise->get_future().share()} {}
 };
 
 
 struct kmer_fragment {
-  std::shared_ptr<kmer_req> parent_req;
+  std::shared_ptr<kmer_request> parent_req;
 
   std::size_t partition;  // batch partition index
   std::size_t row_idx;    // starting index of the result with respect to the full column
@@ -55,19 +54,19 @@ struct kmer_fragment {
   std::size_t len;        // length of the result fragment (in number of runs)
 
   kmer_fragment(
-      std::shared_ptr<kmer_req> req, std::size_t p, std::size_t r, std::size_t c, std::size_t o, std::size_t l)
-      : parent_req(std::move(req)), partition(p), row_idx(r), col_idx(c), offset(o), len(l) {}
+      std::shared_ptr<kmer_request> req, std::size_t p, std::size_t r, std::size_t c, std::size_t o, std::size_t l)
+      : parent_req{std::move(req)}, partition{p}, row_idx{r}, col_idx{c}, offset{o}, len{l} {}
 };
 
 
 class batch_request {
 public:
   explicit batch_request(std::size_t max)
-      : count_{0}, max_{max}, occupied_(max, false), col_idxs_(max), created_at{std::chrono::steady_clock::now()} {
+      : max_{max}, occupied_(max, false), col_idxs_(max), created_at{std::chrono::steady_clock::now()} {
     requests_.reserve(max);
   }
 
-  const std::uint64_t& operator[](std::size_t i) const { return col_idxs_[i]; }
+  auto operator[](std::size_t i) const -> const std::uint64_t& { return col_idxs_[i]; }
 
   auto size() const -> std::size_t { return count_; }
 
@@ -76,7 +75,9 @@ public:
   auto free(std::size_t p) const -> bool { return !occupied_[p]; }
 
   auto set(kmer_fragment&& req) -> bool {
-    if (!free(req.partition)) { return false; }
+    if (!free(req.partition)) {
+      return false;
+    }
     occupied_[req.partition] = true;
     col_idxs_[req.partition] = req.col_idx;
     requests_.push_back(std::move(req));
@@ -84,17 +85,18 @@ public:
     return true;
   }
 
-  void add(kmer_fragment&& req) {
+  auto add(kmer_fragment&& req) -> bool {
     if (free(req.partition) || col_idxs_[req.partition] != req.col_idx) {
       g_log->error("attempting to add request to batch partition {} with mismatching column index {} (existing column "
                    "index is {})",
                    req.partition,
                    req.col_idx,
                    col_idxs_[req.partition]);
-      return;
+      return false;
     }
 
-    requests_.push_back(std::move(req));
+    requests_.emplace_back(std::move(req));
+    return true;
   }
 
   auto created() const -> std::chrono::steady_clock::time_point { return created_at; }
@@ -107,8 +109,8 @@ public:
   auto requests() -> std::vector<kmer_fragment>& { return requests_; }
 
 private:
-  std::size_t count_;
-  std::size_t max_;
+  std::size_t count_{0};
+  std::size_t max_{0};
 
   std::vector<bool> occupied_;
   std::vector<std::size_t> col_idxs_;
@@ -138,7 +140,7 @@ public:
 
   ~BatchedSiperDBClient() {
     {
-      std::lock_guard lk{mtx_};
+      std::lock_guard lck{mtx_};
       done_ = true;
     }
 
@@ -173,7 +175,7 @@ public:
     std::unique_lock lock{mtx_};
 
     // TODO: cache results for recently requested kmers to avoid repeated requests
-    auto req = std::make_shared<kmer_req>(detail::kmer_to_binary(kmer), len, p_len);
+    auto req = std::make_shared<kmer_request>(detail::kmer_to_binary(kmer), len, p_len);
     auto fut = req->future;
 
     std::size_t blocks_per_col = siper_params.sqrt_N / siper_params.block_size;
