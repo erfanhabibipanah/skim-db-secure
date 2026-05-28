@@ -6,6 +6,7 @@
 #include <generator>
 #include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -135,7 +136,7 @@ public:
     empty_future_ = p.get_future().share();
     p.set_value(null_res);
 
-    g_log->debug("batched rpc client created!");
+    g_log->debug("batched gRPC client created!");
   }
 
   ~BatchedSiperDBClient() {
@@ -153,7 +154,7 @@ public:
 
   [[nodiscard]] auto request(std::string kmer) -> std::shared_future<shared_result_type> {
     if (!ready()) {
-      g_log->error("client not initialized! call setup() first...");
+      throw std::runtime_error("Request called without setup");
       return empty_future_;
     }
 
@@ -167,7 +168,7 @@ public:
     auto [i_part, p_len] = state_->row_to_partition(i_row, len);
 
     if (p_len > 1) {
-      g_log->warn("kmer {} has RLE length {} and spans {} batch partitions", kmer, len, p_len);
+      g_log->warn("kmer {} has RLE length {} and spans {} batch partitions, security risk!", kmer, len, p_len);
     }
 
     const auto siper_params = state_->siper_parameters();
@@ -176,7 +177,7 @@ public:
 
     // TODO: cache results for recently requested kmers to avoid repeated requests
     auto req = std::make_shared<kmer_request>(detail::kmer_to_binary(kmer), len, p_len);
-    auto fut = req->future;
+    auto ft = req->future;
 
     std::size_t blocks_per_col = siper_params.sqrt_N / siper_params.block_size;
     std::size_t blocks_per_part = blocks_per_col / siper_params.batch_size;
@@ -223,16 +224,17 @@ public:
     }
 
     cv_.notify_one();
-    return fut;
+
+    return ft;
   }
 
-  [[nodiscard]] auto interpret(std::shared_future<shared_result_type> fut) -> std::generator<const std::string&> {
+  [[nodiscard]] auto interpret(std::shared_future<shared_result_type> ft) -> std::generator<const std::string&> {
     if (!ready()) {
       g_log->error("client not initialized! call setup() first...");
       co_return;
     }
 
-    auto res = fut.get(); // blocks if the result is not ready yet
+    auto res = ft.get(); // blocks if the result is not ready yet
 
     // TODO: want to remove this copy
     result_t rle(res->begin(), res->end());

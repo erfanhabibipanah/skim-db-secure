@@ -1,4 +1,3 @@
-#include <future>
 #include <iostream>
 #include <mutex>
 #include <queue>
@@ -13,9 +12,9 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
-#include <skimdb/skimdb_version.h>
 #include <skimdb/siper/net/gRPC/siperdb_batched_client.h>
 #include <skimdb/siper/skimdb_siper.h>
+#include <skimdb/skimdb_version.h>
 
 
 template <typename T>
@@ -65,10 +64,10 @@ struct query_item {
 };
 
 
-void consumer_thread(future_queue<query_item>& fq,
-                     skim::siper::rpc::BatchedSiperDBClient& client,
-                     std::shared_ptr<spdlog::logger> log,
-                     bool verbose) {
+void output_thread(future_queue<query_item>& fq,
+                   skim::siper::rpc::BatchedSiperDBClient& client,
+                   std::shared_ptr<spdlog::logger> log,
+                   bool verbose) {
   query_item item;
 
   while (fq.pop(item)) {
@@ -147,13 +146,7 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   future_queue<query_item> kmer_queue;
-  std::jthread consumer{
-    consumer_thread,
-    std::ref(kmer_queue),
-    std::ref(client),
-    log,
-    verbose
-  };
+  std::jthread consumer{output_thread, std::ref(kmer_queue), std::ref(client), log, verbose};
 
   log->info("ready for queries...");
 
@@ -165,8 +158,8 @@ auto main(int argc, char* argv[]) -> int {
       log->info("submitting query {}", q);
     }
 
-    auto fut = client.request(q);
-    kmer_queue.push(query_item{q, std::move(fut)});
+    auto ft = client.request(q);
+    kmer_queue.push(query_item{q, std::move(ft)});
   }
 
   log->info("all queries submitted, waiting for results...");
