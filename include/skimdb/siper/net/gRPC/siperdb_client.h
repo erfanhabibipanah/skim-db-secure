@@ -19,7 +19,7 @@
 #include <skimdb/detail/skimdb_logger.h>
 #include <skimdb/siper/skimdb_siper.h>
 
-#include "proto/siperdb.grpc.pb.h"
+#include "proto/generated/siperdb.grpc.pb.h"
 
 
 namespace skim::siper::rpc {

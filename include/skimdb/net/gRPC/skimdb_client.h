@@ -18,7 +18,7 @@
 #include <grpcpp/grpcpp.h>
 #include <skimdb/skimdb.h>
 
-#include "proto/skimdb.grpc.pb.h"
+#include "proto/generated/skimdb.grpc.pb.h"
 
 
 namespace skim::rpc {
