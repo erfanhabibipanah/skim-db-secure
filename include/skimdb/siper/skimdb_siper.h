@@ -244,11 +244,11 @@ private:
   std::uint64_t run_sum = 0;
 #pragma omp parallel for reduction(inscan, + : run_sum)
   for (std::size_t i = 0; i < kmers; ++i) {
-    kmer_metadata[i] = run_sum;
-
-#pragma omp scan exclusive(run_sum)
-
     run_sum += rle_lengths[i];
+
+#pragma omp scan inclusive(run_sum)
+
+    kmer_metadata[i] = run_sum - rle_lengths[i];
   }
 
 #pragma omp parallel for schedule(static)

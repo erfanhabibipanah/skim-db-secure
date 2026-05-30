@@ -9,6 +9,7 @@
 #include <generator>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <utility>
 
 #include <google/protobuf/empty.pb.h>
@@ -123,14 +124,13 @@ public:
     return {};
   }
 
-  auto ready() const -> bool { return state_.has_value(); }
+  [[nodiscard]] auto ready() const -> bool { return state_.has_value(); }
 
   auto query(const std::string& s) -> std::generator<const std::string&> {
     LogFun lf{"SiperDBClient::query(...)"};
 
     if (!ready()) {
-      g_log->error("client not initialized! call setup() first...");
-      co_return;
+      throw std::runtime_error("query called before setup");
     }
 
     if (!state_->is_valid_kmer(s)) {
