@@ -88,7 +88,8 @@ public:
     std::size_t remaining_blocks = blocks_per_col % siper_config_.batch_size;
 
     for (std::size_t i = 0; i < siper_config_.batch_size; ++i) {
-      std::size_t start_idx, count;
+      std::size_t start_idx = 0;
+      std::size_t count = 0;
 
       if (i < remaining_blocks) {
         start_idx = i * (blocks_per_batch + 1) * siper_config_.block_size;
@@ -297,7 +298,7 @@ private:
       return std::unexpected{hash_res.error()};
     }
 
-    metadata_hash = hash_res.value();
+    metadata_hash = "meta." + hash_res.value();
 
     std::error_code ec;
     fs::rename(temp_metadata_path, fs::path(g_skim_config.siper_server_store_dir) / metadata_hash, ec);
@@ -331,7 +332,7 @@ private:
       return std::unexpected{hash_res.error()};
     }
 
-    hint_c_hash = hash_res.value();
+    hint_c_hash = "hint." + hash_res.value();
 
     std::error_code ec;
     fs::rename(temp_metadata_path, fs::path(g_skim_config.siper_server_store_dir) / hint_c_hash, ec);

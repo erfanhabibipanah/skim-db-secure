@@ -49,7 +49,7 @@ using bitmap_t = std::conditional_t<g_use_64bit, roaring::Roaring64Map, roaring:
 // max k-mer size handled by skimdb
 inline constexpr std::size_t g_kmer_limit = sizeof(kmer_binary_t) * CHAR_BIT;
 
-  // available ordering strategies that can be used to build skimdb index
+// available ordering strategies that can be used to build skimdb index
 enum class skimdb_rle_ordering : std::uint8_t { none, tsp, minmax };
 
 inline constexpr auto parse_rle_ordering(std::string_view s) -> skimdb_rle_ordering {
