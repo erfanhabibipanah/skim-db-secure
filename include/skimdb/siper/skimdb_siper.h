@@ -244,7 +244,7 @@ private:
   std::uint64_t run_sum = 0;
 
   std::exclusive_scan(std::execution::par, rle_lengths.begin(), rle_lengths.end(), kmer_metadata.begin(), 0);
-  run_sum = kmer_metadata.back();
+  run_sum = kmer_metadata.back() + rle_lengths.back();
 
 #pragma omp parallel for schedule(static)
   for (std::size_t i = 0; i < kmers; ++i) {
