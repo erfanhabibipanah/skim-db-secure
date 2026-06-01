@@ -46,10 +46,9 @@ auto populate_skimdb_matrix(const std::vector<skim::detail::encoding>& data,
                             std::size_t sqrt_N,
                             std::size_t block_size) -> skimdb_matrix {
   std::vector<std::uint16_t> packed_data(sqrt_N * sqrt_N, 0);
-
-#pragma omp parallel for schedule(guided)
   std::size_t end{data.size()};
 
+#pragma omp parallel for schedule(guided)
   for (std::size_t i = 0; i < end; ++i) {
     auto start_idx = index::unpack_start(metadata[i]);
     auto src = data[i].span();
