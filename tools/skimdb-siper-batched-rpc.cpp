@@ -1,6 +1,4 @@
 #include <iostream>
-#include <mutex>
-#include <queue>
 #include <string>
 #include <thread>
 #include <utility>
@@ -16,46 +14,14 @@
 #include <skimdb/siper/skimdb_siper.h>
 #include <skimdb/skimdb_version.h>
 
+#include <tbb/concurrent_queue.h>
+
+
+auto mlog = spdlog::stdout_color_mt("skimdb-siper-batched-rpc");
+
 
 template <typename T>
-class future_queue {
-public:
-  void push(T value) {
-    {
-      std::lock_guard lock(m_);
-      q_.push(std::move(value));
-    }
-    cv_.notify_one();
-  }
-
-  auto pop(T& out) -> bool {
-    std::unique_lock lock(m_);
-    cv_.wait(lock, [&] { return done_ || !q_.empty(); });
-
-    if (q_.empty()) {
-      return false;
-    }
-
-    out = std::move(q_.front());
-    q_.pop();
-
-    return true;
-  }
-
-  void done() {
-    {
-      std::lock_guard lock(m_);
-      done_ = true;
-    }
-    cv_.notify_all();
-  }
-
-private:
-  std::queue<T> q_;
-  std::mutex m_;
-  std::condition_variable cv_;
-  bool done_ = false;
-};
+using future_queue = tbb::concurrent_bounded_queue<T>;
 
 
 struct query_item {
@@ -64,28 +30,31 @@ struct query_item {
 };
 
 
+
 void output_thread(future_queue<query_item>& fq,
                    skim::siper::rpc::BatchedSiperDBClient& client,
-                   std::shared_ptr<spdlog::logger> log,
                    bool verbose) {
   query_item item;
 
-  while (fq.pop(item)) {
+  while (true) {
+    fq.pop(item);
+
     try {
       if (verbose) {
-        log->info("query results:");
+        mlog->info("query results:");
         for (auto label : client.interpret(item.future)) {
-          log->info("  {}", label);
+          mlog->info("  {}", label);
         }
       } else {
-        log->info("got {} label(s)", std::ranges::distance(client.interpret(item.future)));
+        mlog->info("got {} label(s)",
+                  std::ranges::distance(client.interpret(item.future)));
       }
     } catch (const std::exception& e) {
-      log->error("query failed: {}", e.what());
+      mlog->error("query failed: {}", e.what());
     }
   }
 
-  log->info("consumer thread exiting");
+  mlog->info("consumer thread exiting");
 }
 
 
@@ -121,53 +90,50 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-siper-query-rpc");
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
-  log->info("SKiMdb ver. {}", skim::version);
+  mlog->info("SKiMdb ver. {}", skim::version);
 
   if (cache_dir.empty()) {
-    log->debug("client cache directory not specified! using local directory...");
+    mlog->debug("client cache directory not specified! using local directory...");
     cache_dir = ".";
   }
 
   skim::g_skim_config.siper_client_hint_c_dir = cache_dir;
   skim::g_skim_config.siper_client_metadata_dir = cache_dir;
 
-  log->info("connecting to {}...", addr);
+  mlog->info("connecting to {}...", addr);
 
   skim::siper::rpc::BatchedSiperDBClient client{bt, submit_threshold, timeout, addr};
 
   auto res = client.setup();
 
   if (!res) {
-    log->error("rpc setup failed: {}", res.error());
+    mlog->error("rpc setup failed: {}", res.error());
     return -1;
   }
 
   future_queue<query_item> kmer_queue;
-  std::jthread consumer{output_thread, std::ref(kmer_queue), std::ref(client), log, verbose};
+  std::jthread consumer{output_thread, std::ref(kmer_queue), std::ref(client), verbose};
 
-  log->info("ready for queries...");
+  mlog->info("ready for queries...");
 
   prompted_input prompt;
   std::string q{};
 
   while (prompt.getline(q)) {
     if (!prompt.interactive()) {
-      log->info("submitting query {}", q);
+      mlog->info("submitting query {}", q);
     }
 
     auto ft = client.request(q);
-    kmer_queue.push(query_item{q, std::move(ft)});
+    kmer_queue.push(query_item{.kmer = q, .future = std::move(ft)});
   }
 
-  log->info("all queries submitted, waiting for results...");
-
-  kmer_queue.done();
+  mlog->info("all queries submitted, waiting for results...");
   consumer.join();
 
-  log->info("done!");
+  mlog->info("done!");
 
   return 0;
 }

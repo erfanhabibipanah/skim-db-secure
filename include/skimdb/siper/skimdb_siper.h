@@ -247,7 +247,6 @@ private:
     kmer_metadata[i] = run_sum;
 
 #pragma omp scan exclusive(run_sum)
-
     run_sum += rle_lengths[i];
   }
 

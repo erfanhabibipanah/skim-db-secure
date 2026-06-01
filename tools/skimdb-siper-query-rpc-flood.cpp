@@ -9,8 +9,8 @@
 #include <spdlog/spdlog.h>
 
 #include <skimdb/detail/skimdb_definitions.h>
-#include <skimdb/skimdb_version.h>
 #include <skimdb/siper/net/gRPC/siperdb_client.h>
+#include <skimdb/skimdb_version.h>
 
 
 auto mlog = spdlog::stdout_color_mt("skimdb-siper-query-rpc-flood");

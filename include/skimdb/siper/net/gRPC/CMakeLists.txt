@@ -1,10 +1,14 @@
 find_package(gRPCCompat REQUIRED)
+get_target_property(GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin LOCATION)
+
+find_program(PROTOC_EXECUTABLE protoc REQUIRED)
+find_package(Protobuf REQUIRED)
+
+set(PROTOBUF_LIB ${Protobuf_LIBRARIES})
+set(PROTOBUF_INCLUDE ${Protobuf_INCLUDE_DIRS})
 
 set(PROTO_FILE ${CMAKE_CURRENT_SOURCE_DIR}/proto/siperdb.proto)
 set(PROTO_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/proto/generated)
-
-get_target_property(GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin LOCATION)
-get_target_property(PROTOC_EXECUTABLE protobuf::protoc IMPORTED_LOCATION)
 
 set(PROTO_SRCS
     ${PROTO_GEN_DIR}/siperdb.pb.cc
