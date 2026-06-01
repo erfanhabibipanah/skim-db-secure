@@ -117,7 +117,8 @@ public:
       return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size"};
     }
 
-    siper_matrix query_vec{std::move(query_vec_data), state_.siper_parameters().sqrt_N, state_.siper_parameters().log_q};
+    siper_matrix query_vec{
+        std::move(query_vec_data), state_.siper_parameters().sqrt_N, state_.siper_parameters().log_q};
     auto ans = state_.answer(query_vec);
 
     if (!ans) {

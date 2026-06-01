@@ -9,10 +9,10 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
-#include <skimdb/skimdb.h>
-#include <skimdb/skimdb_version.h>
 #include <skimdb/siper/skimdb_siper.h>
 #include <skimdb/siper/skimdb_siper_util.h>
+#include <skimdb/skimdb.h>
+#include <skimdb/skimdb_version.h>
 
 
 namespace fs = std::filesystem;
@@ -25,10 +25,11 @@ auto main(int argc, char* argv[]) -> int {
   try {
     cxxopts::Options options(argv[0]);
 
-    options.add_options()
-      ("i,input", "input database file", cxxopts::value<std::string>(in))
-      ("b,block_size", "number of runs per block", cxxopts::value<unsigned int>(block_size)->default_value(std::to_string(block_size)))
-      ("h,help", "print this help");
+    options.add_options()("i,input", "input database file", cxxopts::value<std::string>(in))(
+        "b,block_size",
+        "number of runs per block",
+        cxxopts::value<unsigned int>(block_size)->default_value(std::to_string(block_size)))("h,help",
+                                                                                             "print this help");
 
     auto opt_res = options.parse(argc, argv);
 
@@ -104,7 +105,6 @@ auto main(int argc, char* argv[]) -> int {
   auto sqrt_N = skim::siper::min_sqrt_N(run_sum, block_size);
 
   log->info("skimdb contains {} total runs, requires matrix with sqrt(N) = {} for block size {}",
-            kmer_count,
             run_sum,
             sqrt_N,
             block_size);

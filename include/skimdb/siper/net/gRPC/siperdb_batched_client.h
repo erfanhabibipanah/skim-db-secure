@@ -142,13 +142,13 @@ public:
 
   [[nodiscard]] auto request(std::string kmer) -> std::shared_future<shared_result_type> {
     if (!ready()) {
-      throw std::runtime_error("Request called without setup");
-      return empty_future_;
+      throw std::runtime_error("request called before setup");
     }
 
     auto pos = state_->kmer_to_position(kmer);
 
     if (!pos.has_value()) {
+      // valid kmer not found in index -> result is empty
       return empty_future_;
     }
 
@@ -156,6 +156,8 @@ public:
     auto [i_part, p_len] = state_->row_to_partition(i_row, len);
 
     if (p_len > 1) {
+      // the RLE for this kmer spans multiple batch partitions, each of which must be queried separately
+      // this harms performance and introduces risk of information leakage
       g_log->warn("kmer {} has RLE length {} and spans {} batch partitions, security risk!", kmer, len, p_len);
     }
 
@@ -215,10 +217,9 @@ public:
     return ft;
   }
 
-  [[nodiscard]] auto interpret(std::shared_future<shared_result_type> ft) -> std::generator<const std::string&> {
+  [[nodiscard]] auto interpret(const std::shared_future<shared_result_type>& ft) -> std::generator<const std::string&> {
     if (!ready()) {
-      g_log->error("client not initialized! call setup() first...");
-      co_return;
+      throw std::runtime_error("interpret called before setup");
     }
 
     const auto& res = ft.get(); // blocks if the result is not ready yet
@@ -292,19 +293,10 @@ private:
     grpc::Status status = stub_->BatchQuery(&ctx, req, &reply);
 
     if (!status.ok()) {
-      g_log->error("batch query failed: {}", status.error_message());
-      // TODO: handle failed batch query more gracefully, currently log the error but only return empty result if this
-      // fragment is the last one for its parent request
-      for (auto& fragment : batch.requests()) {
-        if (fragment.parent_req->wait.fetch_sub(1) == 1) {
-          fragment.parent_req->promise->set_value(std::make_shared<result_t>());
-        }
-      }
-      return;
+      throw std::runtime_error(std::format("batch query failed: {}", status.error_message()));
     }
 
-    std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};
-
+    std::vector<std::uint64_t> ans_data(reply.ans().begin(), reply.ans().end());
     siper_matrix ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
 
     for (auto& fragment : batch.requests()) {
