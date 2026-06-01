@@ -13,6 +13,8 @@
 
 #include <openssl/evp.h>
 
+#include "skimdb_siper_matrix.h"
+
 
 namespace skim::siper {
 
@@ -45,11 +47,12 @@ auto populate_skimdb_matrix(const std::vector<skim::detail::encoding>& data,
                             std::size_t block_size) -> skimdb_matrix {
   std::vector<std::uint16_t> packed_data(sqrt_N * sqrt_N, 0);
 
-#pragma omp parallel for schedule(static)
-  for (std::size_t i = 0; i < data.size(); ++i) {
+#pragma omp parallel for schedule(guided)
+  for (std::size_t i = 0, end = data.size(); i < end; ++i) {
     auto start_idx = index::unpack_start(metadata[i]);
     auto src = data[i].span();
-    auto rle_len = data[i].length();
+
+    std::size_t rle_len{data[i].length()};
 
     for (std::size_t j = 0; j < rle_len; ++j) {
       std::size_t col_idx = (start_idx + j) / sqrt_N;
