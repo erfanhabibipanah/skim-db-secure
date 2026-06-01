@@ -89,7 +89,7 @@ auto main(int argc, char* argv[]) -> int {
   auto res = client.setup();
 
   if (!res) {
-    mlog->error("rpc setup failed: {}", res.error());
+    mlog->error("connection failed: {}", res.error());
     return -1;
   }
 

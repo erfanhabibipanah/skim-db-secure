@@ -59,7 +59,7 @@ auto main(int argc, char* argv[]) -> int {
   auto res = client.setup();
 
   if (!res) {
-    log->error("gRPC setup failed: {}", res.error());
+    log->error("connection failed: {}", res.error());
     return -1;
   }
 

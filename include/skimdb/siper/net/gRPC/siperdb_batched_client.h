@@ -178,7 +178,7 @@ public:
       std::size_t r = (i_row + offset) % siper_params.sqrt_N;         // row index within the column for this fragment
       std::size_t c = i_col + (i_part + i) / siper_params.batch_size; // move to the next column if we wrap around
 
-      std::size_t l; // length of the fragment in number of runs
+      std::size_t l = 0; // length of the fragment in number of runs
 
       if (p < remaining_blocks) {
         l = std::min(len - offset, (blocks_per_part + 1) * siper_params.block_size);

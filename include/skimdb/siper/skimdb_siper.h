@@ -242,13 +242,8 @@ private:
   std::vector<std::uint64_t> kmer_metadata(kmers, 0);
   std::uint64_t run_sum = 0;
 
-#pragma omp parallel for reduction(inscan, + : run_sum)
-  for (std::size_t i = 0; i < kmers; ++i) {
-    run_sum += rle_lengths[i];
-
-#pragma omp scan inclusive(run_sum)
-    kmer_metadata[i] = run_sum - rle_lengths[i];
-  }
+  std::exclusive_scan(std::execution::par, rle_lengths.begin(), rle_lengths.end(), kmer_metadata.begin(), 0);
+  run_sum = kmer_metadata.back();
 
 #pragma omp parallel for schedule(static)
   for (std::size_t i = 0; i < kmers; ++i) {
@@ -433,7 +428,10 @@ public:
     std::size_t start_block = i_row / siper_config_.block_size;
     std::size_t end_block = (i_row + rle_len - 1) / siper_config_.block_size;
 
-    std::size_t start_batch, end_batch, batch_count;
+    std::size_t start_batch = 0;
+    std::size_t end_batch = 0;
+    std::size_t batch_count = 0;
+
     if (start_block < remaining_blocks * (blocks_per_batch + 1)) {
       start_batch = start_block / (blocks_per_batch + 1);
     } else {
@@ -447,6 +445,7 @@ public:
     }
 
     batch_count = end_batch - start_batch + 1;
+
     return std::make_tuple(start_batch, batch_count);
   }
 
@@ -474,7 +473,7 @@ public:
 
 
   [[nodiscard]] auto new_batch() -> siperdb_query_state {
-    LogFun lf{"siper_client_state::new_batch(...)"};
+    LogFun lf{"siper_client_state::new_batch(...)", spdlog::level::debug};
 
     auto& rng = m_get_rng_();
 
@@ -547,7 +546,7 @@ private:
   skimdb_parameters skim_config_; // skimdb index parameters
   skimdb_metadata skim_metadata_; // skimdb metadata (kmer index, labels)
 
-  siperdb_parameters siper_config_; // SIPER parameters
+  siperdb_parameters siper_config_; // siper parameters
 
   siper_matrix A_;      // matrix A
   siper_matrix hint_c_; // hint matrix from server

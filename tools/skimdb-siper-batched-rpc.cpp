@@ -1,3 +1,4 @@
+#include <atomic>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -18,7 +19,7 @@
 
 
 auto mlog = spdlog::stdout_color_mt("skimdb-siper-batched-rpc");
-
+std::atomic_flag run{true};
 
 template <typename T>
 using future_queue = tbb::concurrent_bounded_queue<T>;
@@ -30,31 +31,35 @@ struct query_item {
 };
 
 
-
 void output_thread(future_queue<query_item>& fq,
                    skim::siper::rpc::BatchedSiperDBClient& client,
                    bool verbose) {
   query_item item;
 
   while (true) {
-    fq.pop(item);
+    if (!fq.empty()) {
+      fq.pop(item);
 
-    try {
-      if (verbose) {
-        mlog->info("query results:");
-        for (auto label : client.interpret(item.future)) {
-          mlog->info("  {}", label);
+      try {
+        if (verbose) {
+          mlog->info("query {} results:", item.kmer);
+          for (auto label : client.interpret(item.future)) {
+            mlog->info("  {}", label);
+          }
+        } else {
+          mlog->info("got {} label(s)", std::ranges::distance(client.interpret(item.future)));
         }
-      } else {
-        mlog->info("got {} label(s)",
-                  std::ranges::distance(client.interpret(item.future)));
+      } catch (const std::exception& e) {
+        mlog->error("query failed: {}", e.what());
       }
-    } catch (const std::exception& e) {
-      mlog->error("query failed: {}", e.what());
+    } else {
+      if (run.test(std::memory_order_acquire) == false) {
+        break;
+      }
     }
   }
 
-  mlog->info("consumer thread exiting");
+  mlog->info("output thread done!");
 }
 
 
@@ -72,7 +77,7 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
-      ("b,b-threads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
+      ("b,bthreads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
       ("t,timeout", "batch timeout in milliseconds", cxxopts::value<unsigned int>(timeout)->default_value(std::to_string(timeout)))
       ("s,submit", "batch submit threshold (%)", cxxopts::value<double>(submit_threshold)->default_value(std::to_string(submit_threshold)))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
@@ -94,6 +99,14 @@ auto main(int argc, char* argv[]) -> int {
 
   mlog->info("SKiMdb ver. {}", skim::version);
 
+  prompted_input prompt;
+  std::string q{};
+
+  if (prompt.interactive()) {
+    mlog->error("interactive mode not supported, use batch mode!");
+    return -1;
+  }
+
   if (cache_dir.empty()) {
     mlog->debug("client cache directory not specified! using local directory...");
     cache_dir = ".";
@@ -109,7 +122,7 @@ auto main(int argc, char* argv[]) -> int {
   auto res = client.setup();
 
   if (!res) {
-    mlog->error("rpc setup failed: {}", res.error());
+    mlog->error("connection failed: {}", res.error());
     return -1;
   }
 
@@ -118,19 +131,14 @@ auto main(int argc, char* argv[]) -> int {
 
   mlog->info("ready for queries...");
 
-  prompted_input prompt;
-  std::string q{};
-
   while (prompt.getline(q)) {
-    if (!prompt.interactive()) {
-      mlog->info("submitting query {}", q);
-    }
-
     auto ft = client.request(q);
     kmer_queue.push(query_item{.kmer = q, .future = std::move(ft)});
   }
 
-  mlog->info("all queries submitted, waiting for results...");
+  run.clear(std::memory_order_release);
+
+  mlog->info("queries submitted, waiting for results...");
   consumer.join();
 
   mlog->info("done!");

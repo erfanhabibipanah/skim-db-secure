@@ -72,9 +72,9 @@ auto main(int argc, char* argv[]) -> int {
   }
 
   if (update_batch_size) {
-    log->info("previous batch size is {}...", state.siper_parameters().batch_size);
+    log->info("previous batch size is {}", state.siper_parameters().batch_size);
     state.update_batch_size(batch_size);
-    log->info("batch size set to {}.", state.siper_parameters().batch_size);
+    log->info("batch size set to {}", state.siper_parameters().batch_size);
   }
 
   log->info("saving siperdb to {}...", in);
