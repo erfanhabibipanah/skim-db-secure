@@ -79,7 +79,7 @@ auto main(int argc, char* argv[]) -> int {
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
       ("b,bthreads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
       ("t,timeout", "batch timeout in milliseconds", cxxopts::value<unsigned int>(timeout)->default_value(std::to_string(timeout)))
-      ("s,submit", "batch submit threshold (%)", cxxopts::value<double>(submit_threshold)->default_value(std::to_string(submit_threshold)))
+      ("s,submit", "batch submit threshold (%)", cxxopts::value<double>(submit_threshold)->default_value(std::format("{:.2f}", submit_threshold)))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");
 

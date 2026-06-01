@@ -48,6 +48,7 @@ void run_query(skim::siper::rpc::BatchedSiperDBClient& client, unsigned int l) {
   mlog->info("thread {} done, throughput: {:.2f}", std::this_thread::get_id(), static_cast<double>(l) / elapsed.count());
 }
 
+
 auto main(int argc, char* argv[]) -> int {
   std::string addr{"127.0.0.1:50051"};
   std::string cache_dir = "";
@@ -63,10 +64,10 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
-      ("n,n-threads", "number of query threads", cxxopts::value<unsigned int>(nt)->default_value(std::to_string(nt)))
-      ("b,b-threads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
+      ("n,nthreads", "number of query threads", cxxopts::value<unsigned int>(nt)->default_value(std::to_string(nt)))
+      ("b,bthreads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
       ("t,timeout", "batch timeout in milliseconds", cxxopts::value<unsigned int>(timeout)->default_value(std::to_string(timeout)))
-      ("s,submit", "batch submit threshold (%)", cxxopts::value<double>(submit_threshold)->default_value(std::to_string(submit_threshold)))
+      ("s,submit", "batch submit threshold (%)", cxxopts::value<double>(submit_threshold)->default_value(std::format("{:.2f}", submit_threshold)))
       ("l", "sample size per thread", cxxopts::value<unsigned int>(l)->default_value(std::to_string(l)))
       ("h,help", "print this help");
 
@@ -102,7 +103,7 @@ auto main(int argc, char* argv[]) -> int {
   auto res = client.setup();
 
   if (!res) {
-    mlog->error("rpc setup failed: {}", res.error());
+    mlog->error("connection failed: {}", res.error());
     return -1;
   }
 

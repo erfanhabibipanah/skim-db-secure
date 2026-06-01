@@ -40,7 +40,7 @@ auto main(int argc, char* argv[]) -> int {
       ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
       ("b,batch-size", "batch size", cxxopts::value<unsigned int>(batch_size)->default_value(std::to_string(batch_size)))
       ("n,secret-size", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
-      ("s,sigma", "variance of error distribution", cxxopts::value<double>(sigma)->default_value(std::to_string(sigma)))
+      ("s,sigma", "variance of error distribution", cxxopts::value<double>(sigma)->default_value(std::format("{:.2f}", sigma)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
