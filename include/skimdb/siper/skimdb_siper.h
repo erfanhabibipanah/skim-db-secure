@@ -251,7 +251,7 @@ private:
       std::execution::par, rle_lengths.begin(), rle_lengths.end(), kmer_metadata.begin(), std::uint64_t{0});
   run_sum = kmer_metadata.back() + rle_lengths.back();
 
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(guided)
   for (std::size_t i = 0; i < kmers; ++i) {
     kmer_metadata[i] = index::pack(kmer_metadata[i], rle_lengths[i]);
   }
