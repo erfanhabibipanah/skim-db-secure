@@ -218,6 +218,10 @@ private:
 
   auto kmers = db_parts.data.size();
 
+  if (kmers == 0) {
+    return std::unexpected{"empty skimdb index"};
+  }
+
   // need to store the starting position and length of each RLE in the matrix (in terms of blocks)
   // encoding using uint64_t with lower 12 bits for length and upper 52 bits for starting positions
   // allows for up to 4095 blocks per RLE and a matrix with up to 2^52 blocks, which should be
@@ -243,16 +247,13 @@ private:
   std::vector<std::uint64_t> kmer_metadata(kmers, 0);
   std::uint64_t run_sum = 0;
 
-  std::exclusive_scan(std::execution::par, rle_lengths.begin(), rle_lengths.end(), kmer_metadata.begin(), 0);
+  std::exclusive_scan(
+      std::execution::par, rle_lengths.begin(), rle_lengths.end(), kmer_metadata.begin(), std::uint64_t{0});
   run_sum = kmer_metadata.back() + rle_lengths.back();
 
 #pragma omp parallel for schedule(static)
   for (std::size_t i = 0; i < kmers; ++i) {
     kmer_metadata[i] = index::pack(kmer_metadata[i], rle_lengths[i]);
-  }
-
-  if (kmers == 0 || run_sum == 0) {
-    return std::unexpected{"empty skimdb index"};
   }
 
   auto sqrt_N = min_sqrt_N(run_sum, block_size);
