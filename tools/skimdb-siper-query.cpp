@@ -9,9 +9,9 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 
+#include <skimdb/siper/skimdb_siper.h>
 #include <skimdb/skimdb.h>
 #include <skimdb/skimdb_version.h>
-#include <skimdb/siper/skimdb_siper.h>
 
 
 namespace fs = std::filesystem;
@@ -25,11 +25,10 @@ auto main(int argc, char* argv[]) -> int {
   try {
     cxxopts::Options options(argv[0]);
 
-    options.add_options()
-      ("i,input", "siper database to query", cxxopts::value<std::string>(in))
-      ("c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))
-      ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
-      ("h,help", "print this help");
+    options.add_options()("i,input", "siper database to query", cxxopts::value<std::string>(in))(
+        "c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))(
+        "v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))(
+        "h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
 
@@ -144,7 +143,7 @@ auto main(int argc, char* argv[]) -> int {
       log->debug("recovering result ({} of {})...", i + 1, n_queries);
 
       std::size_t count = std::min(len - offset, siper_params.sqrt_N - row);
-      client_state.recover(ans, query_state, rle_span.subspan(offset, count), row, count, i);
+      client_state.recover(ans, query_state, rle_span.subspan(offset, count), row, count, 0);
 
       offset += count;
       row = 0; // subsequent queries (if any) will start from the top of the next column

@@ -165,7 +165,6 @@ public:
 
     // TODO: cache results for recently requested kmers to avoid repeated requests
     auto req = std::make_shared<kmer_request>(detail::kmer_to_binary(kmer), len, p_len);
-    auto ft = req->future;
 
     std::size_t blocks_per_col = siper_params.sqrt_N / siper_params.block_size;
     std::size_t blocks_per_part = blocks_per_col / siper_params.batch_size;
@@ -180,10 +179,10 @@ public:
 
       std::size_t l = 0; // length of the fragment in number of runs
 
-      if (p < remaining_blocks) {
-        l = std::min(len - offset, (blocks_per_part + 1) * siper_params.block_size);
+      if (p < remaining_blocks - 1) {
+        l = std::min(len - offset, (blocks_per_part + 1) * (p + 1) * siper_params.block_size - r);
       } else {
-        l = std::min(len - offset, blocks_per_part * siper_params.block_size);
+        l = std::min(len - offset, ((blocks_per_part) * (p + 1) + remaining_blocks) * siper_params.block_size - r);
       }
 
       {
@@ -214,7 +213,7 @@ public:
 
     cv_.notify_one();
 
-    return ft;
+    return req->future;
   }
 
   [[nodiscard]] auto interpret(const std::shared_future<shared_result_type>& ft) -> std::generator<const std::string&> {
