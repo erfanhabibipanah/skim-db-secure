@@ -234,38 +234,27 @@ public:
 
     // now we prepeare data
     g_log->info("found {} unique kmers", index.kmers.cardinality());
-    g_log->info("processing kmers now, please be patient...");
-
-    std::vector<std::pair<std::size_t, std::size_t>> idxi;
-    idxi.reserve(index.kmers.cardinality());
+    g_log->info("kmers processing now, please be patient...");
 
     auto m = bitmaps.size();
 
     g_log->info("mapping kmers to {} bitmaps...", m);
 
-#pragma omp parallel default(none) shared(m, bitmaps, index, idxi)
-    {
-      std::vector<std::pair<std::size_t, std::size_t>> idxi_local;
-#pragma omp for schedule(guided) nowait
-      for (std::size_t i = 0; i < m; ++i) {
-        for (kmer_binary_t kmer : bitmaps[i]) {
-          idxi_local.emplace_back(index.hash.find(kmer).value(), i);
-        }
-      }
-#pragma omp critical
-      idxi.insert(idxi.end(), idxi_local.begin(), idxi_local.end());
-    }
-
-    g_log->debug("sorting (kmer,bitmap) pairs...");
-
-    std::sort(std::execution::par, idxi.begin(), idxi.end());
-
-    g_log->debug("placing kmers data...");
-
+    // right now memory is an issue so we use locking
+    std::vector<std::mutex> dmtx(index.kmers.cardinality());
     data.resize(index.kmers.cardinality());
 
-    for (auto& [idx, i] : idxi) {
-      data[idx].push(i);
+#pragma omp parallel
+    {
+#pragma omp for schedule(dynamic, 64) nowait
+      for (std::size_t i = 0; i < m; ++i) {
+        for (kmer_binary_t kmer : bitmaps[i]) {
+          std::size_t idx = index.hash.find(kmer).value();
+          dmtx[idx].lock();
+          data[idx].push(i);
+          dmtx[idx].unlock();
+        }
+      }
     }
 
     g_log->info("kmers packing done!");
