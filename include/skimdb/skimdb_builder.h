@@ -234,26 +234,26 @@ public:
 
     // now we prepeare data
     g_log->info("found {} unique kmers", index.kmers.cardinality());
+    g_log->info("processing kmers now, please be patient...");
 
     std::vector<std::pair<std::size_t, std::size_t>> idxi;
     idxi.reserve(index.kmers.cardinality());
 
-    g_log->debug("mapping kmers to bitmaps...");
+    auto m = bitmaps.size();
 
-#pragma omp parallel
+    g_log->info("mapping kmers to {} bitmaps...", m);
+
+#pragma omp parallel default(none) shared(m, bitmaps, index, idxi)
     {
       std::vector<std::pair<std::size_t, std::size_t>> idxi_local;
-#pragma omp for schedule(dynamic) nowait
-      for (std::size_t i = 0; i < bitmaps.size(); ++i) {
+#pragma omp for schedule(guided) nowait
+      for (std::size_t i = 0; i < m; ++i) {
         for (kmer_binary_t kmer : bitmaps[i]) {
           idxi_local.emplace_back(index.hash.find(kmer).value(), i);
         }
       }
 #pragma omp critical
-      {
-        idxi.insert(idxi.end(), idxi_local.begin(), idxi_local.end());
-        idxi_local = {};
-      }
+      idxi.insert(idxi.end(), idxi_local.begin(), idxi_local.end());
     }
 
     g_log->debug("sorting (kmer,bitmap) pairs...");
@@ -276,129 +276,134 @@ public:
     g_log->info("compression done!");
 
     return db;
+  }
+
+
+  [[nodiscard]] static auto build_file_index(const fs::path& dir,
+                                             const std::vector<std::string>& files,
+                                             std::vector<std::string> labels,
+                                             std::size_t k,
+                                             std::size_t s,
+                                             std::size_t t,
+                                             skimdb_rle_ordering order = skimdb_rle_ordering::none,
+                                             std::size_t w = 0) -> skimdb {
+    LogFun lf{"build_file_index(dir, files, ...)"};
+
+    std::vector<bitmap_t> bitmaps(files.size());
+    auto zipped = std::views::zip(files, bitmaps);
+
+    std::for_each(std::execution::par, zipped.begin(), zipped.end(), [&](auto&& fb) {
+      auto& [file, bitmap] = fb;
+      bitmap = detail::populate_bitmap(dir, file, k, s, t);
+    });
+
+    if (order == skimdb_rle_ordering::tsp) {
+      solver::greedy_tsp_order_bitmaps(bitmaps, labels, w);
+    } else if (order == skimdb_rle_ordering::minmax) {
+      solver::greedy_minmax_order_bitmaps(bitmaps, labels, w);
     }
 
-    [[nodiscard]] static auto build_file_index(const fs::path& dir,
-                                               const std::vector<std::string>& files,
-                                               std::vector<std::string> labels,
-                                               std::size_t k,
-                                               std::size_t s,
-                                               std::size_t t,
-                                               skimdb_rle_ordering order = skimdb_rle_ordering::none,
-                                               std::size_t w = 0) -> skimdb {
-      LogFun lf{"build_file_index(dir, files, ...)"};
+    return build_index(bitmaps, std::move(labels), k, s, t);
+  }
 
-      std::vector<bitmap_t> bitmaps(files.size());
-      auto zipped = std::views::zip(files, bitmaps);
 
-      std::for_each(std::execution::par, zipped.begin(), zipped.end(), [&](auto&& fb) {
-        auto& [file, bitmap] = fb;
-        bitmap = detail::populate_bitmap(dir, file, k, s, t);
-      });
+  [[nodiscard]] static auto build_file_index(const fs::path& dir,
+                                             const fs::path& f2l,
+                                             std::size_t k,
+                                             std::size_t s,
+                                             std::size_t t,
+                                             skimdb_rle_ordering order = skimdb_rle_ordering::none,
+                                             std::size_t w = 0) -> skimdb {
+    LogFun lf{"build_file_index(dir, f2l, ...)"};
+    auto [files, labels] = detail::load_f2l(f2l);
+    return build_file_index(dir, files, std::move(labels), k, s, t, order, w);
+  }
 
-      if (order == skimdb_rle_ordering::tsp) {
-        solver::greedy_tsp_order_bitmaps(bitmaps, labels, w);
-      } else if (order == skimdb_rle_ordering::minmax) {
-        solver::greedy_minmax_order_bitmaps(bitmaps, labels, w);
-      }
 
-      return build_index(bitmaps, std::move(labels), k, s, t);
-    }
-
-    [[nodiscard]] static auto build_file_index(const fs::path& dir,
-                                               const fs::path& f2l,
-                                               std::size_t k,
-                                               std::size_t s,
-                                               std::size_t t,
-                                               skimdb_rle_ordering order = skimdb_rle_ordering::none,
-                                               std::size_t w = 0) -> skimdb {
-      LogFun lf{"build_file_index(dir, f2l, ...)"};
-      auto [files, labels] = detail::load_f2l(f2l);
-      return build_file_index(dir, files, std::move(labels), k, s, t, order, w);
-    }
-
-    template <std::ranges::input_range Range>
-    [[nodiscard]] static auto build_range_index(Range && range,
-                                                std::size_t k,
-                                                std::size_t s,
-                                                std::size_t t,
-                                                skimdb_rle_ordering order = skimdb_rle_ordering::none,
-                                                std::size_t w = 0) -> skimdb {
-      LogFun lf{"build_range_index(...)"};
-
-      std::vector<bitmap_t> bitmaps;
-      std::vector<std::string> labels;
-
-      g_log->info("extracting kmers with (k={}, s={}, t={})...", k, s, t);
-
-      std::size_t kmer_count = 0;
-      kmer_binary_t kmax = 0;
-
-      for (auto&& seq : range) {
-        labels.emplace_back(std::move(std::get<0>(seq)));
-        const std::string& read = std::get<1>(seq);
-        bitmap_t bitmap;
-        auto [count, last] = detail::update_bitmap(read, k, s, t, bitmap);
-        kmer_count += count;
-        kmax = std::max(kmax, last);
-        bitmaps.emplace_back(std::move(bitmap));
-      }
-
-      g_log->info("{} kmers extracted from {} sequences", kmer_count, labels.size());
-      g_log->info("largest kmer: {}", kmax);
-
-      if (order == skimdb_rle_ordering::tsp) {
-        solver::greedy_tsp_order_bitmaps(bitmaps, labels, w);
-      } else if (order == skimdb_rle_ordering::minmax) {
-        solver::greedy_minmax_order_bitmaps(bitmaps, labels, w);
-      }
-
-      return build_index(bitmaps, std::move(labels), k, s, t);
-    }
-
-    [[nodiscard]] static auto build_dir_index(const fs::path& dir,
+  template <std::ranges::input_range Range>
+  [[nodiscard]] static auto build_range_index(Range&& range,
                                               std::size_t k,
                                               std::size_t s,
                                               std::size_t t,
                                               skimdb_rle_ordering order = skimdb_rle_ordering::none,
                                               std::size_t w = 0) -> skimdb {
-      LogFun lf{"build_dir_index(...)"};
-      fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
-      return build_range_index(ffr.sequences(), k, s, t, order, w);
+    LogFun lf{"build_range_index(...)"};
+
+    std::vector<bitmap_t> bitmaps;
+    std::vector<std::string> labels;
+
+    g_log->info("extracting kmers with (k={}, s={}, t={})...", k, s, t);
+
+    std::size_t kmer_count = 0;
+    kmer_binary_t kmax = 0;
+
+    for (auto&& seq : range) {
+      labels.emplace_back(std::move(std::get<0>(seq)));
+      const std::string& read = std::get<1>(seq);
+      bitmap_t bitmap;
+      auto [count, last] = detail::update_bitmap(read, k, s, t, bitmap);
+      kmer_count += count;
+      kmax = std::max(kmax, last);
+      bitmaps.emplace_back(std::move(bitmap));
     }
 
-    // merges indexes with a disjoint set of labels
-    template <std::ranges::input_range Range>
-    [[nodiscard]] static auto merge_disjoint_indexes(Range && range, std::size_t k, std::size_t s, std::size_t t)
-        -> std::expected<skimdb, std::string> {
-      LogFun lf{"merge_disjoint_indexes(...)"};
+    g_log->info("{} kmers extracted from {} sequences", kmer_count, labels.size());
+    g_log->info("largest kmer: {}", kmax);
 
-      std::vector<bitmap_t> bitmaps;
-      std::vector<std::string> labels;
+    if (order == skimdb_rle_ordering::tsp) {
+      solver::greedy_tsp_order_bitmaps(bitmaps, labels, w);
+    } else if (order == skimdb_rle_ordering::minmax) {
+      solver::greedy_minmax_order_bitmaps(bitmaps, labels, w);
+    }
 
-      std::size_t offset = 0;
+    return build_index(bitmaps, std::move(labels), k, s, t);
+  }
 
-      for (const skimdb& db : range) {
-        if (db.parameters() != skimdb_parameters{.k = k, .s = s, .t = t}) {
-          return std::unexpected{"parameter mismatch"};
-        }
 
-        labels.insert(labels.end(), db.labels_.begin(), db.labels_.end());
-        bitmaps.resize(labels.size());
+  [[nodiscard]] static auto build_dir_index(const fs::path& dir,
+                                            std::size_t k,
+                                            std::size_t s,
+                                            std::size_t t,
+                                            skimdb_rle_ordering order = skimdb_rle_ordering::none,
+                                            std::size_t w = 0) -> skimdb {
+    LogFun lf{"build_dir_index(...)"};
+    fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
+    return build_range_index(ffr.sequences(), k, s, t, order, w);
+  }
 
-        for (const auto& kmer : db.index_.kmers) {
-          auto pos = db.index_.hash.find(kmer).value();
-          for (auto l : db.m_traverse_kmer_(pos)) {
-            bitmaps[l + offset].add(kmer);
-          }
-        }
 
-        offset = labels.size();
+  // merges indexes with a disjoint set of labels
+  template <std::ranges::input_range Range>
+  [[nodiscard]] static auto merge_disjoint_indexes(Range&& range, std::size_t k, std::size_t s, std::size_t t)
+      -> std::expected<skimdb, std::string> {
+    LogFun lf{"merge_disjoint_indexes(...)"};
+
+    std::vector<bitmap_t> bitmaps;
+    std::vector<std::string> labels;
+
+    std::size_t offset = 0;
+
+    for (const skimdb& db : range) {
+      if (db.parameters() != skimdb_parameters{.k = k, .s = s, .t = t}) {
+        return std::unexpected{"parameter mismatch"};
       }
 
-      return build_index(bitmaps, labels, k, s, t);
+      labels.insert(labels.end(), db.labels_.begin(), db.labels_.end());
+      bitmaps.resize(labels.size());
+
+      for (const auto& kmer : db.index_.kmers) {
+        auto pos = db.index_.hash.find(kmer).value();
+        for (auto l : db.m_traverse_kmer_(pos)) {
+          bitmaps[l + offset].add(kmer);
+        }
+      }
+
+      offset = labels.size();
     }
-  };
+
+    return build_index(bitmaps, labels, k, s, t);
+  }
+};
 
 } // namespace skim
 

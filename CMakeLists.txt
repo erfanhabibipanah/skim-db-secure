@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(skimdb VERSION 0.2.2 LANGUAGES CXX)
+project(skimdb VERSION 0.2.3 LANGUAGES CXX)
 
 # Get git commit hash
 find_package(Git QUIET)
@@ -82,7 +82,7 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME dgpp
-    GIT_REPOSITORY https://gitlab.com/SCoRe-Group/dgpp.git
+    GIT_REPOSITORY https://codeberg.org/SCoRe-Group/dgpp.git
     GIT_TAG main
 )
 
@@ -96,24 +96,25 @@ CPMAddPackage(
 
 CPMAddPackage(
     NAME bbhash
-    GIT_REPOSITORY https://gitlab.com/SCoRe-Group/bbhash.git
+    GIT_REPOSITORY https://codeberg.org/SCoRe-Group/bbhash.git
     GIT_TAG main
 )
 
 CPMAddPackage(
     NAME fastxrd
-    GIT_REPOSITORY https://gitlab.com/SCoRe-Group/fastxrd.git
+    GIT_REPOSITORY https://codeberg.org/SCoRe-Group/fastxrd.git
     GIT_TAG main
 )
 
 CPMAddPackage(
     NAME fmtextra
-    GIT_REPOSITORY https://gitlab.com/jzola/fmtextra.git
+    GIT_REPOSITORY https://codeberg.org/SCoRe-Group/fmtextra.git
     GIT_TAG main
 )
 
-# required for par execution policy
+# required for par execution policy and other parallel things
 find_package(TBB REQUIRED)
+find_package(OpenMP REQUIRED)
 
 # -------------------------------------------------------------------
 # Library target
@@ -140,6 +141,7 @@ target_link_libraries(skimdb INTERFACE
     bbhash
     roaring
     TBB::tbb
+    OpenMP::OpenMP_CXX
 )
 
 install(
