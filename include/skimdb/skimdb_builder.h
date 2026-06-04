@@ -211,7 +211,7 @@ public:
 
     db.labels_ = std::move(labels);
 
-    g_log->debug("extracting kmers for hashing...");
+    g_log->debug("identifying unique kmers...");
 
     // we first build kmer hash
     // extract unique kmers
@@ -220,12 +220,13 @@ public:
 
     std::for_each(std::execution::par, bitmaps.begin(), bitmaps.end(), [&](const auto& bmp) {
       const auto tid = std::this_thread::get_id();
-      {
-        std::lock_guard lock{bitmaps_mtx};
-        local_bitmaps.try_emplace(tid);
-      }
+
+      bitmaps_mtx.lock();
+      auto [iter, _] = local_bitmaps.try_emplace(tid, bitmap_t{});
+      bitmaps_mtx.unlock();
+
       for (kmer_binary_t kmer : bmp) {
-        local_bitmaps[tid].add(kmer);
+        iter->second.add(kmer);
       }
     });
 
@@ -236,21 +237,20 @@ public:
 
     index.kmers.runOptimize();
 
-    g_log->debug("building hash...");
+    g_log->info("found {} unique kmers", index.kmers.cardinality());
+    g_log->info("kmers processing now, please be patient...");
+
+    g_log->debug("building kmer hash...");
 
     std::vector<kmer_binary_t> kmers(index.kmers.begin(), index.kmers.end());
     index.hash = bbh::bbhash<kmer_binary_t>{std::ranges::subrange(kmers.begin(), kmers.end())};
     kmers = {};
 
-    // now we prepeare data
-    g_log->info("found {} unique kmers", index.kmers.cardinality());
-    g_log->info("kmers processing now, please be patient...");
-
     if (bitmaps.size() > std::numeric_limits<std::uint32_t>::max()) {
       throw std::runtime_error{"unexpected situation, too many bitmaps"};
     }
 
-    g_log->info("mapping kmers to {} bitmaps...", bitmaps.size());
+    g_log->info("associating kmers with {} labels...", bitmaps.size());
 
     // right now memory is an issue so we use locking
     auto n = index.kmers.cardinality();
@@ -302,6 +302,8 @@ public:
 
     std::vector<bitmap_t> bitmaps(files.size());
     auto zipped = std::views::zip(files, bitmaps);
+
+    g_log->info("populating kmer bitmaps...");
 
     std::for_each(std::execution::par, zipped.begin(), zipped.end(), [&](auto&& fb) {
       auto& [file, bitmap] = fb;
