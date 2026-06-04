@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <exception>
 #include <execution>
 #include <expected>
 #include <filesystem>
@@ -29,7 +28,6 @@ namespace detail {
 
 inline auto max_distance(const std::unordered_map<kmer_binary_t, std::size_t>& S, bitmap_t R, const bitmap_t& M)
     -> std::size_t {
-
   R ^= M;
 
   std::size_t res = 0;
@@ -59,8 +57,7 @@ inline void sort_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string
     sizes[i] = bitmaps[i].cardinality();
   }
 
-  std::vector<std::size_t> order(n);
-  std::iota(order.begin(), order.end(), 0);
+  std::vector<std::size_t> order = std::views::iota(std::size_t{0}, n) | std::ranges::to<std::vector>();
 
   std::sort(std::execution::par, order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
     return sizes[a] > sizes[b];
@@ -216,24 +213,32 @@ public:
 
     g_log->debug("extracting kmers for hashing...");
 
-    // we first build k-mer hash
-    // pre-allocation is arbitrary
-    std::vector<kmer_binary_t> kmers;
-    kmers.reserve(1024 * 1024);
+    // we first build kmer hash
+    // extract unique kmers
+    std::unordered_map<std::thread::id, bitmap_t> local_bitmaps;
+    std::mutex bitmaps_mtx;
 
-    for (auto& bmp : bitmaps) {
-      for (kmer_binary_t kmer : bmp) {
-        if (!index.kmers.contains(kmer)) {
-          index.kmers.add(kmer);
-          kmers.push_back(kmer);
-        }
+    std::for_each(std::execution::par, bitmaps.begin(), bitmaps.end(), [&](const auto& bmp) {
+      const auto tid = std::this_thread::get_id();
+      {
+        std::lock_guard lock{bitmaps_mtx};
+        local_bitmaps.try_emplace(tid);
       }
+      for (kmer_binary_t kmer : bmp) {
+        local_bitmaps[tid].add(kmer);
+      }
+    });
+
+    // merge local maps
+    for (auto& [_, bmp] : local_bitmaps) {
+      index.kmers |= bmp;
     }
 
     index.kmers.runOptimize();
 
     g_log->debug("building hash...");
 
+    std::vector<kmer_binary_t> kmers(index.kmers.begin(), index.kmers.end());
     index.hash = bbh::bbhash<kmer_binary_t>{std::ranges::subrange(kmers.begin(), kmers.end())};
     kmers = {};
 
