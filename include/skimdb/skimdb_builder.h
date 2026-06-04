@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <exception>
 #include <execution>
 #include <expected>
 #include <filesystem>
@@ -240,28 +241,43 @@ public:
     g_log->info("found {} unique kmers", index.kmers.cardinality());
     g_log->info("kmers processing now, please be patient...");
 
-    auto m = bitmaps.size();
+    if (bitmaps.size() > std::numeric_limits<std::uint32_t>::max()) {
+      throw std::runtime_error{"unexpected situation, too many bitmaps"};
+    }
 
-    g_log->info("mapping kmers to {} bitmaps...", m);
+    g_log->info("mapping kmers to {} bitmaps...", bitmaps.size());
 
     // right now memory is an issue so we use locking
-    std::vector<std::mutex> data_mtx(index.kmers.cardinality());
-    data.resize(index.kmers.cardinality());
+    auto n = index.kmers.cardinality();
+    auto m = static_cast<std::uint32_t>(bitmaps.size());
 
-    auto indices = std::views::iota(std::size_t{0}, m);
+    std::vector<std::mutex> index_mtx(n);
+    std::vector<roaring::Roaring> index_lst(n);
 
-    std::for_each(std::execution::par, indices.begin(), indices.end(), [&](std::size_t i) {
+    auto mview = std::views::iota(std::uint32_t{0}, m);
+
+    std::for_each(std::execution::par, mview.begin(), mview.end(), [&](std::uint32_t i) {
       for (auto kmer : bitmaps[i]) {
         std::size_t idx = index.hash.find(kmer).value();
-        std::lock_guard<std::mutex> lock(data_mtx[idx]);
-        data[idx].push(i);
+        std::lock_guard<std::mutex> lock(index_mtx[idx]);
+        index_lst[idx].add(i);
       }
     });
 
-    g_log->info("kmers packing done!");
-    g_log->info("compressing data with {} kmers...", data.size());
+    g_log->info("compressing data with {} kmers...", n);
 
-    std::for_each(std::execution::par, data.begin(), data.end(), [](detail::encoding& rec) { rec.attempt_compress(); });
+    std::vector<std::mutex>{}.swap(index_mtx);
+    data.resize(n);
+
+    auto nview = std::views::iota(std::size_t{0}, n);
+
+    std::for_each(std::execution::par, nview.begin(), nview.end(), [&](std::size_t i) {
+      auto& dst = data[i];
+      for (auto idx : index_lst[i]) {
+        dst.push(idx);
+      }
+      dst.attempt_compress();
+    });
 
     g_log->info("compression done!");
 
