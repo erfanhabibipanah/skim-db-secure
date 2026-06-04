@@ -213,6 +213,8 @@ public:
 
     db.labels_ = std::move(labels);
 
+    g_log->debug("extracting kmers for hashing...");
+
     // we first build k-mer hash
     // pre-allocation is arbitrary
     std::vector<kmer_binary_t> kmers;
@@ -229,6 +231,8 @@ public:
 
     index.kmers.runOptimize();
 
+    g_log->debug("building hash...");
+
     index.hash = bbh::bbhash<kmer_binary_t>{std::ranges::subrange(kmers.begin(), kmers.end())};
     kmers = {};
 
@@ -241,21 +245,18 @@ public:
     g_log->info("mapping kmers to {} bitmaps...", m);
 
     // right now memory is an issue so we use locking
-    std::vector<std::mutex> dmtx(index.kmers.cardinality());
+    std::vector<std::mutex> data_mtx(index.kmers.cardinality());
     data.resize(index.kmers.cardinality());
 
-#pragma omp parallel
-    {
-#pragma omp for schedule(dynamic, 64) nowait
-      for (std::size_t i = 0; i < m; ++i) {
-        for (kmer_binary_t kmer : bitmaps[i]) {
-          std::size_t idx = index.hash.find(kmer).value();
-          dmtx[idx].lock();
-          data[idx].push(i);
-          dmtx[idx].unlock();
-        }
+    auto indices = std::views::iota(std::size_t{0}, m);
+
+    std::for_each(std::execution::par, indices.begin(), indices.end(), [&](std::size_t i) {
+      for (auto kmer : bitmaps[i]) {
+        std::size_t idx = index.hash.find(kmer).value();
+        std::lock_guard<std::mutex> lock(data_mtx[idx]);
+        data[idx].push(i);
       }
-    }
+    });
 
     g_log->info("kmers packing done!");
     g_log->info("compressing data with {} kmers...", data.size());
