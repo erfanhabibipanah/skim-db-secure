@@ -261,15 +261,14 @@ inline auto update_bitmap(const std::string& read, std::size_t k, std::size_t s,
   return std::make_tuple(tot_added, last_added);
 }
 
-// Opens fasta file and processes canonical syncmers into a roaring bitmap
 inline auto populate_bitmap(const fs::path& dir, const std::string& filename,
                             std::size_t k, std::size_t s, std::size_t t) -> bitmap_t {
   fs::path full_path = dir / filename;
-  fastx::fasta_simple_reader fbr{full_path};
+  fastx::fasta_simple_reader fsr{full_path};
 
   bitmap_t bitmap;
 
-  for (auto seq : fbr.sequences()) {
+  for (auto seq : fsr.sequences()) {
     const std::string& read = std::get<1>(seq);
     update_bitmap(read, k, s, t, bitmap);
   }

@@ -28,7 +28,6 @@ namespace detail {
 
 inline auto max_distance(const std::unordered_map<kmer_binary_t, std::size_t>& S, bitmap_t R, const bitmap_t& M)
     -> std::size_t {
-
   R ^= M;
 
   std::size_t res = 0;
@@ -58,8 +57,7 @@ inline void sort_bitmaps(std::vector<bitmap_t>& bitmaps, std::vector<std::string
     sizes[i] = bitmaps[i].cardinality();
   }
 
-  std::vector<std::size_t> order(n);
-  std::iota(order.begin(), order.end(), 0);
+  std::vector<std::size_t> order = std::views::iota(std::size_t{0}, n) | std::ranges::to<std::vector>();
 
   std::sort(std::execution::par, order.begin(), order.end(), [&](std::size_t a, std::size_t b) {
     return sizes[a] > sizes[b];
@@ -213,48 +211,84 @@ public:
 
     db.labels_ = std::move(labels);
 
-    // we first build k-mer hash
-    // pre-allocation is arbitrary
-    std::vector<kmer_binary_t> kmers;
-    kmers.reserve(1024 * 1024);
+    g_log->debug("identifying unique kmers...");
 
-    for (auto& bmp : bitmaps) {
+    // we first build kmer hash
+    // extract unique kmers
+    std::unordered_map<std::thread::id, bitmap_t> local_bitmaps;
+    std::mutex bitmaps_mtx;
+
+    std::for_each(std::execution::par, bitmaps.begin(), bitmaps.end(), [&](const auto& bmp) {
+      const auto tid = std::this_thread::get_id();
+
+      bitmaps_mtx.lock();
+      auto [iter, _] = local_bitmaps.try_emplace(tid, bitmap_t{});
+      bitmaps_mtx.unlock();
+
       for (kmer_binary_t kmer : bmp) {
-        if (!index.kmers.contains(kmer)) {
-          index.kmers.add(kmer);
-          kmers.push_back(kmer);
-        }
+        iter->second.add(kmer);
       }
+    });
+
+    // merge local maps
+    for (auto& [_, bmp] : local_bitmaps) {
+      index.kmers |= bmp;
     }
 
     index.kmers.runOptimize();
 
+    g_log->info("found {} unique kmers", index.kmers.cardinality());
+    g_log->info("kmers processing now, please be patient...");
+
+    g_log->debug("building kmer hash...");
+
+    std::vector<kmer_binary_t> kmers(index.kmers.begin(), index.kmers.end());
     index.hash = bbh::bbhash<kmer_binary_t>{std::ranges::subrange(kmers.begin(), kmers.end())};
     kmers = {};
 
-    // now we prepeare data
-    g_log->info("found {} unique kmers", index.kmers.cardinality());
-
-    data.resize(index.kmers.cardinality());
-
-    for (std::size_t i = 0, end = bitmaps.size(); i < end; ++i) {
-      auto& bitmap = bitmaps[i];
-
-      for (kmer_binary_t kmer : bitmap) {
-        std::size_t idx = index.hash.find(kmer).value();
-        data[idx].push(i);
-      }
+    if (bitmaps.size() > std::numeric_limits<std::uint32_t>::max()) {
+      throw std::runtime_error{"unexpected situation, too many bitmaps"};
     }
 
-    g_log->info("kmers packing done!");
-    g_log->info("compressing data with {} kmers...", data.size());
+    g_log->info("associating kmers with {} labels...", bitmaps.size());
 
-    std::for_each(std::execution::par, data.begin(), data.end(), [](detail::encoding& rec) { rec.attempt_compress(); });
+    // right now memory is an issue so we use locking
+    auto n = index.kmers.cardinality();
+    auto m = static_cast<std::uint32_t>(bitmaps.size());
+
+    std::vector<std::mutex> index_mtx(n);
+    std::vector<roaring::Roaring> index_lst(n);
+
+    auto mview = std::views::iota(std::uint32_t{0}, m);
+
+    std::for_each(std::execution::par, mview.begin(), mview.end(), [&](std::uint32_t i) {
+      for (auto kmer : bitmaps[i]) {
+        std::size_t idx = index.hash.find(kmer).value();
+        std::lock_guard<std::mutex> lock(index_mtx[idx]);
+        index_lst[idx].add(i);
+      }
+    });
+
+    g_log->info("compressing data with {} kmers...", n);
+
+    std::vector<std::mutex>{}.swap(index_mtx);
+    data.resize(n);
+
+    auto nview = std::views::iota(std::size_t{0}, n);
+
+    std::for_each(std::execution::par, nview.begin(), nview.end(), [&](std::size_t i) {
+      auto& dst = data[i];
+      for (auto idx : index_lst[i]) {
+        dst.push(idx);
+      }
+      dst.attempt_compress();
+    });
 
     g_log->info("compression done!");
 
     return db;
   }
+
 
   [[nodiscard]] static auto build_file_index(const fs::path& dir,
                                              const std::vector<std::string>& files,
@@ -268,6 +302,8 @@ public:
 
     std::vector<bitmap_t> bitmaps(files.size());
     auto zipped = std::views::zip(files, bitmaps);
+
+    g_log->info("populating kmer bitmaps...");
 
     std::for_each(std::execution::par, zipped.begin(), zipped.end(), [&](auto&& fb) {
       auto& [file, bitmap] = fb;
@@ -283,6 +319,7 @@ public:
     return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
+
   [[nodiscard]] static auto build_file_index(const fs::path& dir,
                                              const fs::path& f2l,
                                              std::size_t k,
@@ -294,6 +331,7 @@ public:
     auto [files, labels] = detail::load_f2l(f2l);
     return build_file_index(dir, files, std::move(labels), k, s, t, order, w);
   }
+
 
   template <std::ranges::input_range Range>
   [[nodiscard]] static auto build_range_index(Range&& range,
@@ -334,6 +372,7 @@ public:
     return build_index(bitmaps, std::move(labels), k, s, t);
   }
 
+
   [[nodiscard]] static auto build_dir_index(const fs::path& dir,
                                             std::size_t k,
                                             std::size_t s,
@@ -344,6 +383,7 @@ public:
     fastx::fastx_files_reader<fastx::fasta_buffered_reader> ffr{dir};
     return build_range_index(ffr.sequences(), k, s, t, order, w);
   }
+
 
   // merges indexes with a disjoint set of labels
   template <std::ranges::input_range Range>

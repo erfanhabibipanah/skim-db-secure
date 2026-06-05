@@ -1,0 +1,17 @@
+CompileFlags:
+  Compiler: clang++
+  Add:
+    - -fopenmp
+    - -std=c++23
+    - -stdlib=libstdc++
+    - -I/Users/zola/Private/Projects/public/active/skimdb/include
+    - -I/Users/zola/Private/Projects/public/active/skimdb/.cpm-include/bbhash/include
+    - -I/Users/zola/Private/Projects/public/active/skimdb/.cpm-include/cereal/include
+    - -I/Users/zola/Private/Projects/public/active/skimdb/.cpm-include/cxxopts/include
+    - -I/Users/zola/Private/Projects/public/active/skimdb/.cpm-include/dgpp/include
+    - -I/Users/zola/Private/Projects/public/active/skimdb/.cpm-include/fastxrd/include
+    - -I/Users/zola/Private/Projects/public/active/skimdb/.cpm-include/fmtextra/include
+    - -I/Users/zola/Private/Projects/public/active/skimdb/.cpm-include/roaring/cpp
+    - -I/Users/zola/Private/Projects/public/active/skimdb/.cpm-include/roaring/include
+    - -I/Users/zola/Private/Projects/public/active/skimdb/build/include/skimdb/net/gRPC
+    - -I/Users/zola/Private/Projects/public/active/skimdb/build/include/skimdb/siper/net/gRPC

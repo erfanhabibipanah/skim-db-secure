@@ -60,6 +60,9 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("SKiMdb ver. {}", skim::version);
 
+  auto args = std::span(argv + 1, argc - 1) | std::views::transform([](char* s) { return std::string_view{s}; });
+  log->debug("cmd: {}", join_as(args, " "));
+
   if (in.empty()) {
     log->error("input not specified!");
     return -1;

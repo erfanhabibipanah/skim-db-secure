@@ -15,9 +15,9 @@
 #include <cxxopts.hpp>
 #include <fmtextra/fmt_extra.h>
 
-#include <spdlog/spdlog.h>
 #include <spdlog/cfg/env.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/spdlog.h>
 
 #include <skimdb/skimdb.h>
 #include <skimdb/skimdb_builder.h>
@@ -36,8 +36,8 @@ auto main(int argc, char* argv[]) -> int {
   std::uint64_t s = 9;
   std::uint64_t t = 2;
 
-  std::string S = "minmax";
-  std::size_t w = 1024;
+  std::string S = "tsp";
+  std::size_t w = 64;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -69,6 +69,9 @@ auto main(int argc, char* argv[]) -> int {
   skim::g_log = spdlog::stdout_color_mt("skimdb");
 
   log->info("SKiMdb ver. {}", skim::version);
+
+  auto args = std::span(argv + 1, argc - 1) | std::views::transform([](char* s) { return std::string_view{s}; });
+  log->debug("cmd: {}", join_as(args, " "));
 
   if (in.empty()) {
     log->error("input not specified!");
