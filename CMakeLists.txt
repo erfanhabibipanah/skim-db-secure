@@ -115,6 +115,7 @@ CPMAddPackage(
 # required for par execution policy and other parallel things
 find_package(TBB REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(libzip REQUIRED)
 
 # -------------------------------------------------------------------
 # Library target
@@ -142,6 +143,7 @@ target_link_libraries(skimdb INTERFACE
     roaring
     TBB::tbb
     OpenMP::OpenMP_CXX
+    zip
 )
 
 install(
