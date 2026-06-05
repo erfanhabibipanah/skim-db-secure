@@ -1,6 +1,7 @@
 #ifndef SKIMDB_H
 #define SKIMDB_H
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -142,7 +143,24 @@ public:
 
   template <typename Archive>
   void serialize(Archive& archive) {
-    archive(k_, s_, t_, labels_, index_, data_);
+    timer T;
+    archive(k_);
+    std::cout << "k_: " << T.elapsed() << std::endl;
+    T.reset();
+    archive(s_);
+    std::cout << "s_: " << T.elapsed() << std::endl;
+    T.reset();
+    archive(t_);
+    std::cout << "t_: " << T.elapsed() << std::endl;
+    T.reset();
+    archive(labels_);
+    std::cout << "labels_: " << T.elapsed() << std::endl;
+    T.reset();
+    archive(index_);
+    std::cout << "index_: " << T.elapsed() << std::endl;
+    T.reset();
+    archive(data_);
+    std::cout << "data_: " << T.elapsed() << std::endl;
   }
 
 private:

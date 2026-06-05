@@ -42,6 +42,23 @@ void load(Archive& ar, skim::bitmap_t& bitmap) {
 
 namespace skim {
 
+class timer {
+public:
+  timer() { reset(); }
+
+  void reset() { tp_ = std::chrono::steady_clock::now(); }
+
+  auto elapsed() -> double const {
+    auto tc{std::chrono::steady_clock::now()};
+    std::chrono::duration<double> diff{tc - tp_};
+    return diff.count();
+  }
+
+private:
+  std::chrono::steady_clock::time_point tp_;
+
+}; // class timer
+
 class kmer_distribution {
 public:
   using result_type = std::string;
