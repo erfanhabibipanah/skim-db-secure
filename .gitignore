@@ -1,5 +1,6 @@
 !proto/generated/.protoc_version
 *~
+.cache
 .cpm-cache/
 .cpm-include/
 build/

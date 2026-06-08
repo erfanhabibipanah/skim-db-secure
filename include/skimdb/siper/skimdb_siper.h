@@ -26,7 +26,6 @@
 #include <skimdb/skimdb.h>
 
 #include "siper_config.h"
-#include "skimdb/skimdb_config.h"
 #include "skimdb_siper_definitions.h"
 #include "skimdb_siper_matrix.h"
 #include "skimdb_siper_util.h"

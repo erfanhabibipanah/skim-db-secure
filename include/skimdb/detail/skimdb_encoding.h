@@ -191,7 +191,7 @@ public:
 
   template <typename Archive>
   void serialize(Archive& archive) {
-    archive(blocks_);
+    archive(cereal::binary_data(blocks_.data(), blocks_.size() * sizeof(std::uint16_t)));
   }
 
 private:

@@ -130,7 +130,8 @@ public:
 
   template <typename Archive>
   void serialize(Archive& archive) {
-    archive(r_, c_, log_mod_, mask_, data_);
+    archive(r_, c_, log_mod_, mask_);
+    archive(cereal::binary_data(data_.data(), data_.size() * sizeof(std::uint64_t)));
   }
 
 private:
@@ -241,7 +242,7 @@ public:
 
   template <typename Archive>
   void serialize(Archive& archive) {
-    archive(data_, block_size_, sqrt_N_);
+    archive(cereal::binary_data(data_.data(), data_.size() * sizeof(std::uint16_t)));
   }
 
 private:
