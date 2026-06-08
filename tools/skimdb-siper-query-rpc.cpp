@@ -63,6 +63,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  log->info("connection established!");
   log->info("ready for queries...");
 
   prompted_input prompt;

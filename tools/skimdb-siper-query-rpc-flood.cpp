@@ -93,6 +93,8 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  mlog->info("connection established!");
+
   auto start = std::chrono::high_resolution_clock::now();
 
   {

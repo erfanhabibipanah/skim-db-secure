@@ -13,7 +13,7 @@
 #include <skimdb/siper/net/gRPC/siperdb_batched_client.h>
 
 
-auto mlog = spdlog::stdout_color_mt("skimdb-siper-batch-rpc-flood");
+auto mlog = spdlog::stdout_color_mt("skimdb-siper-batched-rpc-flood");
 
 
 void run_query(skim::siper::rpc::BatchedSiperDBClient& client, unsigned int l) {
@@ -106,6 +106,8 @@ auto main(int argc, char* argv[]) -> int {
     mlog->error("connection failed: {}", res.error());
     return -1;
   }
+
+  mlog->info("connection established!");
 
   auto start = std::chrono::high_resolution_clock::now();
 

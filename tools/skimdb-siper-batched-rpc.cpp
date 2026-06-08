@@ -126,6 +126,8 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
+  mlog->info("connection established!");
+
   future_queue<query_item> kmer_queue;
   std::jthread consumer{output_thread, std::ref(kmer_queue), std::ref(client), verbose};
 

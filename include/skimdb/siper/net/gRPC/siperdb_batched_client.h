@@ -251,10 +251,10 @@ private:
       }
 
       while (m_batch_ready_()) {
-        auto batch_ptr = std::make_shared<batch_request>(std::move(queue_.front()));
+        auto batch_ptr = std::make_unique<batch_request>(std::move(queue_.front()));
         queue_.pop_front();
 
-        arena_.enqueue([this, batch_ptr]() { m_submit_(std::move(*batch_ptr)); });
+        arena_.enqueue([this, ptr = std::move(batch_ptr)]() { m_submit_(ptr); });
       }
     }
   }
@@ -268,7 +268,9 @@ private:
     return ratio >= submit_threshold_ || queue_.front().expired(batch_timeout_);
   }
 
-  void m_submit_(batch_request batch) {
+  void m_submit_(const std::unique_ptr<batch_request>& batch_ptr) {
+    auto& batch = *batch_ptr;
+
     g_log->trace("submitting batch of size {}...", batch.size());
 
     auto& client = *state_;
@@ -292,6 +294,7 @@ private:
     grpc::Status status = stub_->BatchQuery(&ctx, req, &reply);
 
     if (!status.ok()) {
+      g_log->warn("batch query failed: {}", status.error_message());
       throw std::runtime_error(std::format("batch query failed: {}", status.error_message()));
     }
 
