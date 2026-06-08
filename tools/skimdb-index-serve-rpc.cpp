@@ -37,7 +37,7 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()
       ("i,input", "database to serve", cxxopts::value<std::string>(in))
       ("a,address", "address [network:port] to serve on", cxxopts::value<std::string>(addr)->default_value(addr))
-      ("t,threads", "number of server threads", cxxopts::value<unsigned int>(nthreads)->default_value(std::to_string(nthreads)))
+      ("T,threads", "number of server threads", cxxopts::value<unsigned int>(nthreads)->default_value(std::to_string(nthreads)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);

@@ -29,7 +29,7 @@ auto main(int argc, char* argv[]) -> int {
       ("i,input", "siper database to serve", cxxopts::value<std::string>(in))
       ("a,address", "address [network:port] to serve on", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "server store directory", cxxopts::value<std::string>(cache_dir))
-      ("t,threads", "number of server threads", cxxopts::value<unsigned int>(nthreads)->default_value(std::to_string(nthreads)))
+      ("T,threads", "number of server threads", cxxopts::value<unsigned int>(nthreads)->default_value(std::to_string(nthreads)))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);

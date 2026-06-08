@@ -83,7 +83,6 @@ skimdb_add_tool(skimdb-index-create)
 skimdb_add_tool(skimdb-index-analyze)
 skimdb_add_tool(skimdb-index-query)
 skimdb_add_tool(skimdb-kmer-generate)
-skimdb_add_tool(x)
 
 # --------------------------------------------------------------------
 # gRPC tools

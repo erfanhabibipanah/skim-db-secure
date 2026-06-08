@@ -25,11 +25,10 @@ auto main(int argc, char* argv[]) -> int {
   try {
     cxxopts::Options options(argv[0]);
 
-    options.add_options()("i,input", "input database file", cxxopts::value<std::string>(in))(
-        "b,block_size",
-        "number of runs per block",
-        cxxopts::value<unsigned int>(block_size)->default_value(std::to_string(block_size)))("h,help",
-                                                                                             "print this help");
+    options.add_options()
+      ("i,input", "input database file", cxxopts::value<std::string>(in))
+      ("b,block-size", "number of runs per block", cxxopts::value<unsigned int>(block_size)->default_value(std::to_string(block_size)))
+      ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
 
