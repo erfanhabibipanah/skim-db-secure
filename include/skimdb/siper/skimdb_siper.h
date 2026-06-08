@@ -25,6 +25,7 @@
 #include <skimdb/detail/skimdb_util.h>
 #include <skimdb/skimdb.h>
 
+#include "siper_config.h"
 #include "skimdb/skimdb_config.h"
 #include "skimdb_siper_definitions.h"
 #include "skimdb_siper_matrix.h"
@@ -114,7 +115,7 @@ public:
 
     try {
       cereal::BinaryInputArchive archive(is);
-      skimdb_version_t ver;
+      siper_version_t ver;
       archive(ver,
               DB_,
               skim_config_.k,
@@ -146,7 +147,7 @@ public:
 
     try {
       cereal::BinaryOutputArchive archive{of};
-      skimdb_version_t ver;
+      siper_version_t ver;
       archive(ver,
               DB_,
               skim_config_.k,

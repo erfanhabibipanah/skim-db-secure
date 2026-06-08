@@ -275,6 +275,7 @@ public:
       }
 
       zip_int64_t idx = zip_file_add(za.get(), fs::path(filename).filename().c_str(), src, ZIP_FL_ENC_UTF_8);
+
       if (idx < 0) {
         zip_source_free(src);
         return false;
@@ -339,6 +340,7 @@ public:
       name.replace_extension(".data." + part);
 
       std::ofstream of(name, std::ios::binary);
+
       if (!of) {
         failed.store(true);
         std::lock_guard lock(err_mtx);

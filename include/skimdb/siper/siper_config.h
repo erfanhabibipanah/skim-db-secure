@@ -1,15 +1,15 @@
-#ifndef SKIMDB_CONFIG_H
-#define SKIMDB_CONFIG_H
+#ifndef SIPER_CONFIG_H
+#define SIPER_CONFIG_H
 
 #include <format>
 #include <stdexcept>
 
 #include <cereal/cereal.hpp>
 
-#include "detail/skimdb_definitions.h"
+#include "skimdb/detail/skimdb_definitions.h"
 
 
-struct skimdb_version_t {
+struct siper_version_t {
   // *** UPDATE VERSION IF FILE FORMAT CHANGES!!! ***
   inline static constexpr unsigned int major = 0;
   inline static constexpr unsigned int minor = 3;
@@ -52,4 +52,4 @@ struct skimdb_version_t {
   }
 };
 
-#endif // SKIMDB_CONFIG_H
+#endif // SIPER_CONFIG_H

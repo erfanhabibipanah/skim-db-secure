@@ -2,6 +2,7 @@
 #define SIPERDB_SERVICE_H
 
 #include <cstdint>
+#include <ios>
 #include <utility>
 #include <vector>
 
@@ -76,25 +77,31 @@ public:
       return {grpc::StatusCode::NOT_FOUND, "requested file not found"};
     }
 
-    constexpr std::size_t buf_size = 1 << 20; // 1MB
+    constexpr std::size_t buf_size = 64 << 20; // 64MB
 
-    std::array<char, buf_size> buff{};
-    std::uint64_t offset{0};
+    std::vector<char> buff(buf_size);
+    f.rdbuf()->pubsetbuf(buff.data(), static_cast<std::streamsize>(buff.size()));
 
     DataChunk chunk;
+    chunk.mutable_data()->reserve(buf_size); // avoid realloc each loop
+
+    std::uint64_t offset{0};
+
+    grpc::WriteOptions write_opts;
+    write_opts.set_buffer_hint();
 
     while (f) {
-      f.read(buff.data(), sizeof(buff));
+      f.read(buff.data(), static_cast<std::streamsize>(buff.size()));
       auto n = f.gcount();
 
       if (n <= 0) {
         break;
       }
 
-      chunk.set_data(buff.data(), n);
       chunk.set_offset(offset);
+      chunk.mutable_data()->assign(buff.data(), static_cast<std::size_t>(n));
 
-      if (!writer->Write(chunk)) {
+      if (!writer->Write(chunk, write_opts)) {
         return {grpc::StatusCode::CANCELLED, "client disconnected"};
       }
 
