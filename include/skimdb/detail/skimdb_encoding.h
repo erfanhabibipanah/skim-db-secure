@@ -190,8 +190,18 @@ public:
   }
 
   template <typename Archive>
-  void serialize(Archive& archive) {
-    archive(cereal::binary_data(blocks_.data(), blocks_.size() * sizeof(std::uint16_t)));
+  void save(Archive& ar) const {
+    std::size_t size{blocks_.size()};
+    ar(size);
+    ar(cereal::binary_data(blocks_.data(), size * sizeof(std::uint16_t)));
+  }
+
+  template <typename Archive>
+  void load(Archive& ar) {
+    std::size_t size{0};
+    ar(size);
+    blocks_.resize(size);
+    ar(cereal::binary_data(blocks_.data(), size * sizeof(std::uint16_t)));
   }
 
 private:

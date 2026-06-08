@@ -129,10 +129,20 @@ public:
 
 
   template <typename Archive>
-  void serialize(Archive& archive) {
-    archive(r_, c_, log_mod_, mask_);
-    archive(cereal::binary_data(data_.data(), data_.size() * sizeof(std::uint64_t)));
+  void save(Archive& ar) const {
+    std::size_t size{data_.size()};
+    ar(r_, c_, log_mod_, mask_, size);
+    ar(cereal::binary_data(data_.data(), size * sizeof(std::uint64_t)));
   }
+
+  template <typename Archive>
+  void load(Archive& ar) {
+    std::size_t size{0};
+    ar(r_, c_, log_mod_, mask_, size);
+    data_.resize(size);
+    ar(cereal::binary_data(data_.data(), size * sizeof(std::uint64_t)));
+  }
+
 
 private:
   std::size_t r_{0};
@@ -240,10 +250,22 @@ public:
     return std::make_tuple(sqrt_N_, sqrt_N_);
   }
 
+
   template <typename Archive>
-  void serialize(Archive& archive) {
-    archive(cereal::binary_data(data_.data(), data_.size() * sizeof(std::uint16_t)));
+  void save(Archive& ar) const {
+    std::size_t size{data_.size()};
+    ar(block_size_, sqrt_N_, size);
+    ar(cereal::binary_data(data_.data(), size * sizeof(std::uint16_t)));
   }
+
+  template <typename Archive>
+  void load(Archive& ar) {
+    std::size_t size{0};
+    ar(block_size_, sqrt_N_, size);
+    data_.resize(size);
+    ar(cereal::binary_data(data_.data(), size * sizeof(std::uint16_t)));
+  }
+
 
 private:
   std::vector<std::uint16_t> data_; // row major flat storage

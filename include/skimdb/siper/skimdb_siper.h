@@ -108,28 +108,29 @@ public:
 
   auto load(const fs::path& path) -> std::expected<void, std::string> {
     std::ifstream is{path, std::ios::binary};
+
     if (!is) {
       return std::unexpected{"could not open file"};
     }
 
     try {
-      cereal::BinaryInputArchive archive(is);
+      cereal::BinaryInputArchive ar(is);
       siper_version_t ver;
-      archive(ver,
-              DB_,
-              skim_config_.k,
-              skim_config_.s,
-              skim_config_.t,
-              siper_config_.n,
-              siper_config_.sigma,
-              siper_config_.log_p,
-              siper_config_.log_q,
-              siper_config_.block_size,
-              siper_config_.batch_size,
-              siper_config_.sqrt_N,
-              siper_config_.seed,
-              siper_config_.metadata_hash,
-              siper_config_.hint_c_hash);
+      ar(ver,
+         DB_,
+         skim_config_.k,
+         skim_config_.s,
+         skim_config_.t,
+         siper_config_.n,
+         siper_config_.sigma,
+         siper_config_.log_p,
+         siper_config_.log_q,
+         siper_config_.block_size,
+         siper_config_.batch_size,
+         siper_config_.sqrt_N,
+         siper_config_.seed,
+         siper_config_.metadata_hash,
+         siper_config_.hint_c_hash);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("deserialization failed {}", e.what())};
     }
@@ -145,23 +146,23 @@ public:
     }
 
     try {
-      cereal::BinaryOutputArchive archive{of};
+      cereal::BinaryOutputArchive ar{of};
       siper_version_t ver;
-      archive(ver,
-              DB_,
-              skim_config_.k,
-              skim_config_.s,
-              skim_config_.t,
-              siper_config_.n,
-              siper_config_.sigma,
-              siper_config_.log_p,
-              siper_config_.log_q,
-              siper_config_.block_size,
-              siper_config_.batch_size,
-              siper_config_.sqrt_N,
-              siper_config_.seed,
-              siper_config_.metadata_hash,
-              siper_config_.hint_c_hash);
+      ar(ver,
+         DB_,
+         skim_config_.k,
+         skim_config_.s,
+         skim_config_.t,
+         siper_config_.n,
+         siper_config_.sigma,
+         siper_config_.log_p,
+         siper_config_.log_q,
+         siper_config_.block_size,
+         siper_config_.batch_size,
+         siper_config_.sqrt_N,
+         siper_config_.seed,
+         siper_config_.metadata_hash,
+         siper_config_.hint_c_hash);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};
     }
