@@ -25,8 +25,9 @@ configure_file(
 
 option(SKIMDB_64BIT "Build with 64bit k-mer encoding" OFF)
 option(SKIMDB_BUILD_TOOLS "Build tool programs" OFF)
-option(SKIMDB_BUILD_GRPC "Build gRPC client/server" OFF)
+option(SKIMDB_BUILD_GRPC "Build gRPC support" OFF)
 option(SKIMDB_BUILD_SIPER "Build SiPeR implementation" OFF)
+option(SKIMDB_BUILD_CLIENT_ONLY "Build only client code" OFF)
 
 # Compile commands
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -143,7 +144,7 @@ target_link_libraries(skimdb INTERFACE
     roaring
     TBB::tbb
     OpenMP::OpenMP_CXX
-    zip
+    libzip::zip
 )
 
 install(

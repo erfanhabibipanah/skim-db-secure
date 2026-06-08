@@ -10,6 +10,7 @@ usage() {
   echo "  -T        build tools"
   echo "  -g        build gRPC support"
   echo "  -s        build SiPeR support"
+  echo "  -C        build cient code only"
   echo "  -h        display this help"
   echo "  -v        enable verbose mode"
   echo "  -d        enable debug mode"
@@ -19,7 +20,7 @@ usage() {
 DIR=$(pwd)/release
 CMAKE_CALL="../"
 
-while getopts "BTgshvdj:r:l" arg; do
+while getopts "BTgsChvdj:r:l" arg; do
   case $arg in
     h)
       usage
@@ -52,6 +53,9 @@ while getopts "BTgshvdj:r:l" arg; do
       ;;
     s)
       CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_SIPER=ON"
+      ;;
+    C)
+      CMAKE_CALL="$CMAKE_CALL -DSKIMDB_BUILD_CLIENT_ONLY=ON"
       ;;
   esac
 done

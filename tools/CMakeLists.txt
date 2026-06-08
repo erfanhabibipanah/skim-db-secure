@@ -79,8 +79,11 @@ endfunction()
 # Base tools
 # --------------------------------------------------------------------
 
-skimdb_add_tool(skimdb-index-create)
-skimdb_add_tool(skimdb-index-analyze)
+if(NOT SKIMDB_BUILD_CLIENT_ONLY)
+    skimdb_add_tool(skimdb-index-create)
+    skimdb_add_tool(skimdb-index-analyze)
+endif()
+
 skimdb_add_tool(skimdb-index-query)
 skimdb_add_tool(skimdb-kmer-generate)
 
@@ -89,7 +92,9 @@ skimdb_add_tool(skimdb-kmer-generate)
 # --------------------------------------------------------------------
 
 if(SKIMDB_BUILD_GRPC)
-    skimdb_add_tool(skimdb-index-serve-rpc skimdb::proto)
+    if(NOT SKIMDB_BUILD_CLIENT_ONLY)
+        skimdb_add_tool(skimdb-index-serve-rpc skimdb::proto)
+    endif()
     skimdb_add_tool(skimdb-index-query-rpc skimdb::proto)
 endif()
 
@@ -99,11 +104,13 @@ endif()
 
 if(SKIMDB_BUILD_SIPER)
     find_package(OpenSSL REQUIRED)
-    skimdb_add_tool(skimdb-siper-create siperdb::proto OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-siper-dbsize OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-siper-reconfigure OpenSSL::Crypto)
+    if(NOT SKIMDB_BUILD_CLIENT_ONLY)
+        skimdb_add_tool(skimdb-siper-create siperdb::proto OpenSSL::Crypto)
+        skimdb_add_tool(skimdb-siper-dbsize OpenSSL::Crypto)
+        skimdb_add_tool(skimdb-siper-reconfigure OpenSSL::Crypto)
+        skimdb_add_tool(skimdb-siper-serve-rpc siperdb::proto OpenSSL::Crypto)
+    endif()
     skimdb_add_tool(skimdb-siper-query OpenSSL::Crypto)
-    skimdb_add_tool(skimdb-siper-serve-rpc siperdb::proto OpenSSL::Crypto)
     skimdb_add_tool(skimdb-siper-query-rpc siperdb::proto OpenSSL::Crypto)
     skimdb_add_tool(skimdb-siper-query-rpc-flood siperdb::proto OpenSSL::Crypto)
     skimdb_add_tool(skimdb-siper-batched-rpc siperdb::proto OpenSSL::Crypto)
