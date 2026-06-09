@@ -108,5 +108,5 @@ auto main(int argc, char* argv[]) -> int {
             sqrt_N,
             block_size);
 
-  return 0;
+  _Exit(0);
 }

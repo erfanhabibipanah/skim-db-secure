@@ -75,17 +75,18 @@ auto main(int argc, char* argv[]) -> int {
     log->info("previous batch size is {}", state.siper_parameters().batch_size);
     state.update_batch_size(batch_size);
     log->info("batch size set to {}", state.siper_parameters().batch_size);
-  }
 
-  log->info("saving siperdb to {}...", in);
+    log->info("saving siperdb to {}...", in);
 
-  auto save_res = state.save(dir);
-  if (!save_res) {
-    log->error("could not save {}, error: {}!", in, save_res.error());
-    return -1;
+    auto save_res = state.save(dir);
+
+    if (!save_res) {
+      log->error("could not save {}, error: {}!", in, save_res.error());
+      return -1;
+    }
   }
 
   log->info("done!");
 
-  return 0;
+  _Exit(0);
 }

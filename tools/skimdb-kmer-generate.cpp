@@ -76,5 +76,5 @@ auto main(int argc, char* argv[]) -> int {
     std::cout << kmer << '\n';
   }
 
-  return 0;
+  _Exit(0);
 }

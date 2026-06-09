@@ -151,5 +151,5 @@ auto main(int argc, char* argv[]) -> int {
               entropy);
   }
 
-  return 0;
+  _Exit(0);
 }

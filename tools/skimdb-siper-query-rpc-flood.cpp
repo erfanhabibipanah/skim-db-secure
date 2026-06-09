@@ -111,5 +111,5 @@ auto main(int argc, char* argv[]) -> int {
 
   mlog->info("done!");
 
-  return 0;
+  _Exit(0);
 }

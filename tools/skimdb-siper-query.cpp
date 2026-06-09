@@ -166,5 +166,5 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("done!");
 
-  return 0;
+  _Exit(0);
 }
