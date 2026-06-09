@@ -70,7 +70,6 @@ auto main(int argc, char* argv[]) -> int {
 
   spdlog::cfg::load_env_levels();
   skim::g_log = spdlog::stdout_color_mt("skimdb");
-  skim::g_log->set_level(spdlog::level::warn);
 
   mlog->info("SKiMdb ver. {}", skim::version);
 

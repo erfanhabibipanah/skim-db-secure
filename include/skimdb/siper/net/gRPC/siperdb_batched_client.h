@@ -312,7 +312,7 @@ private:
     }
   }
 
-  std::deque<batch_request> queue_;
+  std::deque<batch_request> queue_{};
 
   double submit_threshold_;
   std::chrono::milliseconds batch_timeout_;
