@@ -64,18 +64,22 @@ public:
   }
 
 
-  [[nodiscard]] auto answer(const siper_matrix& qu) const -> std::expected<siper_matrix, std::string> {
+  template <typename T>
+  [[nodiscard]] auto answer(const siper_matrix<T>& qu) const
+      -> std::expected<siper_matrix<std::uint64_t>, std::string> {
     auto [q_rows, q_cols] = qu.dimensions();
 
     if (q_rows != 1 || q_cols != siper_config_.sqrt_N) {
       return std::unexpected{"invalid query vector dimensions"};
     }
 
-    return mat_vec(DB_, qu, siper_config_.log_q);
+    return mat_vec(DB_, qu.span(), siper_config_.log_q);
   }
 
-  [[nodiscard]] auto batch_answer(const siper_matrix& qu_mat) const -> std::expected<siper_matrix, std::string> {
+  [[nodiscard]] auto batch_answer(siper_matrix<const std::uint64_t>& qu_mat) const
+      -> std::expected<siper_matrix<std::uint64_t>, std::string> {
     auto [q_rows, q_cols] = qu_mat.dimensions();
+
     if (q_rows != siper_config_.batch_size || q_cols != siper_config_.sqrt_N) {
       return std::unexpected{"invalid query matrix dimensions"};
     }
@@ -372,7 +376,7 @@ public:
   explicit siper_client_state(skimdb_parameters skim_config,
                               skimdb_metadata skim_metadata,
                               siperdb_parameters siper_config,
-                              siper_matrix hint_c,
+                              siper_matrix<> hint_c,
                               std::uint64_t seed = std::random_device{}())
       : skim_config_{std::move(skim_config)}, skim_metadata_{std::move(skim_metadata)},
         siper_config_{std::move(siper_config)}, A_{siper_config_.sqrt_N, siper_config_.n, siper_config_.log_q},
@@ -505,7 +509,7 @@ public:
   }
 
 
-  void recover(const siper_matrix& ans,
+  void recover(const siper_matrix<>& ans,
                const siperdb_query_state& qu,
                std::span<std::uint16_t> rle,
                std::size_t i_row,
@@ -551,8 +555,8 @@ private:
 
   siperdb_parameters siper_config_; // siper parameters
 
-  siper_matrix A_;      // matrix A
-  siper_matrix hint_c_; // hint matrix from server
+  siper_matrix<> A_;      // matrix A
+  siper_matrix<> hint_c_; // hint matrix from server
 
   std::uint64_t main_seed_;
 };

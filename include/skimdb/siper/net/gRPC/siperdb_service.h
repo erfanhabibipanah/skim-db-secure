@@ -115,21 +115,19 @@ public:
     LogFun lf{"SiperDBService::Query(...)"};
     g_log->trace("serving siper query request from {}...", context->peer());
 
-    // TODO: we should consider making siper_matrix non-owning :-)
-    //       this way we could eliminate construction of query_vec
-    //       and operate on request->qu.data() directly
-    std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
+    const auto& qu = request->qu();
 
-    if (query_vec_data.size() != state_.siper_parameters().sqrt_N) {
+    if (qu.size() != state_.siper_parameters().sqrt_N) {
       return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size"};
     }
 
-    siper_matrix query_vec{
-        std::move(query_vec_data), state_.siper_parameters().sqrt_N, state_.siper_parameters().log_q};
-    auto ans = state_.answer(query_vec);
+    siper_matrix<const std::uint64_t> qu_vec{
+        qu.data(), 1, state_.siper_parameters().sqrt_N, state_.siper_parameters().log_q};
+
+    auto ans = state_.answer(qu_vec);
 
     if (!ans) {
-      return grpc::Status(grpc::StatusCode::INTERNAL, ans.error());
+      return grpc::Status{grpc::StatusCode::INTERNAL, ans.error()};
     }
 
     auto ans_data = (*ans).span();
@@ -143,14 +141,13 @@ public:
     g_log->trace("serving siper batch query request from {}...", context->peer());
 
     auto siper_params = state_.siper_parameters();
+    const auto& qu = request->qu();
 
-    std::vector<std::uint64_t> query_vec_data{request->qu().begin(), request->qu().end()};
-
-    if (query_vec_data.size() != siper_params.sqrt_N * siper_params.batch_size) {
+    if (qu.size() != siper_params.sqrt_N * siper_params.batch_size) {
       return grpc::Status{grpc::StatusCode::INVALID_ARGUMENT, "invalid query vector size"};
     }
 
-    siper_matrix query_vec{std::move(query_vec_data), siper_params.batch_size, siper_params.sqrt_N, siper_params.log_q};
+    siper_matrix<const uint64_t> query_vec{qu.data(), siper_params.batch_size, siper_params.sqrt_N, siper_params.log_q};
     auto ans = state_.batch_answer(query_vec);
 
     if (!ans) {

@@ -25,11 +25,11 @@ namespace index {
 inline constexpr std::uint64_t g_len_bits = 12;
 inline constexpr std::uint64_t g_len_mask = (1ULL << g_len_bits) - 1;
 
-inline auto pack(std::uint64_t start, std::uint16_t len) -> std::uint64_t { return (start << g_len_bits) | len; }
+inline auto pack(std::uint64_t start, std::uint16_t len) noexcept -> std::uint64_t { return (start << g_len_bits) | len; }
 
-inline auto unpack_start(std::uint64_t v) -> std::uint64_t { return v >> g_len_bits; }
+inline auto unpack_start(std::uint64_t v) noexcept -> std::uint64_t { return v >> g_len_bits; }
 
-inline auto unpack_len(std::uint64_t v) -> std::uint16_t { return static_cast<std::uint16_t>(v & g_len_mask); }
+inline auto unpack_len(std::uint64_t v) noexcept -> std::uint16_t { return static_cast<std::uint16_t>(v & g_len_mask); }
 
 } // namespace index
 
