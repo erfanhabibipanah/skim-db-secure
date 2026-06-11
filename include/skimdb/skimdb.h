@@ -141,7 +141,7 @@ public:
 
     // get metadata
     {
-      auto meta_path{path};
+      auto meta_path{path.filename()};
       meta_path.replace_extension(".meta");
 
       zip_file_t* zf = zip_fopen(za.get(), meta_path.c_str(), 0);
@@ -170,7 +170,7 @@ public:
     std::vector<std::string> parts;
 
     for (std::size_t i = 0;; ++i) {
-      auto name{path};
+      auto name{path.filename()};
       auto part{std::format("{:05d}", i)};
 
       name.replace_extension(".data." + part);
