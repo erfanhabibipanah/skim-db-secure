@@ -38,24 +38,29 @@ struct siper_version_t {
        cereal::make_nvp("kmer64", lkmer64));
 
     if (lmajor != major) {
-      throw std::runtime_error{std::format("incompatible major version: file has {}, current is {}", lmajor, major)};
+      throw std::runtime_error{std::format("incompatible major version, file has {}, current is {}", lmajor, major)};
     }
 
     if (lminor != minor) {
       throw std::runtime_error{
-          std::format("incompatible minor version: file has {}.{}, current is {}.{}", lmajor, lminor, major, minor)};
+          std::format("incompatible minor version, file has {}.{}, current is {}.{}", lmajor, lminor, major, minor)};
     }
 
     if (lkmer64 != skim::g_use_64bit) {
-      throw std::runtime_error{std::format(
-          "incompatible kmer encoding: file has kmer64={}, current is kmer64={}", lkmer64, skim::g_use_64bit)};
+      throw std::runtime_error{std::format("incompatible kmer encoding, file has kmer64={}, current is kmer64={}",
+                                           static_cast<bool>(lkmer64),
+                                           skim::g_use_64bit)};
     }
+
+    kmer = lkmer64;
   }
+
+  inline static bool kmer{skim::g_use_64bit}; // set by loader
 };
 
 namespace std {
 constexpr auto to_string(siper_version_t o) noexcept -> std::string {
-  return to_string(o.major) + '.' + to_string(o.minor) + '.' + to_string(o.patch);
+  return to_string(o.major) + '.' + to_string(o.minor) + '.' + to_string(o.patch) + (o.kmer ? "-kmer64" : "");
 }
 } // namespace std
 

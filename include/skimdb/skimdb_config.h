@@ -37,17 +37,18 @@ struct skimdb_version_t {
        cereal::make_nvp("kmer64", lkmer64));
 
     if (lmajor != major) {
-      throw std::runtime_error{std::format("incompatible major version: file has {}, current is {}", lmajor, major)};
+      throw std::runtime_error{std::format("incompatible major version, file has {}, current is {}", lmajor, major)};
     }
 
     if (lminor != minor) {
       throw std::runtime_error{
-          std::format("incompatible minor version: file has {}.{}, current is {}.{}", lmajor, lminor, major, minor)};
+          std::format("incompatible minor version, file has {}.{}, current is {}.{}", lmajor, lminor, major, minor)};
     }
 
     if (lkmer64 != skim::g_use_64bit) {
-      throw std::runtime_error{std::format(
-          "incompatible kmer encoding: file has kmer64={}, current is kmer64={}", lkmer64, skim::g_use_64bit)};
+      throw std::runtime_error{std::format("incompatible kmer encoding, file has kmer64={}, current is kmer64={}",
+                                           static_cast<bool>(lkmer64),
+                                           skim::g_use_64bit)};
     }
   }
 };
