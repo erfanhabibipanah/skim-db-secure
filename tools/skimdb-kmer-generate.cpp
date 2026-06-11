@@ -35,6 +35,9 @@ auto random_kmers(std::size_t k, std::int64_t seed) -> std::generator<std::strin
 }
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-kmer-generate");
+
   int k = 15;
   int l = 100000;
   std::int64_t seed = 666;
@@ -43,7 +46,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("k", "k-mer size", cxxopts::value<int>(k)->default_value(std::to_string(k)))
+      ("k", "kmer size", cxxopts::value<int>(k)->default_value(std::to_string(k)))
       ("l", "sample size", cxxopts::value<int>(l)->default_value(std::to_string(l)))
       ("s,seed", "random seed", cxxopts::value<std::int64_t>(seed)->default_value(std::to_string(seed)))
       ("h,help", "print this help");
@@ -58,9 +61,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-kmer-generate");
 
   if (k < 2) {
     log->error("incorrect k, must be  k > 1");

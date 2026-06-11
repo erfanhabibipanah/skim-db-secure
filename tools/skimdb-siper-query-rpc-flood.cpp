@@ -42,6 +42,11 @@ void run_query(skim::siper::rpc::SiperDBClient& client, unsigned int l) {
 }
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  mlog->info("SKiMdb ver. {}", skim::version);
+
   std::string addr{"127.0.0.1:50051"};
   std::string cache_dir = "";
   unsigned int nt = 1;
@@ -51,7 +56,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "server address to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
       ("T,threads", "number of query threads", cxxopts::value<unsigned int>(nt)->default_value(std::to_string(nt)))
       ("l", "sample size per thread", cxxopts::value<unsigned int>(l)->default_value(std::to_string(l)))
@@ -67,11 +72,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  mlog->info("SKiMdb ver. {}", skim::version);
 
   if (cache_dir.empty()) {
     mlog->debug("client cache directory not specified! using local directory...");
@@ -92,7 +92,9 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  mlog->info("connection established!");
+  auto [k, s, t] = client.skim_parameters().value();
+
+  mlog->info("connection established, [k={}, s={}, t={}]", k, s, t);
 
   auto start = std::chrono::high_resolution_clock::now();
 

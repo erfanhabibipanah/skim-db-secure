@@ -14,6 +14,12 @@
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-siper-query-rpc");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string addr{"127.0.0.1:50051"};
   std::string cache_dir = "";
   bool verbose = false;
@@ -22,7 +28,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "server address to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
       ("v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))
       ("h,help", "print this help");
@@ -37,12 +43,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-siper-query-rpc");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
 
   if (cache_dir.empty()) {
     log->debug("client cache directory not specified! using local directory...");
@@ -63,7 +63,9 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  log->info("connection established!");
+  auto [k, s, t] = client.skim_parameters().value();
+
+  log->info("connection established, [k={}, s={}, t={}]", k, s, t);
   log->info("ready for queries...");
 
   prompted_input prompt;

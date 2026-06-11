@@ -28,6 +28,12 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-index-create");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string in = "";
   std::string out = "";
   std::string lbl = "";
@@ -44,9 +50,9 @@ auto main(int argc, char* argv[]) -> int {
 
     options.add_options()
       ("i,input", "input file or directory, FASTA format", cxxopts::value<std::string>(in))
-      ("o,output", "database file name", cxxopts::value<std::string>(out))
+      ("o,output", "skim database file name", cxxopts::value<std::string>(out))
       ("l,labels", "label mapping file", cxxopts::value<std::string>(lbl))
-      ("k", "k-mer size", cxxopts::value<std::uint64_t>(k)->default_value(std::to_string(k)))
+      ("k", "kmer size", cxxopts::value<std::uint64_t>(k)->default_value(std::to_string(k)))
       ("s", "syncmer s size", cxxopts::value<std::uint64_t>(s)->default_value(std::to_string(s)))
       ("t", "syncmer t parameter", cxxopts::value<std::uint64_t>(t)->default_value(std::to_string(t)))
       ("S,solver", "RLE optimization solver {none|tsp|minmax}", cxxopts::value<std::string>(S)->default_value(S))
@@ -63,12 +69,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-index-create");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
 
   auto args = std::span(argv + 1, argc - 1) | std::views::transform([](char* s) { return std::string_view{s}; });
   log->debug("cmd: {}", join_as(args, " "));

@@ -19,6 +19,12 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-siper-server-create");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string in = "";
   std::string out = "";
   std::string cache_dir = "";
@@ -33,8 +39,8 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "input skimdb database file", cxxopts::value<std::string>(in))
-      ("o,output", "output file for server state", cxxopts::value<std::string>(out))
+      ("i,input", "input skim database file", cxxopts::value<std::string>(in))
+      ("o,output", "output file for siper server state", cxxopts::value<std::string>(out))
       ("c,cache-dir", "server store directory", cxxopts::value<std::string>(cache_dir))
       ("p,logp", "log of text modulus p", cxxopts::value<unsigned int>(logp)->default_value(std::to_string(logp)))
       ("q,logq", "log of cypher modulus q", cxxopts::value<unsigned int>(logq)->default_value(std::to_string(logq)))
@@ -53,12 +59,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-siper-server-create");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
 
   auto args = std::span(argv + 1, argc - 1) | std::views::transform([](char* s) { return std::string_view{s}; });
   log->debug("cmd: {}", join_as(args, " "));

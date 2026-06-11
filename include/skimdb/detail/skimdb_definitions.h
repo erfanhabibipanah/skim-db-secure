@@ -4,6 +4,7 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <format>
 #include <string>
 #include <string_view>
 
@@ -29,10 +30,7 @@ inline auto operator==(const skimdb_parameters& lhs, const skimdb_parameters& rh
   return ((lhs.k == rhs.k) && (lhs.s == rhs.s) && (lhs.t == rhs.t));
 }
 
-inline auto operator!=(const skimdb_parameters& lhs, const skimdb_parameters& rhs) {
-  return !(lhs == rhs);
-}
-
+inline auto operator!=(const skimdb_parameters& lhs, const skimdb_parameters& rhs) { return !(lhs == rhs); }
 
 #ifdef SKIMDB_64BIT
 inline constexpr bool g_use_64bit = true;
@@ -68,6 +66,16 @@ inline constexpr auto parse_rle_ordering(std::string_view s) -> skimdb_rle_order
 } // namespace skim
 
 namespace std {
+template <>
+struct formatter<skim::skimdb_parameters> {
+  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+
+  template <typename FormatContext>
+  auto format(const skim::skimdb_parameters& p, FormatContext& ctx) const {
+    return format_to(ctx.out(), "k={}\ns={}\nt={}\n", p.k, p.s, p.t);
+  }
+};
+
 constexpr auto to_string(skim::skimdb_rle_ordering o) noexcept -> std::string {
   switch (o) {
   case skim::skimdb_rle_ordering::none:

@@ -17,6 +17,12 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-siper-serve-rpc");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string in{};
   std::string addr{"0.0.0.0:50051"};
   std::string cache_dir = "";
@@ -43,12 +49,6 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-siper-serve-rpc");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
-
   if (cache_dir.empty()) {
     log->debug("server store directory not specified! using local directory...");
     cache_dir = ".";
@@ -61,7 +61,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  log->info("loading siper db from {}...", in);
+  log->info("loading siperdb from {}...", in);
 
   fs::path dir{in};
 

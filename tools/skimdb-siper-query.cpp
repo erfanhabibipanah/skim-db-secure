@@ -18,6 +18,12 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-siper-query");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string in = "";
   std::string cache_dir = "";
   bool verbose = false;
@@ -41,12 +47,6 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-siper-query");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
-
   if (in.empty()) {
     log->error("input database not specified!");
     return -1;
@@ -60,7 +60,7 @@ auto main(int argc, char* argv[]) -> int {
   skim::g_skim_config.siper_client_hint_c_dir = cache_dir;
   skim::g_skim_config.siper_client_metadata_dir = cache_dir;
 
-  log->info("loading siper db from {}...", in);
+  log->info("loading siperdb from {}...", in);
 
   fs::path dir{in};
 
@@ -78,6 +78,9 @@ auto main(int argc, char* argv[]) -> int {
 
   auto server_state = setup.value();
 
+  auto [k, s, t] = server_state.skim_parameters();
+
+  log->info("server ready, [k={}, s={}, t={}]", k, s, t);
   log->info("creating client...");
 
   auto siper_params = server_state.siper_parameters();

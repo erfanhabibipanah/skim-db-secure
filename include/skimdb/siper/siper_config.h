@@ -5,6 +5,7 @@
 #include <stdexcept>
 
 #include <cereal/cereal.hpp>
+#include <string>
 
 #include "skimdb/detail/skimdb_definitions.h"
 
@@ -12,7 +13,7 @@
 struct siper_version_t {
   // *** UPDATE VERSION IF FILE FORMAT CHANGES!!! ***
   inline static constexpr unsigned int major = 0;
-  inline static constexpr unsigned int minor = 3;
+  inline static constexpr unsigned int minor = 4;
   inline static constexpr unsigned int patch = 1;
 
   template <class Archive>
@@ -51,5 +52,11 @@ struct siper_version_t {
     }
   }
 };
+
+namespace std {
+constexpr auto to_string(siper_version_t o) noexcept -> std::string {
+  return to_string(o.major) + '.' + to_string(o.minor) + '.' + to_string(o.patch);
+}
+} // namespace std
 
 #endif // SIPER_CONFIG_H

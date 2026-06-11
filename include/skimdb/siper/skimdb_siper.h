@@ -110,7 +110,15 @@ public:
   }
 
 
-  auto load(const fs::path& path) -> std::expected<void, std::string> {
+  [[nodiscard]] static auto info(const fs::path& path) -> std::expected<
+      std::tuple<std::chrono::system_clock::time_point, siper_version_t, skimdb_parameters, siperdb_parameters>,
+      std::string> {
+    skimdb_parameters skim_config{};
+    siperdb_parameters siper_config{};
+
+    std::int64_t stamp{0};
+    siper_version_t ver;
+
     std::ifstream is{path, std::ios::binary};
 
     if (!is) {
@@ -119,28 +127,65 @@ public:
 
     try {
       cereal::BinaryInputArchive ar(is);
-      siper_version_t ver;
+
       ar(ver,
-         DB_,
-         skim_config_.k,
-         skim_config_.s,
-         skim_config_.t,
-         siper_config_.n,
-         siper_config_.sigma,
-         siper_config_.log_p,
-         siper_config_.log_q,
-         siper_config_.block_size,
-         siper_config_.batch_size,
-         siper_config_.sqrt_N,
-         siper_config_.seed,
-         siper_config_.metadata_hash,
-         siper_config_.hint_c_hash);
+         stamp,
+         skim_config.k,
+         skim_config.s,
+         skim_config.t,
+         siper_config.n,
+         siper_config.sigma,
+         siper_config.log_p,
+         siper_config.log_q,
+         siper_config.block_size,
+         siper_config.batch_size,
+         siper_config.sqrt_N,
+         siper_config.seed,
+         siper_config.metadata_hash,
+         siper_config.hint_c_hash);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("deserialization failed {}", e.what())};
     }
 
-    return {};
+    auto tp = std::chrono::system_clock::time_point{std::chrono::seconds{stamp}};
+
+    return std::make_tuple(tp, ver, skim_config, siper_config);
   }
+
+  auto load(const fs::path& path) -> std::expected<void, std::string> {
+  std::ifstream is{path, std::ios::binary};
+
+  if (!is) {
+    return std::unexpected{"could not open file"};
+  }
+
+  try {
+    cereal::BinaryInputArchive ar(is);
+    siper_version_t ver;
+    std::int64_t stamp{0};
+
+    ar(ver,
+       stamp,
+       skim_config_.k,
+       skim_config_.s,
+       skim_config_.t,
+       siper_config_.n,
+       siper_config_.sigma,
+       siper_config_.log_p,
+       siper_config_.log_q,
+       siper_config_.block_size,
+       siper_config_.batch_size,
+       siper_config_.sqrt_N,
+       siper_config_.seed,
+       siper_config_.metadata_hash,
+       siper_config_.hint_c_hash,
+       DB_);
+  } catch (const std::exception& e) {
+    return std::unexpected{std::format("deserialization failed {}", e.what())};
+  }
+
+  return {};
+}
 
   auto save(const fs::path& path) const -> std::expected<std::uintmax_t, std::string> {
     std::ofstream of{path, std::ios::binary};
@@ -150,10 +195,15 @@ public:
     }
 
     try {
+
+      std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+      std::int64_t stamp{std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count()};
+
       cereal::BinaryOutputArchive ar{of};
       siper_version_t ver;
+
       ar(ver,
-         DB_,
+         stamp,
          skim_config_.k,
          skim_config_.s,
          skim_config_.t,
@@ -166,7 +216,8 @@ public:
          siper_config_.sqrt_N,
          siper_config_.seed,
          siper_config_.metadata_hash,
-         siper_config_.hint_c_hash);
+         siper_config_.hint_c_hash,
+         DB_);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("serialization failed {}", e.what())};
     }

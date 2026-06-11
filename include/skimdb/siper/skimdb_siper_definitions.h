@@ -48,4 +48,28 @@ struct siperdb_query_state {
 
 } // namespace skim::siper
 
+namespace std {
+template <>
+struct formatter<skim::siper::siperdb_parameters> {
+  constexpr auto parse(format_parse_context& ctx) { return ctx.begin(); }
+
+  template <typename FormatContext>
+  auto format(const skim::siper::siperdb_parameters& p, FormatContext& ctx) const {
+    return format_to(ctx.out(),
+                     "n={}\nsigma={}\nlog_p={}\nlog_q={}\nblock_size={}\nbatch_size={}\nsqrt_N={}\nseed={}\n"
+                     "metadata_hash={}\nhint_c_hash={}",
+                     p.n,
+                     p.sigma,
+                     p.log_p,
+                     p.log_q,
+                     p.block_size,
+                     p.batch_size,
+                     p.sqrt_N,
+                     p.seed,
+                     p.metadata_hash,
+                     p.hint_c_hash);
+  }
+};
+} // namespace std
+
 #endif // SKIMDB_SIPER_DEFINITIONS_H

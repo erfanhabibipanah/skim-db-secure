@@ -1,5 +1,6 @@
 #include <bit>
 #include <cmath>
+#include <execution>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -20,6 +21,12 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-index-analyze");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string in{};
 
   try {
@@ -39,12 +46,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-index-analyze");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input not specified!");
@@ -84,10 +85,12 @@ auto main(int argc, char* argv[]) -> int {
     info.emplace_back(rle_info{.length = data[i].length(), .idx = i});
   }
 
-  std::sort(info.begin(), info.end(), [](const auto& a, const auto& b) { return a.length < b.length; });
+  std::sort(
+      std::execution::par, info.begin(), info.end(), [](const auto& a, const auto& b) { return a.length < b.length; });
 
   std::size_t total_length =
       std::accumulate(info.begin(), info.end(), 0ULL, [](std::size_t sum, const auto& p) { return sum + p.length; });
+
   double mean = static_cast<double>(total_length) / info.size();
 
   log->info("RLE length statistics:");
@@ -134,6 +137,7 @@ auto main(int argc, char* argv[]) -> int {
     }
 
     double entropy = 0.0;
+
     if (ones > 0) {
       double p1 = static_cast<double>(ones) / (ones + zeros);
       entropy -= p1 * std::log2(p1);

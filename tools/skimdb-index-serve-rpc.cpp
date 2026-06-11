@@ -27,6 +27,12 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-index-serve-rpc");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string in{};
   std::string addr{"0.0.0.0:50051"};
   unsigned int nthreads = 8;
@@ -35,7 +41,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "database to serve", cxxopts::value<std::string>(in))
+      ("i,input", "skim database to serve", cxxopts::value<std::string>(in))
       ("a,address", "address [network:port] to serve on", cxxopts::value<std::string>(addr)->default_value(addr))
       ("T,threads", "number of server threads", cxxopts::value<unsigned int>(nthreads)->default_value(std::to_string(nthreads)))
       ("h,help", "print this help");
@@ -50,12 +56,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-index-serve-rpc");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input database not specified!");

@@ -25,15 +25,12 @@ auto main(int argc, char* argv[]) -> int {
   log->info("SKiMdb ver. {}", skim::version);
 
   std::string in = "";
-  bool update_batch_size = false;
-  unsigned int batch_size = 0;
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
       ("i,input", "input siper database file", cxxopts::value<std::string>(in))
-      ("b,batch-size","new batch size for siper database", cxxopts::value<unsigned int>(batch_size))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -42,8 +39,6 @@ auto main(int argc, char* argv[]) -> int {
       std::cout << options.help() << std::endl;
       return 0;
     }
-
-    update_batch_size = opt_res.count("batch-size") > 0;
   } catch (const cxxopts::exceptions::exception& e) {
     std::cerr << e.what() << std::endl;
     return -1;
@@ -61,32 +56,21 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  log->info("loading siperdb from {}...", in);
-
-  skim::siper::siper_server_state state;
-  auto res = state.load(dir);
+  auto res = skim::siper::siper_server_state::info(dir);
 
   if (!res) {
-    log->error("could not load {}, error: {}!", in, res.error());
+    log->error("could not load {}, error: {}", in, res.error());
     return -1;
   }
 
-  if (update_batch_size) {
-    log->info("previous batch size is {}", state.siper_parameters().batch_size);
-    state.update_batch_size(batch_size);
-    log->info("batch size set to {}", state.siper_parameters().batch_size);
+  auto [tp, ver, skim_config, siper_config] = res.value();
 
-    log->info("saving siperdb to {}...", in);
-
-    auto save_res = state.save(dir);
-
-    if (!save_res) {
-      log->error("could not save {}, error: {}!", in, save_res.error());
-      return -1;
-    }
-  }
-
-  log->info("done!");
+  auto zt = std::chrono::zoned_time{std::chrono::current_zone(), std::chrono::round<std::chrono::seconds>(tp)};
+  log->info("database info:\ntimestamp={}version={}\n{}{}",
+            std::format("{:%Y-%m-%dT%H:%M:%S%Ez}\n", zt),
+            std::to_string(ver),
+            skim_config,
+            siper_config);
 
   _Exit(0);
 }

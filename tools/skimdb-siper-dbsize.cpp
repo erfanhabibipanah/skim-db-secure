@@ -19,6 +19,12 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-siper-dbsize");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string in = "";
   unsigned int block_size = 1;
 
@@ -26,7 +32,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "input database file", cxxopts::value<std::string>(in))
+      ("i,input", "input skim database file", cxxopts::value<std::string>(in))
       ("b,block-size", "number of runs per block", cxxopts::value<unsigned int>(block_size)->default_value(std::to_string(block_size)))
       ("h,help", "print this help");
 
@@ -40,12 +46,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-siper-dbsize");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
 
   if (block_size == 0) {
     log->error("block size must be at least 1");

@@ -25,13 +25,19 @@
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-index-query-rpc");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string addr{"127.0.0.1:50051"};
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "server address to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -44,12 +50,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-index-query-rpc");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
 
   log->info("connecting to {}...", addr);
 

@@ -64,6 +64,11 @@ void output_thread(future_queue<query_item>& fq,
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  mlog->info("SKiMdb ver. {}", skim::version);
+
   std::string addr{"127.0.0.1:50051"};
   std::string cache_dir = "";
   int bt = std::thread::hardware_concurrency() * 2;
@@ -75,7 +80,7 @@ auto main(int argc, char* argv[]) -> int {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("a,address", "server to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
+      ("a,address", "server address to connect to", cxxopts::value<std::string>(addr)->default_value(addr))
       ("c,cache-dir", "directory for client cached data", cxxopts::value<std::string>(cache_dir))
       ("b,bthreads", "maximum number of batch threads to run concurrently", cxxopts::value<int>(bt)->default_value(std::to_string(bt)))
       ("W,wait", "batch timeout in milliseconds", cxxopts::value<unsigned int>(timeout)->default_value(std::to_string(timeout)))
@@ -93,11 +98,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  mlog->info("SKiMdb ver. {}", skim::version);
 
   prompted_input prompt;
   std::string q{};
@@ -126,7 +126,9 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  mlog->info("connection established!");
+  auto [k, s, t] = client.skim_parameters().value();
+
+  mlog->info("connection established, [k={}, s={}, t={}]", k, s, t);
 
   future_queue<query_item> kmer_queue;
   std::jthread consumer{output_thread, std::ref(kmer_queue), std::ref(client), verbose};

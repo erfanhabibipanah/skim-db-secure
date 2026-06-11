@@ -27,13 +27,19 @@ namespace fs = std::filesystem;
 
 
 auto main(int argc, char* argv[]) -> int {
+  spdlog::cfg::load_env_levels();
+  auto log = spdlog::stdout_color_mt("skimdb-index-query");
+  skim::g_log = spdlog::stdout_color_mt("skimdb");
+
+  log->info("SKiMdb ver. {}", skim::version);
+
   std::string in{};
 
   try {
     cxxopts::Options options(argv[0]);
 
     options.add_options()
-      ("i,input", "input database file", cxxopts::value<std::string>(in))
+      ("i,input", "input skim database file", cxxopts::value<std::string>(in))
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -46,12 +52,6 @@ auto main(int argc, char* argv[]) -> int {
     std::cerr << e.what() << std::endl;
     return -1;
   }
-
-  spdlog::cfg::load_env_levels();
-  auto log = spdlog::stdout_color_mt("skimdb-index-query");
-  skim::g_log = spdlog::stdout_color_mt("skimdb");
-
-  log->info("SKiMdb ver. {}", skim::version);
 
   if (in.empty()) {
     log->error("input not specified!");

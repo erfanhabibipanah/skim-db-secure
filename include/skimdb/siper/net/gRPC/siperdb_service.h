@@ -130,7 +130,7 @@ public:
       return grpc::Status{grpc::StatusCode::INTERNAL, ans.error()};
     }
 
-    auto ans_data = (*ans).span();
+    auto ans_data = ans->span();
     reply->mutable_ans()->Assign(ans_data.begin(), ans_data.end());
 
     return grpc::Status::OK;
