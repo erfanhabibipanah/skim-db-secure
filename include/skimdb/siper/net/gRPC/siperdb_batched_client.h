@@ -299,7 +299,7 @@ private:
     }
 
     std::vector<std::uint64_t> ans_data(reply.ans().begin(), reply.ans().end());
-    siper_matrix ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
+    siper_matrix<std::uint64_t> ans_mat{std::move(ans_data), pir_params.sqrt_N, pir_params.log_q};
 
     for (auto& fragment : batch.requests()) {
       auto dst = std::span(fragment.parent_req->result).subspan(fragment.offset, fragment.len);

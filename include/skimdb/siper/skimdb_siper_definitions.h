@@ -42,8 +42,8 @@ struct siperdb_parameters {
 };
 
 struct siperdb_query_state {
-  siper_matrix<> s_vec;  // secret vector
-  siper_matrix<> qu_vec; // encrypted query vector
+  siper_matrix<std::uint64_t> s_vec;  // secret vector
+  siper_matrix<std::uint64_t> qu_vec; // encrypted query vector
 };
 
 } // namespace skim::siper

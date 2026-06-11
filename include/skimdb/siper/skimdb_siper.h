@@ -84,7 +84,7 @@ public:
       return std::unexpected{"invalid query matrix dimensions"};
     }
 
-    siper_matrix ans{siper_config_.sqrt_N, siper_config_.log_q};
+    siper_matrix<std::uint64_t> ans{siper_config_.sqrt_N, siper_config_.log_q};
     auto dst = ans.span();
 
     std::size_t blocks_per_col = siper_config_.sqrt_N / siper_config_.block_size;
@@ -274,7 +274,7 @@ private:
 
   siper_common_rng_t rng{seed};
 
-  siper_matrix A{sqrt_N, n, log_q};
+  siper_matrix<std::uint64_t> A{sqrt_N, n, log_q};
   A.fill(rng);
 
   // compute hint_c = DB * A
@@ -373,11 +373,11 @@ class siper_client_state {
 public:
   using rng_type = siper_common_rng_t;
 
-  explicit siper_client_state(skimdb_parameters skim_config,
-                              skimdb_metadata skim_metadata,
-                              siperdb_parameters siper_config,
-                              siper_matrix<> hint_c,
-                              std::uint64_t seed = std::random_device{}())
+  siper_client_state(skimdb_parameters skim_config,
+                     skimdb_metadata skim_metadata,
+                     siperdb_parameters siper_config,
+                     siper_matrix<std::uint64_t> hint_c,
+                     std::uint64_t seed = std::random_device{}())
       : skim_config_{std::move(skim_config)}, skim_metadata_{std::move(skim_metadata)},
         siper_config_{std::move(siper_config)}, A_{siper_config_.sqrt_N, siper_config_.n, siper_config_.log_q},
         hint_c_{std::move(hint_c)}, main_seed_{seed} {
@@ -462,11 +462,11 @@ public:
 
     auto& rng = m_get_rng_();
 
-    siper_matrix s{siper_config_.n, siper_config_.log_q};
+    siper_matrix<std::uint64_t> s{siper_config_.n, siper_config_.log_q};
     s.fill(rng);
 
     dgpp::uniform_rejection dist{siper_config_.sigma};
-    siper_matrix e{siper_config_.sqrt_N, siper_config_.log_q};
+    siper_matrix<std::uint64_t> e{siper_config_.sqrt_N, siper_config_.log_q};
     e.fill(rng, dist);
 
     std::size_t delta = 1ull << (siper_config_.log_q - siper_config_.log_p);
@@ -484,14 +484,14 @@ public:
 
     auto& rng = m_get_rng_();
 
-    siper_matrix s{siper_config_.batch_size, siper_config_.n, siper_config_.log_q};
+    siper_matrix<std::uint64_t> s{siper_config_.batch_size, siper_config_.n, siper_config_.log_q};
     s.fill(rng);
 
     dgpp::uniform_rejection dist{siper_config_.sigma};
-    siper_matrix e{siper_config_.batch_size, siper_config_.sqrt_N, siper_config_.log_q};
+    siper_matrix<std::uint64_t> e{siper_config_.batch_size, siper_config_.sqrt_N, siper_config_.log_q};
     e.fill(rng, dist);
 
-    siper_matrix qu{siper_config_.batch_size, siper_config_.sqrt_N, siper_config_.log_q};
+    siper_matrix<std::uint64_t> qu{siper_config_.batch_size, siper_config_.sqrt_N, siper_config_.log_q};
 
     for (std::size_t i = 0; i < siper_config_.batch_size; ++i) {
       mat_vec(A_, s.row(i), qu.row(i), siper_config_.log_q);
@@ -509,7 +509,8 @@ public:
   }
 
 
-  void recover(const siper_matrix<>& ans,
+  template <typename T>
+  void recover(const siper_matrix<T>& ans,
                const siperdb_query_state& qu,
                std::span<std::uint16_t> rle,
                std::size_t i_row,
@@ -555,8 +556,8 @@ private:
 
   siperdb_parameters siper_config_; // siper parameters
 
-  siper_matrix<> A_;      // matrix A
-  siper_matrix<> hint_c_; // hint matrix from server
+  siper_matrix<std::uint64_t> A_;      // matrix A
+  siper_matrix<std::uint64_t> hint_c_; // hint matrix from server
 
   std::uint64_t main_seed_;
 };
@@ -598,7 +599,7 @@ load_client(skimdb_parameters skim_config, siperdb_parameters siper_config, std:
 
   g_log->debug("loading hint_c from {}...", hint_c_path.string());
 
-  siper_matrix hint_c;
+  siper_matrix<std::uint64_t> hint_c;
 
   {
     std::ifstream is{hint_c_path, std::ios::binary};

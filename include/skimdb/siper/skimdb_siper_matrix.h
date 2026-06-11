@@ -19,7 +19,7 @@
 namespace skim::siper {
 
 // implements matrices (and vectors) with modular arithmetic
-template <typename T = std::uint64_t>
+template <typename T>
 class siper_matrix {
   static_assert(std::is_same_v<T, std::uint64_t> || std::is_same_v<T, const std::uint64_t>);
 
@@ -272,7 +272,7 @@ inline auto mat_vec(const skimdb_matrix& db, std::span<const std::uint64_t> vec,
   LogFun lf{"mat_vec(skimdb_matrix, ...)", spdlog::level::debug};
 
   auto [db_r, _] = db.dimensions();
-  siper_matrix out{db_r, log_q};
+  siper_matrix<std::uint64_t> out{db_r, log_q};
 
   partitioned_mat_vec(db, vec, out.span(), log_q, 0, db_r);
 
@@ -311,7 +311,7 @@ inline auto mat_vec(const siper_matrix<T>& mat, const siper_matrix<U>& vec, std:
   LogFun lf{"mat_vec(siper_matrix, ...)", spdlog::level::debug};
 
   auto [m_rows, _] = mat.dimensions();
-  siper_matrix out{m_rows, log_q};
+  siper_matrix<std::uint64_t> out{m_rows, log_q};
 
   mat_vec(mat, vec.span(), out.span(), log_q);
 
@@ -337,7 +337,7 @@ inline auto sub_mat_vec_rows(const siper_matrix<T>& ans,
 
   const auto h_data = hint.span();
 
-  siper_matrix out{n_rows, log_q};
+  siper_matrix<std::uint64_t> out{n_rows, log_q};
 
 #pragma omp parallel for schedule(static)
   for (std::size_t i = 0; i < n_rows; ++i) {
@@ -366,7 +366,7 @@ inline auto mat_mul(const skimdb_matrix& db, const siper_matrix<T>& mat_a, std::
   auto [a_r, a_c] = mat_a.dimensions();
 
   auto trans_a = mat_a.transpose();
-  siper_matrix out{a_c, db_r, log_q};
+  siper_matrix<std::uint64_t> out{a_c, db_r, log_q};
 
   for (std::size_t i = 0; i < a_c; ++i) {
     partitioned_mat_vec(db, trans_a.row(i), out.row(i), log_q, 0, db_r);

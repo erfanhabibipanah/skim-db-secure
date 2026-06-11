@@ -179,7 +179,7 @@ public:
       }
 
       std::vector<std::uint64_t> ans_data{reply.ans().begin(), reply.ans().end()};
-      siper_matrix ans_mat{std::move(ans_data), siper_parameters.sqrt_N, siper_parameters.log_q};
+      siper_matrix<std::uint64_t> ans_mat{std::move(ans_data), siper_parameters.sqrt_N, siper_parameters.log_q};
 
       std::size_t count = std::min(len - offset, siper_parameters.sqrt_N - row);
       state_->recover(ans_mat, query_state, rle_span.subspan(offset, count), row, count, 0);
