@@ -10,3 +10,5 @@ local/
 *.csv
 generate_report.py
 build.log
+__pycache__/
+*.pyc

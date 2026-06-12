@@ -1,0 +1,14 @@
+This directory contains a vendored copy of the "estimator" package from the
+Lattice Estimator project:
+
+    https://github.com/malb/lattice-estimator
+
+Upstream commit is recorded in UPSTREAM_COMMIT. Only the estimator/ package is
+copied here; refresh it with scripts/update-estimator.sh.
+
+The Lattice Estimator is released under the LGPLv3+ license (see the upstream
+repository). It is used here only to estimate LWE security for parameter
+selection. All credit for the estimator goes to its authors (Martin Albrecht
+and contributors).
+
+If you use it in published work, cite it as the upstream README requests.
