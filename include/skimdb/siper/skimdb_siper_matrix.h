@@ -252,7 +252,10 @@ void partitioned_mat_vec(const skimdb_matrix& mat,
   const uint64_t* __restrict__ v = vec.data();
   uint64_t* __restrict__ d = dst.data();
 
-#pragma omp parallel for schedule(static)
+  // we use taskloop to account for parallelism from multiple gRPC service calls
+#pragma omp parallel
+#pragma omp single
+#pragma omp taskloop
   for (std::size_t i = 0; i < count; ++i) {
     const auto* row = s + i * m_cols;
     uint64_t sum = 0;
