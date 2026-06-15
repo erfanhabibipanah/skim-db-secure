@@ -30,6 +30,10 @@
 #include "skimdb_siper_matrix.h"
 #include "skimdb_siper_util.h"
 
+#ifdef SKIMDB_USE_RLWE
+#include "skimdb_siper_rlwe.h"
+#endif
+
 
 namespace skim::siper {
 
@@ -419,6 +423,183 @@ private:
   return siper_server_state{std::move(DB), std::move(skim_conf), std::move(siper_conf)};
 }
 
+#ifdef SKIMDB_USE_RLWE
+[[nodiscard]] auto make_server_rlwe(skimdb&& db,
+                               std::size_t log_p,
+                               std::size_t log_q,
+                               std::uint64_t poly_degree,
+                               std::size_t block_size = 1,
+                               std::size_t batch_size = 1,
+                               std::uint64_t seed = std::random_device{}())
+    -> std::expected<siper_server_state, std::string> {
+  LogFun lf{"make_server(...)"};
+
+  if (log_p < 16 || log_p >= 32) {
+    return std::unexpected{"unsupported plaintext modulus"};
+  }
+  if (log_q < 32 || log_q > 64) {
+    return std::unexpected{"unsupported ciphertext modulus"};
+  }
+  if (poly_degree == 0 || (poly_degree & (poly_degree - 1)) != 0) {
+    return std::unexpected{"poly_degree must be a power of 2"};
+  }
+
+  auto [k, s, t] = db.parameters();
+  auto db_parts = std::move(db).explode();
+
+  auto kmers = db_parts.data.size();
+
+  if (kmers == 0) {
+    return std::unexpected{"empty skimdb index"};
+  }
+
+  // need to store the starting position and length of each RLE in the matrix (in terms of blocks)
+  // encoding using uint64_t with lower 12 bits for length and upper 52 bits for starting positions
+  // allows for up to 4095 blocks per RLE and a matrix with up to 2^52 blocks, which should be
+  // sufficient for our use case.
+
+  g_log->info("skimdb contains {} kmers, computing sqrt N...", kmers);
+
+  std::vector<std::uint16_t> rle_lengths(kmers, 0);
+  std::size_t max_len = 0;
+
+#pragma omp parallel for schedule(static) reduction(max : max_len)
+  for (std::size_t i = 0; i < kmers; ++i) {
+    std::size_t rle_len = (db_parts.data[i].length() + block_size - 1) / block_size;
+
+    max_len = std::max(max_len, rle_len);
+    rle_lengths[i] = static_cast<std::uint16_t>(rle_len);
+  }
+
+  if (max_len > (1 << index::g_len_bits) - 1) {
+    return std::unexpected{"RLE length exceeds maximum supported length"};
+  }
+
+  std::vector<std::uint64_t> kmer_metadata(kmers, 0);
+  std::uint64_t run_sum = 0;
+
+  std::exclusive_scan(
+      std::execution::par, rle_lengths.begin(), rle_lengths.end(), kmer_metadata.begin(), std::uint64_t{0});
+  run_sum = kmer_metadata.back() + rle_lengths.back();
+
+#pragma omp parallel for schedule(guided)
+  for (std::size_t i = 0; i < kmers; ++i) {
+    kmer_metadata[i] = index::pack(kmer_metadata[i], rle_lengths[i]);
+  }
+
+  auto sqrt_N = min_sqrt_N(run_sum, block_size);
+
+  g_log->info("skimdb contains {} total runs, requires matrix with sqrt(N) = {} for block size {}",
+              run_sum * block_size,
+              sqrt_N,
+              block_size);
+
+  g_log->info("packing RLE encodings into matrix format...");
+
+  auto DB = populate_skimdb_matrix(db_parts.data, kmer_metadata, sqrt_N, block_size);
+
+  std::uint64_t p_mod = 1ULL << log_p;
+
+  rlwe::RLWEContext ctx(poly_degree, log_q, p_mod);
+  rlwe::RLWEKey key(ctx);
+
+  siper_common_rng_t rng{seed};
+  auto [a_seeds, num_seeds] = rlwe::gen_a_seeds(rng, sqrt_N, poly_degree);
+
+  g_log->info("RLWE: num_seeds = {}", num_seeds);
+
+  // compute hint_c = DB * A via NTT
+  g_log->info("precomputing RLWE hint matrix via NTT, be patient...");
+  auto hint_c = rlwe::compute_hint_ntt(ctx, key, DB, a_seeds, num_seeds, sqrt_N);
+
+  g_log->info("saving client metadata...");
+  std::string metadata_hash;
+
+  {
+    std::string rand_name = std::to_string(std::random_device{}());
+    fs::path temp_metadata_path = fs::path(g_skim_config.siper_server_store_dir) / rand_name;
+
+    {
+      std::ofstream os{temp_metadata_path, std::ios::binary};
+      if (!os) {
+        return std::unexpected{"could not create client metadata"};
+      }
+
+      cereal::BinaryOutputArchive archive{os};
+      archive(db_parts.index, kmer_metadata, db_parts.labels);
+    }
+
+    auto hash_res = sha256_file(temp_metadata_path);
+
+    if (!hash_res) {
+      return std::unexpected{hash_res.error()};
+    }
+
+    metadata_hash = "meta." + hash_res.value();
+
+    std::error_code ec;
+    fs::rename(temp_metadata_path, fs::path(g_skim_config.siper_server_store_dir) / metadata_hash, ec);
+    if (ec) {
+      return std::unexpected{"could not rename client metadata"};
+    }
+
+    g_log->info("client metadata generated with hash {}", metadata_hash);
+  }
+
+  g_log->info("saving hint_c...");
+  std::string hint_c_hash;
+
+  {
+    std::string rand_name = std::to_string(std::random_device{}());
+    fs::path temp_metadata_path = fs::path(g_skim_config.siper_server_store_dir) / rand_name;
+
+    {
+      std::ofstream os{temp_metadata_path, std::ios::binary};
+      if (!os) {
+        return std::unexpected{"could not create hint_c"};
+      }
+
+      cereal::BinaryOutputArchive archive{os};
+      archive(hint_c);
+    }
+
+    auto hash_res = sha256_file(temp_metadata_path);
+
+    if (!hash_res) {
+      return std::unexpected{hash_res.error()};
+    }
+
+    hint_c_hash = "hint." + hash_res.value();
+
+    std::error_code ec;
+    fs::rename(temp_metadata_path, fs::path(g_skim_config.siper_server_store_dir) / hint_c_hash, ec);
+
+    if (ec) {
+      return std::unexpected{"could not rename hint_c"};
+    }
+
+    g_log->info("hint_c generated with hash {}", hint_c_hash);
+  }
+
+  g_log->info("constructing server state...");
+
+  skimdb_parameters skim_conf{.k = k, .s = s, .t = t};
+
+  siperdb_parameters siper_conf{.n = poly_degree,
+                                .sigma = 0.0,
+                                .log_p = log_p,
+                                .log_q = log_q,
+                                .block_size = block_size,
+                                .batch_size = batch_size,
+                                .sqrt_N = sqrt_N,
+                                .seed = seed,
+                                .metadata_hash = metadata_hash,
+                                .hint_c_hash = hint_c_hash};
+
+  return siper_server_state{std::move(DB), std::move(skim_conf), std::move(siper_conf)};
+}
+#endif
+
 
 class siper_client_state {
 public:
@@ -435,6 +616,19 @@ public:
     siper_common_rng_t rng{siper_config_.seed};
     A_.fill(rng);
   }
+
+
+#ifdef SKIMDB_USE_RLWE
+  void init_rlwe(std::uint64_t poly_degree, std::uint64_t plaintext_mod) {
+    rlwe_ctx_ = std::make_unique<rlwe::RLWEContext>(poly_degree, siper_config_.log_q, plaintext_mod);
+    rlwe_key_ = std::make_unique<rlwe::RLWEKey>(*rlwe_ctx_);
+
+    siper_common_rng_t seed_rng{siper_config_.seed};
+    auto [seeds, num_seeds] = rlwe::gen_a_seeds(seed_rng, siper_config_.sqrt_N, poly_degree);
+    a_seeds_ = std::move(seeds);
+    num_a_seeds_ = num_seeds;
+  }
+#endif
 
 
   [[nodiscard]] auto skim_parameters() const -> skimdb_parameters { return skim_config_; }
@@ -578,6 +772,37 @@ public:
     }
   }
 
+#ifdef SKIMDB_USE_RLWE
+  [[nodiscard]] auto prepare_query_hybrid(std::size_t i_col) -> siperdb_query_state {
+    LogFun lf{"siper_client_state::prepare_query_hybrid(...)", spdlog::level::debug};
+
+    std::vector<std::uint64_t> pt_data(siper_config_.sqrt_N, 0);
+    pt_data[i_col] = 1;
+
+    auto qu = rlwe::prepare_query_hybrid(
+        *rlwe_ctx_, *rlwe_key_, a_seeds_, num_a_seeds_, pt_data.data(), siper_config_.sqrt_N);
+
+    auto s = rlwe_key_->extract_lwe_key();
+
+    return siperdb_query_state{.s_vec = std::move(s), .qu_vec = std::move(qu)};
+  }
+
+  void recover_hybrid(const siper_matrix<std::uint64_t>& ans,
+                      const siperdb_query_state& qu,
+                      std::span<std::uint16_t> rle,
+                      std::size_t i_row,
+                      std::size_t count) {
+    LogFun lf{"siper_client_state::recover_hybrid(...)", spdlog::level::debug};
+
+    auto d = rlwe::recover_hybrid(*rlwe_ctx_, ans, hint_c_, qu.s_vec, siper_config_.log_q, i_row, count);
+    auto d_data = d.span();
+
+    for (std::size_t i = 0; i < count && i < d_data.size(); ++i) {
+      rle[i] = static_cast<std::uint16_t>(d_data[i] & 0xFFFFull);
+    }
+  }
+#endif
+
   [[nodiscard]] auto interpret(std::vector<std::uint16_t> src) -> std::generator<const std::string&> {
     LogFun lf{"siper_client_state::interpret(...)", spdlog::level::debug};
 
@@ -611,6 +836,13 @@ private:
   siper_matrix<std::uint64_t> hint_c_; // hint matrix from server
 
   std::uint64_t main_seed_;
+
+#ifdef SKIMDB_USE_RLWE
+  std::unique_ptr<rlwe::RLWEContext> rlwe_ctx_;
+  std::unique_ptr<rlwe::RLWEKey> rlwe_key_;
+  std::vector<std::uint64_t> a_seeds_;
+  std::uint64_t num_a_seeds_ = 0;
+#endif
 };
 
 

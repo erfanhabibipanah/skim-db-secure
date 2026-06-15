@@ -34,6 +34,7 @@ auto main(int argc, char* argv[]) -> int {
   unsigned int batch_size = 1;
   std::size_t n = 1923;
   double sigma = 271.65;
+  bool use_rlwe = false;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -47,6 +48,9 @@ auto main(int argc, char* argv[]) -> int {
       ("b,batch-size", "batch size", cxxopts::value<unsigned int>(batch_size)->default_value(std::to_string(batch_size)))
       ("n,secret-size", "secret size", cxxopts::value<std::size_t>(n)->default_value(std::to_string(n)))
       ("s,sigma", "variance of error distribution", cxxopts::value<double>(sigma)->default_value(std::format("{:.2f}", sigma)))
+#ifdef SKIMDB_USE_RLWE
+      ("rlwe", "use Ring-LWE hybrid mode (n becomes poly_degree)", cxxopts::value<bool>(use_rlwe)->default_value("false"))
+#endif
       ("h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -99,7 +103,15 @@ auto main(int argc, char* argv[]) -> int {
 
   log->info("building siper server state...");
 
-  auto setup = skim::siper::make_server(std::move(db), logp, logq, n, sigma, block_size, batch_size);
+  auto setup = [&]() {
+#ifdef SKIMDB_USE_RLWE
+    if (use_rlwe) {
+      std::uint64_t poly_degree = n;
+      return skim::siper::make_server_rlwe(std::move(db), logp, logq, poly_degree, block_size, batch_size);
+    }
+#endif
+    return skim::siper::make_server(std::move(db), logp, logq, n, sigma, block_size, batch_size);
+  }();
 
   if (!setup) {
     log->error("could not setup server state: {}", setup.error());

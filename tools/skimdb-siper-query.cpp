@@ -27,6 +27,7 @@ auto main(int argc, char* argv[]) -> int {
   std::string in = "";
   std::string cache_dir = "";
   bool verbose = false;
+  bool use_rlwe = false;
 
   try {
     cxxopts::Options options(argv[0]);
@@ -34,6 +35,9 @@ auto main(int argc, char* argv[]) -> int {
     options.add_options()("i,input", "siper database to query", cxxopts::value<std::string>(in))(
         "c,cache-dir", "directory for client metadata", cxxopts::value<std::string>(cache_dir))(
         "v,verbose", "print recovered labels", cxxopts::value<bool>(verbose)->default_value(std::to_string(verbose)))(
+#ifdef SKIMDB_USE_RLWE
+        "rlwe", "use Ring-LWE hybrid query mode", cxxopts::value<bool>(use_rlwe)->default_value("false"))(
+#endif
         "h,help", "print this help");
 
     auto opt_res = options.parse(argc, argv);
@@ -91,7 +95,15 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  auto client_state = client_setup.value();
+  auto client_state = std::move(client_setup.value());
+
+#ifdef SKIMDB_USE_RLWE
+  if (use_rlwe) {
+    std::uint64_t poly_degree = siper_params.n;
+    std::uint64_t p_mod = 1ULL << siper_params.log_p;
+    client_state.init_rlwe(poly_degree, p_mod);
+  }
+#endif
 
   log->info("client ready for queries...");
 
@@ -132,7 +144,12 @@ auto main(int argc, char* argv[]) -> int {
     for (std::size_t i = 0; i < n_queries; ++i) {
       log->debug("submitting query ({} of {})...", i + 1, n_queries);
 
+#ifdef SKIMDB_USE_RLWE
+      auto query_state =
+          use_rlwe ? client_state.prepare_query_hybrid(col + i) : client_state.prepare_query(col + i);
+#else
       auto query_state = client_state.prepare_query(col + i);
+#endif
       auto res = server_state.answer(query_state.qu_vec);
 
       if (!res) {
@@ -146,7 +163,15 @@ auto main(int argc, char* argv[]) -> int {
       log->debug("recovering result ({} of {})...", i + 1, n_queries);
 
       std::size_t count = std::min(len - offset, siper_params.sqrt_N - row);
+#ifdef SKIMDB_USE_RLWE
+      if (use_rlwe) {
+        client_state.recover_hybrid(ans, query_state, rle_span.subspan(offset, count), row, count);
+      } else {
+        client_state.recover(ans, query_state, rle_span.subspan(offset, count), row, count, 0);
+      }
+#else
       client_state.recover(ans, query_state, rle_span.subspan(offset, count), row, count, 0);
+#endif
 
       offset += count;
       row = 0; // subsequent queries (if any) will start from the top of the next column
