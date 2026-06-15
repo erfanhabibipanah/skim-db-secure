@@ -25,7 +25,9 @@ namespace index {
 inline constexpr std::uint64_t g_len_bits = 12;
 inline constexpr std::uint64_t g_len_mask = (1ULL << g_len_bits) - 1;
 
-inline auto pack(std::uint64_t start, std::uint16_t len) noexcept -> std::uint64_t { return (start << g_len_bits) | len; }
+inline auto pack(std::uint64_t start, std::uint16_t len) noexcept -> std::uint64_t {
+  return (start << g_len_bits) | len;
+}
 
 inline auto unpack_start(std::uint64_t v) noexcept -> std::uint64_t { return v >> g_len_bits; }
 
@@ -48,8 +50,10 @@ auto populate_skimdb_matrix(const std::vector<skim::detail::encoding>& data,
   std::size_t size = sqrt_N * sqrt_N;
   skimdb_matrix::storage_type packed_data(size);
 
+  std::size_t kmers{data.size()};
+
 #pragma omp parallel for schedule(guided)
-  for (std::size_t i = 0; i < size; ++i) {
+  for (std::size_t i = 0; i < kmers; ++i) {
     auto start_idx = index::unpack_start(metadata[i]);
     auto src = data[i].span();
 
