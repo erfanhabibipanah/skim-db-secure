@@ -46,6 +46,7 @@ auto populate_skimdb_matrix(const std::vector<skim::detail::encoding>& data,
                             std::size_t sqrt_N,
                             std::size_t block_size) -> skimdb_matrix {
   std::size_t size = sqrt_N * sqrt_N;
+
   auto packed_data = std::make_unique_for_overwrite<std::uint16_t[]>(size);
   std::memset(packed_data.get(), 0, size * sizeof(std::uint16_t));
 

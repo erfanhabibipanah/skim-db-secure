@@ -235,8 +235,11 @@ public:
 
   template <typename Archive>
   void load(Archive& ar) {
+    LogFun lf{"skimdb_matrix::load(...)", spdlog::level::trace};
     ar(block_size_, sqrt_N_, size_);
+    g_log->trace("allocate memory...");
     data_ = std::make_unique_for_overwrite<std::uint16_t[]>(size_);
+    g_log->trace("read matrix...");
     ar(cereal::binary_data(data_.get(), size_ * sizeof(std::uint16_t)));
   }
 
