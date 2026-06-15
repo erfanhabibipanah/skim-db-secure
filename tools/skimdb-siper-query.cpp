@@ -91,7 +91,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  auto client_state = client_setup.value();
+  auto& client_state = client_setup.value();
 
   log->info("client ready for queries...");
 
@@ -141,7 +141,7 @@ auto main(int argc, char* argv[]) -> int {
         break;
       }
 
-      auto ans = res.value();
+      const auto& ans = res.value();
 
       log->debug("recovering result ({} of {})...", i + 1, n_queries);
 

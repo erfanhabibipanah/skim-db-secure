@@ -56,6 +56,11 @@ public:
   siper_matrix(std::span<T> data, std::size_t nrow, std::size_t ncol, std::size_t log_mod)
       : siper_matrix(data.data(), nrow, ncol, log_mod) {}
 
+  siper_matrix(const siper_matrix&) = delete;
+  auto operator=(const siper_matrix&) noexcept -> siper_matrix& = delete;
+
+  siper_matrix(siper_matrix&&) = default;
+  auto operator=(siper_matrix&&) noexcept -> siper_matrix& = default;
 
   operator siper_matrix<const std::uint64_t>() const {
     return siper_matrix<const std::uint64_t>(data_, nrow_, ncol_, log_mod_);
@@ -201,6 +206,7 @@ public:
   skimdb_matrix(std::unique_ptr<std::uint16_t[]>&& data, std::size_t size, std::size_t block_size, std::size_t sqrt_N)
       : data_{std::move(data)}, size_{size}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
 
+
   skimdb_matrix(const skimdb_matrix&) = delete;
   void operator=(const skimdb_matrix&) = delete;
 
@@ -247,53 +253,10 @@ public:
 private:
   std::unique_ptr<std::uint16_t[]> data_; // row-major flat storage (uninitialized)
   std::size_t size_{0};
-  std::size_t block_size_{0};
-  std::size_t sqrt_N_{0};
+  std::size_t block_size_{0}; // number of runs stored in each block
+  std::size_t sqrt_N_{0};     // runs per row and column, should be multiple of block_size
 };
 
-  /*
-class skimdb_matrix {
-public:
-  explicit skimdb_matrix() = default;
-
-  skimdb_matrix(std::vector<std::uint16_t>&& data, std::size_t block_size, std::size_t sqrt_N)
-      : data_{std::move(data)}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
-
-
-  [[nodiscard]] auto span() noexcept -> std::span<std::uint16_t> { return data_; }
-
-  [[nodiscard]] auto span() const noexcept -> std::span<const std::uint16_t> { return data_; }
-
-
-  [[nodiscard]] auto constexpr block_size() const -> std::size_t { return block_size_; }
-
-  [[nodiscard]] auto constexpr dimensions() const -> std::tuple<std::size_t, std::size_t> {
-    return std::make_tuple(sqrt_N_, sqrt_N_);
-  }
-
-
-  template <typename Archive>
-  void save(Archive& ar) const {
-    std::size_t size{data_.size()};
-    ar(block_size_, sqrt_N_, size);
-    ar(cereal::binary_data(data_.data(), size * sizeof(std::uint16_t)));
-  }
-
-  template <typename Archive>
-  void load(Archive& ar) {
-    std::size_t size{0};
-    ar(block_size_, sqrt_N_, size);
-    data_.resize(size);
-    ar(cereal::binary_data(data_.data(), size * sizeof(std::uint16_t)));
-  }
-
-
-private:
-  std::vector<std::uint16_t> data_; // row major flat storage
-  std::size_t block_size_{0};       // number of runs stored in each block
-  std::size_t sqrt_N_{0};           // runs per row and column, should be multiple of block_size
-};
-  */
 
 void partitioned_mat_vec(const skimdb_matrix& mat,
                          std::span<const uint64_t> vec,
