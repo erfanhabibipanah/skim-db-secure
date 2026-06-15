@@ -76,7 +76,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  auto server_state = setup.value();
+  const auto& server_state = setup.value();
 
   auto [k, s, t] = server_state.skim_parameters();
 

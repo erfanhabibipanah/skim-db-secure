@@ -194,6 +194,65 @@ class skimdb_matrix {
 public:
   explicit skimdb_matrix() = default;
 
+  skimdb_matrix(std::size_t size, std::size_t block_size, std::size_t sqrt_N)
+      : data_{std::make_unique_for_overwrite<std::uint16_t[]>(size)},
+        size_{size}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
+
+  skimdb_matrix(std::unique_ptr<std::uint16_t[]>&& data, std::size_t size, std::size_t block_size, std::size_t sqrt_N)
+      : data_{std::move(data)}, size_{size}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
+
+  skimdb_matrix(const skimdb_matrix&) = delete;
+  void operator=(const skimdb_matrix&) = delete;
+
+  skimdb_matrix(skimdb_matrix&&) noexcept = default;
+  auto operator=(skimdb_matrix&&) noexcept -> skimdb_matrix& = default;
+
+
+  [[nodiscard]] auto span() noexcept -> std::span<std::uint16_t> {
+    return {data_.get(), size_};
+  }
+
+  [[nodiscard]] auto span() const noexcept -> std::span<const std::uint16_t> {
+    return {data_.get(), size_};
+  }
+
+
+  [[nodiscard]] auto constexpr block_size() const -> std::size_t {
+    return block_size_;
+  }
+
+  [[nodiscard]] auto constexpr dimensions() const
+      -> std::tuple<std::size_t, std::size_t> {
+    return std::make_tuple(sqrt_N_, sqrt_N_);
+  }
+
+
+  template <typename Archive>
+  void save(Archive& ar) const {
+    ar(block_size_, sqrt_N_, size_);
+    ar(cereal::binary_data(data_.get(), size_ * sizeof(std::uint16_t)));
+  }
+
+  template <typename Archive>
+  void load(Archive& ar) {
+    ar(block_size_, sqrt_N_, size_);
+    data_ = std::make_unique_for_overwrite<std::uint16_t[]>(size_);
+    ar(cereal::binary_data(data_.get(), size_ * sizeof(std::uint16_t)));
+  }
+
+
+private:
+  std::unique_ptr<std::uint16_t[]> data_; // row-major flat storage (uninitialized)
+  std::size_t size_{0};
+  std::size_t block_size_{0};
+  std::size_t sqrt_N_{0};
+};
+
+  /*
+class skimdb_matrix {
+public:
+  explicit skimdb_matrix() = default;
+
   skimdb_matrix(std::vector<std::uint16_t>&& data, std::size_t block_size, std::size_t sqrt_N)
       : data_{std::move(data)}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
 
@@ -231,7 +290,7 @@ private:
   std::size_t block_size_{0};       // number of runs stored in each block
   std::size_t sqrt_N_{0};           // runs per row and column, should be multiple of block_size
 };
-
+  */
 
 void partitioned_mat_vec(const skimdb_matrix& mat,
                          std::span<const uint64_t> vec,

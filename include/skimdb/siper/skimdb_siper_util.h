@@ -45,11 +45,13 @@ auto populate_skimdb_matrix(const std::vector<skim::detail::encoding>& data,
                             const std::vector<std::uint64_t>& metadata,
                             std::size_t sqrt_N,
                             std::size_t block_size) -> skimdb_matrix {
-  std::vector<std::uint16_t> packed_data(sqrt_N * sqrt_N, 0);
-  std::size_t end{data.size()};
+  std::size_t size = sqrt_N * sqrt_N;
+  auto packed_data = std::make_unique_for_overwrite<std::uint16_t[]>(size);
+  std::memset(packed_data.get(), 0, size * sizeof(std::uint16_t));
+
 
 #pragma omp parallel for schedule(guided)
-  for (std::size_t i = 0; i < end; ++i) {
+  for (std::size_t i = 0; i < size; ++i) {
     auto start_idx = index::unpack_start(metadata[i]);
     auto src = data[i].span();
 
@@ -62,7 +64,7 @@ auto populate_skimdb_matrix(const std::vector<skim::detail::encoding>& data,
     }
   }
 
-  return skimdb_matrix{std::move(packed_data), block_size, sqrt_N};
+  return skimdb_matrix{std::move(packed_data), size, block_size, sqrt_N};
 }
 
 

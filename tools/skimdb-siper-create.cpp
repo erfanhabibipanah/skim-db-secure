@@ -1,6 +1,3 @@
-#include <filesystem>
-#include <iostream>
-#include <string>
 
 #include <cxxopts.hpp>
 #include <fmtextra/fmt_extra.h>
@@ -106,7 +103,7 @@ auto main(int argc, char* argv[]) -> int {
     return -1;
   }
 
-  auto server_state = setup.value();
+  const auto& server_state = setup.value();
 
   log->info("saving server state to {}...", out);
   auto save_res = server_state.save(out);
