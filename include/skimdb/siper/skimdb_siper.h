@@ -153,6 +153,8 @@ public:
   }
 
   auto load(const fs::path& path) -> std::expected<void, std::string> {
+    LogFun lf{"siper_server_state::load(...)", spdlog::level::trace};
+
     std::ifstream is{path, std::ios::binary};
 
     if (!is) {
@@ -163,6 +165,8 @@ public:
       cereal::BinaryInputArchive ar(is);
       siper_version_t ver;
       std::int64_t stamp{0};
+
+      g_log->trace("loading siper metadata...");
 
       ar(ver,
          stamp,
@@ -178,8 +182,11 @@ public:
          siper_config_.sqrt_N,
          siper_config_.seed,
          siper_config_.metadata_hash,
-         siper_config_.hint_c_hash,
-         DB_);
+         siper_config_.hint_c_hash);
+
+      g_log->trace("loading siper database...");
+
+      ar(DB_);
     } catch (const std::exception& e) {
       return std::unexpected{std::format("deserialization failed {}", e.what())};
     }
