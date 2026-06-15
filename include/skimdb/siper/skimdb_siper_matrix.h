@@ -14,6 +14,7 @@
 
 #include <skimdb/detail/skimdb_encoding.h>
 #include <skimdb/detail/skimdb_logger.h>
+#include <skimdb/detail/skimdb_util.h>
 
 
 namespace skim::siper {
@@ -197,14 +198,17 @@ private:
 
 class skimdb_matrix {
 public:
+  static constexpr std::size_t cache_line_size = std::hardware_destructive_interference_size;
+  using storage_type = aligned_unique_ptr<std::uint16_t, cache_line_size>;
+
   explicit skimdb_matrix() = default;
 
   skimdb_matrix(std::size_t size, std::size_t block_size, std::size_t sqrt_N)
-      : data_{std::make_unique_for_overwrite<std::uint16_t[]>(size)},
+      : data_{storage_type(size)},
         size_{size}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
 
-  skimdb_matrix(std::unique_ptr<std::uint16_t[]>&& data, std::size_t size, std::size_t block_size, std::size_t sqrt_N)
-      : data_{std::move(data)}, size_{size}, block_size_{block_size}, sqrt_N_{sqrt_N} {}
+  skimdb_matrix(storage_type&& data, std::size_t block_size, std::size_t sqrt_N)
+      : data_{std::move(data)}, size_(data.size()), block_size_{block_size}, sqrt_N_{sqrt_N} {}
 
 
   skimdb_matrix(const skimdb_matrix&) = delete;
@@ -244,14 +248,14 @@ public:
     LogFun lf{"skimdb_matrix::load(...)", spdlog::level::trace};
     ar(block_size_, sqrt_N_, size_);
     g_log->trace("allocate memory...");
-    data_ = std::make_unique_for_overwrite<std::uint16_t[]>(size_);
+    data_ = storage_type(size_);
     g_log->trace("read matrix...");
     ar(cereal::binary_data(data_.get(), size_ * sizeof(std::uint16_t)));
   }
 
 
 private:
-  std::unique_ptr<std::uint16_t[]> data_; // row-major flat storage (uninitialized)
+  storage_type data_; // row-major flat storage (uninitialized, 64B aligned)
   std::size_t size_{0};
   std::size_t block_size_{0}; // number of runs stored in each block
   std::size_t sqrt_N_{0};     // runs per row and column, should be multiple of block_size

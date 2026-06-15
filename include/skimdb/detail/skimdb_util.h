@@ -2,7 +2,6 @@
 #define SKIMDB_UTIL_H
 
 #include <cstddef>
-#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -103,6 +102,73 @@ public:
 private:
   param_type params_{0};
   static constexpr std::array<char, 4> alphabet_{'A', 'C', 'G', 'T'};
+};
+
+template <typename T, std::size_t Alignment>
+class aligned_unique_ptr {
+public:
+  aligned_unique_ptr() noexcept = default;
+
+  explicit aligned_unique_ptr(std::size_t n) { allocate(n); }
+
+  aligned_unique_ptr(const aligned_unique_ptr&) = delete;
+  auto operator=(const aligned_unique_ptr&) noexcept -> aligned_unique_ptr& = delete;
+
+  aligned_unique_ptr(aligned_unique_ptr&& other) noexcept : ptr_{other.ptr_}, size_{other.size_} {
+    other.ptr_ = nullptr;
+    other.size_ = 0;
+  }
+
+  auto operator=(aligned_unique_ptr&& other) noexcept -> aligned_unique_ptr& {
+    if (this != &other) {
+      reset();
+      ptr_ = other.ptr_;
+      size_ = other.size_;
+      other.ptr_ = nullptr;
+      other.size_ = 0;
+    }
+    return *this;
+  }
+
+  ~aligned_unique_ptr() { reset(); }
+
+  void allocate(std::size_t n) {
+    reset();
+
+    if (n == 0) {
+      return;
+    }
+
+    auto bytes = n * sizeof(T);
+
+    ptr_ = static_cast<T*>(::operator new(bytes, std::align_val_t(Alignment)));
+    size_ = n;
+  }
+
+  void reset() noexcept {
+    if (ptr_) {
+      ::operator delete(ptr_, std::align_val_t(Alignment));
+      ptr_ = nullptr;
+      size_ = 0;
+    }
+  }
+
+  [[nodiscard]] auto size() const noexcept -> std::size_t { return size_; }
+
+  [[nodiscard]] auto get() noexcept -> T* { return ptr_; }
+  [[nodiscard]] auto get() const noexcept -> const T* { return ptr_; }
+
+  [[nodiscard]] auto operator[](std::size_t i) noexcept -> T& { return ptr_[i]; }
+  [[nodiscard]] auto operator[](std::size_t i) const noexcept -> const T& { return ptr_[i]; }
+
+  [[nodiscard]] auto span() noexcept -> std::span<T> { return {ptr_, size_}; }
+  [[nodiscard]] auto span() const noexcept -> std::span<const T> { return {ptr_, size_}; }
+
+  explicit operator bool() const noexcept { return ptr_ != nullptr; }
+
+private:
+  T* ptr_{nullptr};
+  std::size_t size_{0};
 };
 
 } // namespace skim
