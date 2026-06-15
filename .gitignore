@@ -10,3 +10,5 @@ tests/test.spir
 local/
 build.log
 compile_commands.json
+__pycache__/
+*.pyc
