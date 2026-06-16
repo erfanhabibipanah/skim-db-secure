@@ -61,7 +61,7 @@ def security_bits(n, log_q, sigma, m):
     q = 2 ** log_q
     params = LWE.Parameters(
         n=n, q=q,
-        Xs=ND.DiscreteGaussian(sigma),
+        Xs=ND.UniformMod(q),
         Xe=ND.DiscreteGaussian(sigma),
         m=m,
     )
