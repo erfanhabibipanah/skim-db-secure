@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# refresh the vendored lattice-estimator from upstream (malb)
+# refresh the lattice-estimator from upstream (malb)
 # needs network access
 
 set -euo pipefail

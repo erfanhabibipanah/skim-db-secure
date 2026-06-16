@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # pick SiPeR LWE parameters (n, sigma, log_p) for a database
 #
-# this installs SageMath (from conda-forge) the first time if it is not already
-# there, then runs siper-params.py. the lattice estimator needs Sage, so there
-# is no way around it, but you only pay the install once.
+# installs SageMath (from conda-forge) if it is not already available
+# then runs siper-params.py to compute acceptable SiPeR parameters for the given
+# database (or database dimension m) and target security level (default: 128 bits)
 #
 # usage:
 #   ./siper-params.sh --m 178870
