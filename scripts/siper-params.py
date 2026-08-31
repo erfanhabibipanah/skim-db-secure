@@ -135,14 +135,24 @@ def read_sqrt_n_from_db(db_path):
     os.path.join(here, "..", "release", "bin", "skimdb-siper-dbsize"),
   ]
 
+  print("locating skimdb-siper-dbsize binary...")
+
   for tool in candidates:
+    print(f"checking {tool}:")
     try:
-      out = subprocess.check_output([tool, "-i", db_path], stderr=subprocess.STDOUT, text=True)
+      result = subprocess.run([tool, "-i", db_path], stderr=subprocess.STDOUT, stdout=subprocess.PIPE, text=True, check=True)
+      out = result.stdout
       break
-    except (FileNotFoundError, subprocess.CalledProcessError):
+    except FileNotFoundError:
+      print(f"  {tool} not found")
+      continue
+    except subprocess.CalledProcessError as e:
+      print(f"  {tool}: found, but exited with code {e.returncode}")
+      if e.stdout and e.stdout.rstrip():
+        print(f"    {e.stdout.rstrip().splitlines()[-1]}")
       continue
   else:
-    raise RuntimeError("skimdb-siper-dbsize not found on PATH, ../build/tools, or ../release/bin")
+    raise RuntimeError("error computing database size. (see above for subprocess output)")
 
   match = re.search(r"sqrt\(N\)\s*=\s*(\d+)", out)
   if not match:
