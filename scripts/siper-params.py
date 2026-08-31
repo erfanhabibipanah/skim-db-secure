@@ -129,27 +129,33 @@ def select_params(m, log_q, log_delta, sigma_max, target_security):
 
 def read_sqrt_n_from_db(db_path):
   here = os.path.dirname(os.path.abspath(__file__))
-  candidates = [
-    "skimdb-siper-dbsize",
-    os.path.join(here, "..", "build", "tools", "skimdb-siper-dbsize"),
-    os.path.join(here, "..", "release", "bin", "skimdb-siper-dbsize"),
-  ]
 
-  print("locating skimdb-siper-dbsize binary...")
+  # for builds that live outside ../build/tools and ../release/bin
+  override = os.environ.get("SKIMDB_DBSIZE_BIN")
+  if override:
+    candidates = [override]
+  else:
+    candidates = [
+      "skimdb-siper-dbsize",
+      os.path.join(here, "..", "build", "tools", "skimdb-siper-dbsize"),
+      os.path.join(here, "..", "release", "bin", "skimdb-siper-dbsize"),
+    ]
+
+  print("locating skimdb-siper-dbsize binary...", file=sys.stderr)
 
   for tool in candidates:
-    print(f"checking {tool}:")
+    print(f"checking {tool}:", file=sys.stderr)
     try:
       result = subprocess.run([tool, "-i", db_path], stderr=subprocess.STDOUT, stdout=subprocess.PIPE, text=True, check=True)
       out = result.stdout
       break
     except FileNotFoundError:
-      print(f"  {tool} not found")
+      print(f"  {tool} not found", file=sys.stderr)
       continue
     except subprocess.CalledProcessError as e:
-      print(f"  {tool}: found, but exited with code {e.returncode}")
+      print(f"  {tool}: found, but exited with code {e.returncode}", file=sys.stderr)
       if e.stdout and e.stdout.rstrip():
-        print(f"    {e.stdout.rstrip().splitlines()[-1]}")
+        print(f"    {e.stdout.rstrip().splitlines()[-1]}", file=sys.stderr)
       continue
   else:
     raise RuntimeError("error computing database size. (see above for subprocess output)")
